@@ -7,7 +7,8 @@ import {WebSocketServer} from 'ws';
 const root=process.env.HLS_FIXTURE;
 if(!root)throw new Error('HLS_FIXTURE must point to test-only init.mp4 and segment/0..59.m4s');
 let epoch=Date.now(),requests={parts:0,segments:0,blocking:0};
-const available=()=>Math.min(59,20+Math.floor((Date.now()-epoch)/1000));
+const burst=process.env.HLS_BURST==='1';
+const available=()=>Math.min(59,20+(burst?4*Math.floor((Date.now()-epoch)/4000):Math.floor((Date.now()-epoch)/1000)));
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const server=http.createServer(async(req,res)=>{
  try{
@@ -66,4 +67,4 @@ sockets.on('connection',ws=>{
   ws.send(JSON.stringify({type:'result',id:m.id,success:true,result:{url:'/api/hls/abcd/master_playlist.m3u8'}}));
  });
 });
-server.listen(3155,'127.0.0.1',()=>console.log('Rolling LL-HLS fixture ready'));
+server.listen(Number(process.env.PORT||3155),'127.0.0.1',()=>console.log('Rolling LL-HLS fixture ready'+(burst?' · four-second delivery bursts':'')));

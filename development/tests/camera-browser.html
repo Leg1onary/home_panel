@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>Camera regression fixture</title>
+<style>body{background:#15191c;color:#eee;font:16px sans-serif;margin:16px}video{display:block;width:100%;max-height:65vh;background:#000}button{font:inherit;margin:12px 8px 12px 0;padding:10px}pre{white-space:pre-wrap;overflow-wrap:anywhere}</style>
+<video muted playsinline controls></video>
+<button id="stable">Стабильный режим</button><button id="old">Предыдущий профиль</button><button id="stop">Стоп</button>
+<pre id="status">Только сгенерированное тестовое видео</pre>
+<script src="/assets/hls-player.js"></script>
+<script type="module">
+import {stableHlsConfig,bufferedPlaylistLoader,bufferedAhead} from '/qa-policy.js';
+const video=document.querySelector('video'),status=document.querySelector('#status'),Hls=window.HomePanelHls;
+let hls,session,proof,started=false;
+window.samples=[];window.issues=[];window.waits=0;window.parts=0;
+async function stop(){
+ hls?.destroy();hls=null;video.pause();video.removeAttribute('src');video.load();
+ if(session){await fetch('/api/panel/ha/stream/'+session.key,{method:'DELETE',headers:{'X-Panel-Proof':proof}});session=null}
+}
+async function start(stable){
+ await stop();await fetch('/fixture/reset');
+ const boot=await(await fetch('/api/panel/bootstrap')).json();proof=boot.proof;
+ const response=await fetch('/api/panel/ha/stream/start',{method:'POST',headers:{'Content-Type':'application/json','X-Panel-Proof':proof},body:JSON.stringify({id:'camera-yard'})});
+ session=await response.json();if(!response.ok)throw new Error(session.error);
+ window.samples=[];window.issues=[];window.waits=0;window.parts=0;started=false;
+ hls=new Hls(stable?{...stableHlsConfig,pLoader:bufferedPlaylistLoader(Hls)}:{lowLatencyMode:true,backBufferLength:60,maxLiveSyncPlaybackRate:2});
+ hls.on(Hls.Events.ERROR,(_,d)=>window.issues.push(d.details));
+ hls.on(Hls.Events.FRAG_LOADED,(_,d)=>{if(d.part)window.parts++});
+ hls.on(Hls.Events.MANIFEST_PARSED,()=>video.play());
+ hls.loadSource('/api/panel/'+session.url);hls.attachMedia(video);
+}
+video.addEventListener('playing',()=>started=true);
+video.addEventListener('waiting',()=>{if(started)window.waits++});
+setInterval(()=>{
+ if(!hls)return;
+ const q=video.getVideoPlaybackQuality(),s={time:video.currentTime,rate:video.playbackRate,buffer:bufferedAhead(video),latency:hls.latency,ready:video.readyState,dropped:q.droppedVideoFrames,total:q.totalVideoFrames};
+ window.samples.push(s);status.textContent=JSON.stringify({sample:s,waits:window.waits,issues:window.issues,parts:window.parts},null,2);
+},1000);
+document.querySelector('#stable').onclick=()=>start(true);
+document.querySelector('#old').onclick=()=>start(false);
+document.querySelector('#stop').onclick=stop;
+</script></html>

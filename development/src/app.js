@@ -60,6 +60,7 @@ function toast(message){
 }
 function modal(content,room=null){
  clearCamera();
+ $('#overlay').classList.remove('camera-overlay');
  $('.sheet').classList.remove('camera-sheet','settings-sheet');
  $('.sheet').scrollTop=0;
  lastFocus=document.activeElement;$('#sheet-content').innerHTML=content;
@@ -69,7 +70,7 @@ function modal(content,room=null){
 function closeModal(){
  stationAdjusting=false;
  clearCamera();
- $('#overlay').hidden=true;settingsOpen=false;state.techOpen=false;
+ $('#overlay').hidden=true;$('#overlay').classList.remove('camera-overlay');settingsOpen=false;state.techOpen=false;
  if(lastFocus?.isConnected)lastFocus.focus();armIdle();
 }
 function lightCountLabel(){
@@ -242,7 +243,7 @@ function cameraSheet(id){
  const d=state.devices.find(d=>d.id===id);if(!d)return;
  const e=observed(id),enabled=isLive()&&!state.preview&&d.status==='installed'&&e&&!['unknown','unavailable'].includes(e.state);
  modal(`<div class="eyebrow">${esc(areaName(d.room))}</div><h2>${esc(d.name)}</h2><p class="description">${d.status==='planned'?'Камера ещё не установлена.':'Прямой эфир по запросу. Закрой окно, чтобы остановить просмотр.'}</p><div id="camera-frame" class="camera-frame"><span>${enabled?'Подключаем видео…':'Сначала привяжи и проверь сущность камеры в настройках'}</span></div><p id="camera-status" role="status">${enabled?'Подключаем прямой эфир…':'Подключение камеры ещё не проверено'}</p><div class="camera-actions"><button class="primary" data-camera-start="${id}" ${disabled(!enabled)}>${I('play')}Прямой эфир</button><button class="secondary" data-action="camera-stop" ${disabled(!enabled)}>${I('pause')}Стоп</button><button class="secondary" data-action="camera-fullscreen" ${disabled(!enabled)}>${I('maximize')}На весь экран</button><button class="text-button" data-camera-frame="${id}" ${disabled(!enabled)}>${I('camera')}Снимок</button></div>`);
- $('.sheet').classList.add('camera-sheet');cameraDevice=id;
+ $('.sheet').classList.add('camera-sheet');$('#overlay').classList.add('camera-overlay');cameraDevice=id;
  if(enabled)cameraStart(id);
 }
 function cameraStart(id){

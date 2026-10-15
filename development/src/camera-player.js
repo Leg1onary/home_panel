@@ -1,5 +1,5 @@
 import {api,panelURL,assetURL} from './api.js';
-import {stableHlsConfig,bufferedAhead,frameLoss} from './camera-policy.js';
+import {stableHlsConfig,bufferedPlaylistLoader,bufferedAhead,frameLoss} from './camera-policy.js';
 
 let library;
 function loadHls(){
@@ -18,10 +18,10 @@ export function startCameraPlayer(id,video,status){
  let delivery='',loadedParts=0;
  const message=text=>{if(!disposed)status.textContent=text};
  const diagnostic=()=>`${engine}${delivery?' · '+delivery:''}${codec?' · '+codec:''}${video.videoWidth?' · '+video.videoWidth+'×'+video.videoHeight:''}`;
- const statistics=()=>`буфер ${bufferedAhead(video).toFixed(1)} с · остановок ${stalls} · пропущено кадров ${frameLoss(video)}${delivery==='LL-HLS'?' · частей '+loadedParts:''}${lastIssue?' · посл. '+lastIssue:''}`;
+ const statistics=()=>`буфер ${bufferedAhead(video).toFixed(1)} с · скорость ${(video.playbackRate||1).toFixed(2)}×${hls&&Number.isFinite(hls.latency)?' · задержка '+hls.latency.toFixed(1)+' с':''} · остановок ${stalls} · пропущено кадров ${frameLoss(video)}${delivery==='LL-HLS'?' · частей '+loadedParts:''}${lastIssue?' · посл. '+lastIssue:''}`;
  const showStats=()=>{
   if(disposed||!started||recovering||video.paused)return;
-  message((buffering?'Буферизация':'Прямой эфир')+' · '+diagnostic()+' · '+statistics()+' · профиль HA');
+  message((buffering?'Буферизация':'Прямой эфир')+' · '+diagnostic()+' · '+statistics()+(hls?' · стабильный режим':' · встроенный плеер'));
  };
  const fail=text=>{if(disposed)return;message(text+' ['+diagnostic()+'] Можно повторить запуск или получить снимок.');cleanup()};
  const release=key=>api('ha/stream/'+key,{method:'DELETE'}).catch(()=>{});
@@ -81,7 +81,7 @@ export function startCameraPlayer(id,video,status){
    const source=panelURL(session.url);
    if(!mse){video.src=source;video.addEventListener('loadedmetadata',playback,{once:true});playback()}
    else{
-    hls=new Hls({...stableHlsConfig});
+    hls=new Hls({...stableHlsConfig,pLoader:bufferedPlaylistLoader(Hls)});
     hls.on(Hls.Events.LEVEL_LOADED,(_,data)=>{
      delivery=data.details?.partTarget>0||data.details?.partList?.length?'LL-HLS':'HLS';
     });
