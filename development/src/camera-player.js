@@ -1,4 +1,5 @@
 import {api,panelURL,assetURL} from './api.js';
+import {stableHlsConfig,bufferedAhead,frameLoss} from './camera-policy.js';
 
 let library;
 function loadHls(){
@@ -13,12 +14,19 @@ function loadHls(){
 }
 export function startCameraPlayer(id,video,status){
  let disposed=false,session=null,hls=null,timer,stalledTimer,engine='подключение',codec='',recoveries=0,recoveryTimer,recovering=false;
+ let statsTimer,networkTimer,networkRetries=0,buffering=false,stalls=0,started=false,lastIssue='';
  const message=text=>{if(!disposed)status.textContent=text};
  const diagnostic=()=>`${engine}${codec?' · '+codec:''}${video.videoWidth?' · '+video.videoWidth+'×'+video.videoHeight:''}`;
+ const statistics=()=>`буфер ${bufferedAhead(video).toFixed(1)} с · остановок ${stalls} · пропущено кадров ${frameLoss(video)}${lastIssue?' · '+lastIssue:''}`;
+ const showStats=()=>{
+  if(disposed||!started||recovering||video.paused)return;
+  message((buffering?'Буферизация':'Прямой эфир')+' · '+diagnostic()+' · '+statistics()+' · приоритет стабильности, возможна задержка');
+ };
  const fail=text=>{if(disposed)return;message(text+' ['+diagnostic()+'] Можно повторить запуск или получить снимок.');cleanup()};
  const release=key=>api('ha/stream/'+key,{method:'DELETE'}).catch(()=>{});
  const cleanup=()=>{
-  if(disposed)return;disposed=true;clearTimeout(timer);clearTimeout(stalledTimer);clearTimeout(recoveryTimer);
+  if(disposed)return;disposed=true;clearTimeout(timer);clearTimeout(stalledTimer);clearTimeout(recoveryTimer);clearTimeout(networkTimer);clearInterval(statsTimer);
+  video.removeEventListener('playing',playing);video.removeEventListener('waiting',waiting);video.removeEventListener('error',videoError);
   if(hls)hls.destroy();video.pause();video.removeAttribute('src');video.load();
   if(session)release(session.key);
  };
@@ -27,15 +35,20 @@ export function startCameraPlayer(id,video,status){
   const result=video.play();
   if(result&&result.catch)result.catch(()=>message('Нажми ▶ на видео для начала просмотра.'));
  };
- const playing=()=>{recovering=false;clearTimeout(timer);clearTimeout(stalledTimer);clearTimeout(recoveryTimer);message('Прямой эфир · '+diagnostic()+' · возможна задержка')};
- const waiting=()=>{message('Буферизация видео…');clearTimeout(stalledTimer);stalledTimer=setTimeout(()=>fail('Поток перестал обновляться.'),25000)};
+ const playing=()=>{if(disposed)return;started=true;buffering=false;recovering=false;clearTimeout(timer);clearTimeout(stalledTimer);clearTimeout(recoveryTimer);showStats()};
+ const waiting=()=>{
+  if(disposed)return;
+  if(!buffering&&started)stalls++;
+  buffering=true;message('Буферизация видео · '+statistics());clearTimeout(stalledTimer);
+  stalledTimer=setTimeout(()=>fail('Поток перестал обновляться. '+statistics()),45000);
+ };
  const recover=()=>{
   if(disposed||!hls||recoveries)return false;
   recoveries++;recovering=true;message('Перезапускаем видеодекодер · '+diagnostic());
   // One bounded recovery, not an endless flashing/reconnect loop.
   recoveryTimer=setTimeout(()=>{
    if(disposed)return;
-   try{hls.recoverMediaError();timer=setTimeout(()=>fail('После восстановления видео не запустилось.'),15000)}
+   try{hls.recoverMediaError();timer=setTimeout(()=>fail('После восстановления видео не запустилось.'),30000)}
    catch{fail('Не удалось восстановить видеодекодер.')}
   },200);
   return true;
@@ -48,6 +61,7 @@ export function startCameraPlayer(id,video,status){
   fail(label+' (MediaError '+(code||'неизвестен')+').');
  };
  video.addEventListener('playing',playing);video.addEventListener('waiting',waiting);video.addEventListener('error',videoError);
+ statsTimer=setInterval(showStats,1000);
  message('Подключаем прямой эфир…');
  const ready=(async()=>{
   try{
@@ -62,22 +76,32 @@ export function startCameraPlayer(id,video,status){
    engine=mse?'HLS.js':'встроенный HLS';
    session=await api('ha/stream/start',{method:'POST',body:{id}});
    if(disposed){release(session.key);return}
-   timer=setTimeout(()=>fail('Видео не началось за 30 секунд.'),30000);
+   timer=setTimeout(()=>fail('Видео не началось за 60 секунд.'),60000);
    const source=panelURL(session.url);
    if(!mse){video.src=source;video.addEventListener('loadedmetadata',playback,{once:true});playback()}
    else{
-    hls=new Hls({lowLatencyMode:false,maxBufferLength:10,backBufferLength:0,enableWorker:false});
+    hls=new Hls({...stableHlsConfig});
     hls.on(Hls.Events.MANIFEST_PARSED,(_,data)=>{
      const value=data.levels?.[0]?.videoCodec;
      if(typeof value==='string'&&/^[a-zA-Z0-9.,_-]{1,64}$/.test(value))codec=value;
      playback();
     });
     hls.on(Hls.Events.ERROR,(_,data)=>{
-     if(!data.fatal||disposed)return;
+     if(disposed)return;
+     const detail=/^[a-zA-Z0-9_-]{1,80}$/.test(data.details||'')?data.details:'unknown';
+     lastIssue=detail;
+     if(!data.fatal)return;
      if(data.type===Hls.ErrorTypes.MEDIA_ERROR){
       if(recover()||recovering)return;
      }
-     const detail=/^[a-zA-Z0-9_-]{1,80}$/.test(data.details||'')?data.details:'unknown';
+     if(data.type===Hls.ErrorTypes.NETWORK_ERROR&&networkRetries<2){
+      networkRetries++;clearTimeout(networkTimer);
+      message(`Повтор загрузки видео ${networkRetries} / 2 · ${detail}`);
+      networkTimer=setTimeout(()=>{
+       if(!disposed){hls.startLoad();clearTimeout(timer);timer=setTimeout(()=>fail('Не удалось продолжить загрузку видео. '+statistics()),45000)}
+      },networkRetries*1500);
+      return;
+     }
      fail(`Ошибка видеопотока (${detail}). Проверь эту сущность в HA на том же устройстве.`);
     });
     hls.loadSource(source);hls.attachMedia(video);
@@ -85,7 +109,6 @@ export function startCameraPlayer(id,video,status){
   }catch(error){fail(error.message)}
  })();
  return {ready,stop(){
-  video.removeEventListener('playing',playing);video.removeEventListener('waiting',waiting);video.removeEventListener('error',videoError);
   cleanup();
  }};
 }

@@ -1,5 +1,7 @@
 import WebSocket from 'ws';
 import {randomBytes} from 'node:crypto';
+import {Readable,Transform} from 'node:stream';
+import {pipeline} from 'node:stream/promises';
 
 // Only HA's HLS endpoints are accepted, never a camera URL or arbitrary proxy target.
 const assetPattern=/^(?:master_playlist\.m3u8|playlist\.m3u8|init\.mp4|segment\/\d+(?:\.\d+)?\.m4s)$/;
@@ -66,6 +68,18 @@ export class CameraStreams {
    });
    if(!upstream.ok){await upstream.body?.cancel();throw new Error(`Поток Home Assistant недоступен (${upstream.status}).`)}
    const playlist=asset.endsWith('.m3u8'),limit=playlist?512*1024:24*1024*1024;
+   if(!playlist){
+    // Forward media progressively with backpressure; never await the entire
+    // segment in memory before the browser can start receiving it.
+    let size=0;
+    const bounded=new Transform({transform(chunk,encoding,callback){
+     size+=chunk.length;
+     callback(size>limit?new Error('Слишком большой фрагмент видео.'):null,chunk);
+    }});
+    res.writeHead(200,{'Content-Type':asset==='init.mp4'?'video/mp4':'video/iso.segment','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});
+    await pipeline(Readable.fromWeb(upstream.body),bounded,res,{signal:controller.signal});
+    return;
+   }
    const reader=upstream.body.getReader(),parts=[];let size=0;
    try{
     while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>limit)throw new Error('Слишком большой фрагмент видео.');parts.push(Buffer.from(value))}

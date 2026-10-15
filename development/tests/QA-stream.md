@@ -1,5 +1,13 @@
 # Home Panel 1.0.3: live camera QA
 
+## 1.0.9 stability and diagnostics
+
+- Automated player tests: 30-second target/60-second cap/back-buffer policy, MSE before native, buffer ranges, frame counters, deduplicated stalls, one decoder recovery, two bounded network retries, no source reload, no disposed-event timers.
+- Proxy regression: first bytes arrive before upstream closes the segment; allowlists, playlist rewriting, proof/session/binding checks remain covered.
+- Chromium: actual H.264 test pattern decoded, clock advanced beyond 26 seconds, diagnostics updated; startup stalls occurred but the count stopped increasing during continued playback. Headless software rendering reported dropped frames, not a measurement of real tablet performance.
+- Desktop/mobile screenshots checked; stop removes video. Actual Tapo green frames were not reproduced. The fixture is finite HLS, not proof of long-running live/LL-HLS behavior or real-network stability.
+- Owner acceptance: same camera entity and browser as HA, observe for 30–60 seconds; report buffer/stalls/frame counters/last error while green or frozen.
+
 ## 1.0.4 regression checks
 
 - Native canPlayType advertises "maybe", but HLS.js/MSE must be selected; source must be a blob and video clock advance.

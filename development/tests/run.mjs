@@ -7,9 +7,9 @@ function run(command,args){
  if(result.error)throw result.error;
  if(result.status!==0)throw new Error(`${command} ${args.join(' ')} failed: ${result.status}`);
 }
-for(const name of ['catalog','house-profile','station','model-state']){
+for(const name of ['catalog','house-profile','station','model-state','camera-player']){
  run('node_modules/.bin/esbuild',[`tests/${name}.mjs`,'--bundle','--platform=node','--format=esm','--packages=external',`--outfile=.qa/${name}.mjs`]);
  run(process.execPath,[`.qa/${name}.mjs`]);
 }
 for(const name of ['integration','addon','stream'])run(process.execPath,[`tests/${name}.mjs`]);
-console.log('All seven test suites passed.');
+console.log('All eight test suites passed.');

@@ -376,6 +376,8 @@ var HomeAssistant = class {
 // server/stream.js
 import WebSocket from "ws";
 import { randomBytes } from "node:crypto";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 var assetPattern = /^(?:master_playlist\.m3u8|playlist\.m3u8|init\.mp4|segment\/\d+(?:\.\d+)?\.m4s)$/;
 var CameraStreams = class {
   constructor(ha2) {
@@ -472,6 +474,16 @@ var CameraStreams = class {
         throw new Error(`\u041F\u043E\u0442\u043E\u043A Home Assistant \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D (${upstream.status}).`);
       }
       const playlist = asset.endsWith(".m3u8"), limit = playlist ? 512 * 1024 : 24 * 1024 * 1024;
+      if (!playlist) {
+        let size2 = 0;
+        const bounded = new Transform({ transform(chunk, encoding, callback) {
+          size2 += chunk.length;
+          callback(size2 > limit ? new Error("\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u0431\u043E\u043B\u044C\u0448\u043E\u0439 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442 \u0432\u0438\u0434\u0435\u043E.") : null, chunk);
+        } });
+        res.writeHead(200, { "Content-Type": asset === "init.mp4" ? "video/mp4" : "video/iso.segment", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer" });
+        await pipeline(Readable.fromWeb(upstream.body), bounded, res, { signal: controller.signal });
+        return;
+      }
       const reader = upstream.body.getReader(), parts = [];
       let size = 0;
       try {

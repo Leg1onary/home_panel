@@ -7,7 +7,7 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 const dir=await mkdtemp(join(tmpdir(),'panel-stream-'));
-let child,proof,p,streamCalls=0,badURL=false,evilPlaylist=false;
+let child,proof,p,streamCalls=0,badURL=false,evilPlaylist=false,slowMedia=false,finishMedia;
 const ha=http.createServer((req,res)=>{
  assert.equal(req.headers.authorization,'Bearer fixture-only');
  res.setHeader('Content-Type','application/json');
@@ -15,6 +15,7 @@ const ha=http.createServer((req,res)=>{
  if(req.url.startsWith('/api/hls/abc123/')){
   if(req.url.includes('master_playlist'))return res.end('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1000000\n'+(evilPlaylist?'http://127.0.0.1/secrets':'playlist.m3u8')+'\n');
   if(req.url.includes('playlist.m3u8'))return res.end('#EXTM3U\n#EXT-X-MAP:URI="/api/hls/abc123/init.mp4"\n#EXTINF:1,\nsegment/1.m4s\n#EXT-X-PART:DURATION=0.5,URI="segment/2.0.m4s"\n');
+  if(slowMedia){res.write('first-');finishMedia=()=>res.end('last');return}
   return res.end('segment-fixture');
  }
  res.writeHead(404);res.end('{}');
@@ -47,6 +48,21 @@ try{
  let r=await raw(url),text=await r.text();assert.equal(r.status,200);assert.match(text,new RegExp('ha/stream/'+key+'/playlist'));assert.ok(!text.includes('abc123'));
  r=await raw(`ha/stream/${key}/playlist.m3u8?_HLS_msn=2&_HLS_part=0`);text=await r.text();assert.equal(r.status,200);assert.match(text,new RegExp('URI="/api/panel/ha/stream/'+key+'/init.mp4"'));assert.ok(!text.includes('abc123'));
  r=await raw(`ha/stream/${key}/segment/2.0.m4s`);assert.equal(r.status,200);assert.equal(await r.text(),'segment-fixture');
+ slowMedia=true;
+ let firstRead;
+ try{
+  const first=raw(`ha/stream/${key}/segment/3.m4s`).then(async response=>{
+   const reader=response.body.getReader();
+   firstRead=reader;
+   return new TextDecoder().decode((await reader.read()).value);
+  });
+  let deadline;
+  try{
+   assert.equal(await Promise.race([first,new Promise((_,reject)=>{deadline=setTimeout(()=>reject(new Error('Proxy buffered the entire segment instead of forwarding first bytes')),2000)})]),'first-');
+  }finally{clearTimeout(deadline)}
+ }finally{finishMedia?.();slowMedia=false}
+ assert.equal(new TextDecoder().decode((await firstRead.read()).value),'last');
+ assert.equal((await firstRead.read()).done,true);
  assert.equal((await raw(url,'GET',undefined,{'Sec-Fetch-Site':'cross-site'})).status,400);
  assert.equal((await raw(url+'?url=http://evil.example')).status,400);
  assert.equal((await raw(`ha/stream/${key}/invalid-file`)).status,400);
@@ -55,7 +71,7 @@ try{
  badURL=true;assert.equal((await call('ha/stream/start','POST',{id:'camera-yard'})).code,400);badURL=false;
  const another=await call('ha/stream/start','POST',{id:'camera-yard'});p.mode='demo';await call('preferences','PUT',p);
  assert.equal((await raw(another.body.url)).status,400);
- console.log('PASS: WS auth/stream command, verified camera only, CSRF, HLS rewrites incl init/parts, secret filtering, query/file allowlists, SSRF rejection, stop invalidates session, mode change blocks existing stream.');
+ console.log('PASS: WS auth/stream command, verified camera only, CSRF, HLS rewrites incl init/parts, progressive first bytes before upstream completion, secret filtering, query/file allowlists, SSRF rejection, stop invalidates session, mode change blocks existing stream.');
 }finally{
  if(child&&child.exitCode===null){const done=new Promise(r=>child.once('exit',r));child.kill();await done}
  for(const client of ws.clients)client.terminate();await new Promise(r=>ws.close(r));ha.closeAllConnections();await new Promise(r=>ha.close(r));
