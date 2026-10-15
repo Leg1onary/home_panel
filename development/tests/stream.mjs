@@ -7,14 +7,17 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 const dir=await mkdtemp(join(tmpdir(),'panel-stream-'));
-let child,proof,p,streamCalls=0,badURL=false,evilPlaylist=false,slowMedia=false,finishMedia;
+let child,proof,p,streamCalls=0,badURL=false,evilPlaylist=false,slowMedia=false,finishMedia,lastPlaylistQuery;
 const ha=http.createServer((req,res)=>{
  assert.equal(req.headers.authorization,'Bearer fixture-only');
  res.setHeader('Content-Type','application/json');
  if(req.url==='/api/states')return res.end(JSON.stringify([{entity_id:'camera.test',state:'idle',attributes:{access_token:'camera-secret'}}]));
  if(req.url.startsWith('/api/hls/abc123/')){
   if(req.url.includes('master_playlist'))return res.end('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1000000\n'+(evilPlaylist?'http://127.0.0.1/secrets':'playlist.m3u8')+'\n');
-  if(req.url.includes('playlist.m3u8'))return res.end('#EXTM3U\n#EXT-X-MAP:URI="/api/hls/abc123/init.mp4"\n#EXTINF:1,\nsegment/1.m4s\n#EXT-X-PART:DURATION=0.5,URI="segment/2.0.m4s"\n');
+  if(req.url.includes('playlist.m3u8')){
+   lastPlaylistQuery=new URL(req.url,'http://fixture').search;
+   return res.end('#EXTM3U\n#EXT-X-MAP:URI="/api/hls/abc123/init.mp4"\n#EXT-X-PART-INF:PART-TARGET=0.5\n#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=1.0\n#EXT-X-START:TIME-OFFSET=-1.0,PRECISE=YES\n#EXTINF:1,\nsegment/1.m4s\n#EXT-X-PART:DURATION=0.5,URI="./segment/2.0.m4s"\n#EXT-X-PRELOAD-HINT:TYPE=PART,URI="./segment/2.1.m4s"\n');
+  }
   if(slowMedia){res.write('first-');finishMedia=()=>res.end('last');return}
   return res.end('segment-fixture');
  }
@@ -47,6 +50,10 @@ try{
  const {key,url}=started.body;assert.equal(JSON.stringify(started).includes('abc123'),false);assert.match(key,/^[a-f0-9]{48}$/);
  let r=await raw(url),text=await r.text();assert.equal(r.status,200);assert.match(text,new RegExp('ha/stream/'+key+'/playlist'));assert.ok(!text.includes('abc123'));
  r=await raw(`ha/stream/${key}/playlist.m3u8?_HLS_msn=2&_HLS_part=0`);text=await r.text();assert.equal(r.status,200);assert.match(text,new RegExp('URI="/api/panel/ha/stream/'+key+'/init.mp4"'));assert.ok(!text.includes('abc123'));
+ assert.equal(lastPlaylistQuery,'?_HLS_msn=2&_HLS_part=0');
+ assert.match(text,/#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=1.0/);
+ assert.match(text,new RegExp('#EXT-X-PRELOAD-HINT:TYPE=PART,URI="/api/panel/ha/stream/'+key+'/segment/2.1.m4s"'));
+ assert.match(text,/#EXT-X-START:TIME-OFFSET=-1.0,PRECISE=YES/);
  r=await raw(`ha/stream/${key}/segment/2.0.m4s`);assert.equal(r.status,200);assert.equal(await r.text(),'segment-fixture');
  slowMedia=true;
  let firstRead;

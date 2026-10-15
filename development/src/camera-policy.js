@@ -1,11 +1,10 @@
-// Prefer continuity over minimum live latency on wall tablets.
+// Follow Home Assistant's one-camera HLS profile. LL-HLS playlists advertise
+// short parts and a part-level start offset; do not force whole-segment mode.
+// https://raw.githubusercontent.com/home-assistant/frontend/dev/src/components/ha-hls-player.ts
 export const stableHlsConfig=Object.freeze({
- lowLatencyMode:false,
- maxBufferLength:30,
- maxMaxBufferLength:60,
- backBufferLength:30,
- liveSyncDurationCount:4,
- maxLiveSyncPlaybackRate:1,
+ lowLatencyMode:true,
+ backBufferLength:60,
+ maxLiveSyncPlaybackRate:2,
  manifestLoadingTimeOut:30000,
  levelLoadingTimeOut:30000,
  fragLoadingTimeOut:30000,

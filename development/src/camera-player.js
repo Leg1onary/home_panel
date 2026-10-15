@@ -15,12 +15,13 @@ function loadHls(){
 export function startCameraPlayer(id,video,status){
  let disposed=false,session=null,hls=null,timer,stalledTimer,engine='подключение',codec='',recoveries=0,recoveryTimer,recovering=false;
  let statsTimer,networkTimer,networkRetries=0,buffering=false,stalls=0,started=false,lastIssue='';
+ let delivery='',loadedParts=0;
  const message=text=>{if(!disposed)status.textContent=text};
- const diagnostic=()=>`${engine}${codec?' · '+codec:''}${video.videoWidth?' · '+video.videoWidth+'×'+video.videoHeight:''}`;
- const statistics=()=>`буфер ${bufferedAhead(video).toFixed(1)} с · остановок ${stalls} · пропущено кадров ${frameLoss(video)}${lastIssue?' · '+lastIssue:''}`;
+ const diagnostic=()=>`${engine}${delivery?' · '+delivery:''}${codec?' · '+codec:''}${video.videoWidth?' · '+video.videoWidth+'×'+video.videoHeight:''}`;
+ const statistics=()=>`буфер ${bufferedAhead(video).toFixed(1)} с · остановок ${stalls} · пропущено кадров ${frameLoss(video)}${delivery==='LL-HLS'?' · частей '+loadedParts:''}${lastIssue?' · посл. '+lastIssue:''}`;
  const showStats=()=>{
   if(disposed||!started||recovering||video.paused)return;
-  message((buffering?'Буферизация':'Прямой эфир')+' · '+diagnostic()+' · '+statistics()+' · приоритет стабильности, возможна задержка');
+  message((buffering?'Буферизация':'Прямой эфир')+' · '+diagnostic()+' · '+statistics()+' · профиль HA');
  };
  const fail=text=>{if(disposed)return;message(text+' ['+diagnostic()+'] Можно повторить запуск или получить снимок.');cleanup()};
  const release=key=>api('ha/stream/'+key,{method:'DELETE'}).catch(()=>{});
@@ -81,6 +82,10 @@ export function startCameraPlayer(id,video,status){
    if(!mse){video.src=source;video.addEventListener('loadedmetadata',playback,{once:true});playback()}
    else{
     hls=new Hls({...stableHlsConfig});
+    hls.on(Hls.Events.LEVEL_LOADED,(_,data)=>{
+     delivery=data.details?.partTarget>0||data.details?.partList?.length?'LL-HLS':'HLS';
+    });
+    hls.on(Hls.Events.FRAG_LOADED,(_,data)=>{if(data.part)loadedParts++});
     hls.on(Hls.Events.MANIFEST_PARSED,(_,data)=>{
      const value=data.levels?.[0]?.videoCodec;
      if(typeof value==='string'&&/^[a-zA-Z0-9.,_-]{1,64}$/.test(value))codec=value;

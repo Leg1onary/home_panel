@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import {stableHlsConfig,bufferedAhead,frameLoss} from '../src/camera-policy.js';
-assert.equal(stableHlsConfig.lowLatencyMode,false);
-assert.ok(stableHlsConfig.maxBufferLength>=30);
-assert.ok(stableHlsConfig.backBufferLength>=30);
-assert.equal(stableHlsConfig.maxLiveSyncPlaybackRate,1);
+assert.equal(stableHlsConfig.lowLatencyMode,true);
+assert.equal(stableHlsConfig.backBufferLength,60);
+assert.equal(stableHlsConfig.maxLiveSyncPlaybackRate,2);
+assert.equal(stableHlsConfig.liveSyncDurationCount,undefined,'Respect part-level server hold-back instead of forcing whole-segment delay');
+assert.equal(stableHlsConfig.maxBufferLength,undefined,'Use HA/HLS.js buffer defaults');
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 class Video extends EventTarget {
  currentTime=3;videoWidth=1920;videoHeight=1080;paused=false;
@@ -19,7 +20,7 @@ assert.equal(bufferedAhead(new Video()),12);
 assert.equal(frameLoss(new Video()),'2 / 120');
 let instances=[],releases=0;
 class FakeHls {
- static Events={MANIFEST_PARSED:'manifest',ERROR:'error'};
+ static Events={MANIFEST_PARSED:'manifest',ERROR:'error',LEVEL_LOADED:'level',FRAG_LOADED:'fragment'};
  static ErrorTypes={MEDIA_ERROR:'media',NETWORK_ERROR:'network'};
  static isSupported(){return true}
  handlers={};sources=0;recoveries=0;loads=0;
@@ -47,6 +48,13 @@ assert.equal(hls.sources,1);assert.deepEqual(hls.config,stableHlsConfig);
 video.dispatchEvent(new Event('playing'));
 assert.match(status.textContent,/буфер 12.0 с/);
 assert.match(status.textContent,/пропущено кадров 2 \/ 120/);
+hls.emit('level',{details:{partTarget:1}});
+hls.emit('fragment',{part:{index:0}});
+video.dispatchEvent(new Event('playing'));
+assert.match(status.textContent,/LL-HLS/);assert.match(status.textContent,/частей 1/);
+hls.emit('level',{details:{partTarget:0}});
+video.dispatchEvent(new Event('playing'));
+assert.ok(!status.textContent.includes('LL-HLS'),'Normal playlists remain supported without a manual switch');
 video.dispatchEvent(new Event('waiting'));video.dispatchEvent(new Event('waiting'));
 assert.match(status.textContent,/остановок 1/);
 video.dispatchEvent(new Event('playing'));
@@ -76,4 +84,4 @@ assert.equal(hls.destroyed,true,'Network retries are bounded');
 assert.equal(hls.sources,1,'Network retry must not recreate the stream');
 net.stop();await wait(10);
 assert.equal(releases,2);
-console.log('PASS: stable HLS policy, real buffer/frame diagnostics, stall counting, MSE preference, one decoder recovery, two network retries, no source reload or disposed-event timers.');
+console.log('PASS: HA-style LL-HLS policy, part detection/count, ordinary HLS fallback, real buffer/frame diagnostics, stall counting, MSE preference, bounded recovery, no source reload or disposed-event timers.');
