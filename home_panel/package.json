@@ -1,0 +1,11 @@
+{
+  "name": "home-panel-runtime",
+  "private": true,
+  "version": "3.0.0",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "better-sqlite3": "11.10.0"
+  }
+}

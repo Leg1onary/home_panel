@@ -1,0 +1,20 @@
+{
+  "name": "Home Panel",
+  "version": "1.0.1",
+  "slug": "home_panel",
+  "description": "Домашняя панель управления умным домом с 3D-моделью планировки",
+  "arch": ["amd64"],
+  "startup": "services",
+  "boot": "auto",
+  "ports": {
+    "8090/tcp": 8090
+  },
+  "ports_description": {
+    "8090/tcp": "Веб-интерфейс панели"
+  },
+  "homeassistant_api": true,
+  "webui": "http://[HOST]:[PORT:8090]",
+  "watchdog": "http://[HOST]:[PORT:8090]/health",
+  "options": {},
+  "schema": {}
+}
