@@ -56,7 +56,10 @@ function identify(req){
 }
 function authorize(req,id){
  const expected=proofs.get(id),actual=String(req.headers['x-panel-proof']||'');
- if(!expected||Buffer.byteLength(actual)!==Buffer.byteLength(expected)||!timingSafeEqual(Buffer.from(actual),Buffer.from(expected)))throw new Error('Перезагрузи панель: защитный ключ отсутствует.');
+ if(!expected||Buffer.byteLength(actual)!==Buffer.byteLength(expected)||!timingSafeEqual(Buffer.from(actual),Buffer.from(expected))){
+  const error=new Error('Защитный ключ панели устарел. Обновляем соединение.');
+  error.code='PANEL_PROOF_REQUIRED';throw error;
+ }
  const origin=req.headers.origin;
  const allowed=addon?[`http://${req.headers.host}`]:[`http://localhost:${port}`,`http://127.0.0.1:${port}`,`http://[::1]:${port}`];
  if(!preview&&origin&&!allowed.includes(origin))throw new Error('Запрос из другой страницы запрещён.');
@@ -68,6 +71,10 @@ const server=http.createServer(async(req,res)=>{
   if(path==='/health'&&req.method==='GET')return json(res,200,{ok:true});
   if(path.startsWith('/api/panel/')){
    const id=identify(req),p=getProfile(id),route=path.slice('/api/panel/'.length);
+   if(req.method==='GET'&&route==='session'){
+    if(!proofs.has(id))proofs.set(id,randomBytes(32).toString('hex'));
+    return json(res,200,{proof:proofs.get(id)});
+   }
    if(req.method==='GET'&&route==='bootstrap'){
     if(!proofs.has(id))proofs.set(id,randomBytes(32).toString('hex'));
     return json(res,200,{preferences:p.preferences,photo:!!p.photo,proof:proofs.get(id),preview,addon,haConfigured:ha.enabled});
@@ -153,7 +160,7 @@ const server=http.createServer(async(req,res)=>{
  }catch(error){
   if(res.headersSent)return res.end();
   const message=error instanceof SyntaxError?'Некорректный JSON.':error.code==='ENOENT'?'Файл не найден.':error.message;
-  json(res,error.code==='ENOENT'?404:400,{error:message});
+  json(res,error.code==='ENOENT'?404:400,{error:message,...(error.code==='PANEL_PROOF_REQUIRED'?{code:error.code}:{})});
  }
 });
 server.requestTimeout=25000;

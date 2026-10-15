@@ -62,7 +62,13 @@ try{
  assert.equal((await fetch('http://127.0.0.1:3021/assets/manrope-400.ttf')).status,200);
  p.theme='light';p.kiosk=true;p.favorites=['hall','living'];p.devices.find(d=>d.id==='living:0').name='Диван';
  assert.equal((await call('preferences',{method:'PUT',data:p})).status,200);
- await stop();await launch();b=await call('bootstrap');proof=b.body.proof;p=b.body.preferences;
+ await stop();await launch();
+ const stale=await call('ha/command',{method:'POST',data:{id:'living:0',value:false}});
+ assert.equal(stale.body.code,'PANEL_PROOF_REQUIRED');assert.equal(calls,0,'Stale proof is rejected before any physical action');
+ const session=await call('session');assert.deepEqual(Object.keys(session.body),['proof']);
+ assert.notEqual(session.body.proof,proof);
+ b=await call('bootstrap');proof=b.body.proof;p=b.body.preferences;
+ assert.equal(proof,session.body.proof,'Refreshing a session never rotates another tab’s valid proof');
  assert.equal(p.theme,'light');assert.equal(p.kiosk,true);assert.deepEqual(p.favorites,['hall','living']);
  assert.equal(p.devices.find(d=>d.id==='living:0').name,'Диван');
  assert.equal((await call('ha/command',{method:'POST',data:{id:'living:0',value:false}})).status,400);

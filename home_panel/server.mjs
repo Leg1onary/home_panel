@@ -695,7 +695,11 @@ function identify(req) {
 }
 function authorize(req, id) {
   const expected = proofs.get(id), actual = String(req.headers["x-panel-proof"] || "");
-  if (!expected || Buffer.byteLength(actual) !== Buffer.byteLength(expected) || !timingSafeEqual(Buffer.from(actual), Buffer.from(expected))) throw new Error("\u041F\u0435\u0440\u0435\u0437\u0430\u0433\u0440\u0443\u0437\u0438 \u043F\u0430\u043D\u0435\u043B\u044C: \u0437\u0430\u0449\u0438\u0442\u043D\u044B\u0439 \u043A\u043B\u044E\u0447 \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442.");
+  if (!expected || Buffer.byteLength(actual) !== Buffer.byteLength(expected) || !timingSafeEqual(Buffer.from(actual), Buffer.from(expected))) {
+    const error = new Error("\u0417\u0430\u0449\u0438\u0442\u043D\u044B\u0439 \u043A\u043B\u044E\u0447 \u043F\u0430\u043D\u0435\u043B\u0438 \u0443\u0441\u0442\u0430\u0440\u0435\u043B. \u041E\u0431\u043D\u043E\u0432\u043B\u044F\u0435\u043C \u0441\u043E\u0435\u0434\u0438\u043D\u0435\u043D\u0438\u0435.");
+    error.code = "PANEL_PROOF_REQUIRED";
+    throw error;
+  }
   const origin = req.headers.origin;
   const allowed = addon ? [`http://${req.headers.host}`] : [`http://localhost:${port}`, `http://127.0.0.1:${port}`, `http://[::1]:${port}`];
   if (!preview && origin && !allowed.includes(origin)) throw new Error("\u0417\u0430\u043F\u0440\u043E\u0441 \u0438\u0437 \u0434\u0440\u0443\u0433\u043E\u0439 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u044B \u0437\u0430\u043F\u0440\u0435\u0449\u0451\u043D.");
@@ -707,6 +711,10 @@ var server = http.createServer(async (req, res) => {
     if (path === "/health" && req.method === "GET") return json(res, 200, { ok: true });
     if (path.startsWith("/api/panel/")) {
       const id = identify(req), p = getProfile(id), route = path.slice("/api/panel/".length);
+      if (req.method === "GET" && route === "session") {
+        if (!proofs.has(id)) proofs.set(id, randomBytes2(32).toString("hex"));
+        return json(res, 200, { proof: proofs.get(id) });
+      }
       if (req.method === "GET" && route === "bootstrap") {
         if (!proofs.has(id)) proofs.set(id, randomBytes2(32).toString("hex"));
         return json(res, 200, { preferences: p.preferences, photo: !!p.photo, proof: proofs.get(id), preview, addon, haConfigured: ha.enabled });
@@ -808,7 +816,7 @@ var server = http.createServer(async (req, res) => {
   } catch (error) {
     if (res.headersSent) return res.end();
     const message = error instanceof SyntaxError ? "\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 JSON." : error.code === "ENOENT" ? "\u0424\u0430\u0439\u043B \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D." : error.message;
-    json(res, error.code === "ENOENT" ? 404 : 400, { error: message });
+    json(res, error.code === "ENOENT" ? 404 : 400, { error: message, ...error.code === "PANEL_PROOF_REQUIRED" ? { code: error.code } : {} });
   }
 });
 server.requestTimeout = 25e3;

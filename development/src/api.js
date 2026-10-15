@@ -2,9 +2,18 @@ const port='__PORT_3010__';
 const local=['127.0.0.1','localhost','[::1]'].includes(location.hostname);
 const base=local||port.startsWith('__')?'':port;
 let proof='';
+let refreshingProof;
 export const panelURL=path=>`${base}/api/panel/${path}`;
 export const assetURL=path=>`${base}/${path}`;
-export async function api(path,{method='GET',body,raw=false,image=false}={}){
+export function api(path,options={}){
+ return request(path,options,false);
+}
+async function refreshProof(){
+ if(!refreshingProof)refreshingProof=api('session').finally(()=>{refreshingProof=null});
+ await refreshingProof;
+}
+async function request(path,options,refreshed){
+ const {method='GET',body,raw=false,image=false}=options;
  let response,timer;
  const controller=typeof AbortController==='function'?new AbortController():null;
  if(controller)timer=setTimeout(()=>controller.abort(),35000);
@@ -15,8 +24,15 @@ export async function api(path,{method='GET',body,raw=false,image=false}={}){
  })}catch{throw new Error(path==='ha/command'?'Сервер не подтвердил результат. Команда могла выполниться; проверь состояние перед повтором.':'Сервер недоступен. Настройки не сохранены.')}
  finally{clearTimeout(timer)}
  if(!response.ok){
-  let message='Локальный сервер недоступен.';
-  try{message=(await response.json()).error||message}catch{}
+  let message='Локальный сервер недоступен.',code;
+  try{const error=await response.json();message=error.error||message;code=error.code}catch{}
+  // The server returns this code ONLY before entering the action handler.
+  // Retry once after refreshing session proof, never after transport/HA errors:
+  // an ambiguous response could mean the physical command already executed.
+  if(method!=='GET'&&code==='PANEL_PROOF_REQUIRED'&&!refreshed){
+   await refreshProof();
+   return request(path,options,true);
+  }
   throw new Error(message);
  }
  if(image||raw&&method==='GET')return response.blob();
