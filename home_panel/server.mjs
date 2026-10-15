@@ -18,7 +18,7 @@ var house_default = {
     { id: "office", name: "\u041A\u0430\u0431\u0438\u043D\u0435\u0442", short: "\u041A\u0430\u0431\u0438\u043D\u0435\u0442", icon: "armchair", description: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u044F \u0434\u0432\u0443\u0445 \u043B\u0438\u043D\u0438\u0439 \u0443\u0442\u043E\u0447\u043D\u0438\u043C \u043F\u0440\u0438 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0438", channels: [{ name: "\u041B\u0438\u043D\u0438\u044F \u0441\u0432\u0435\u0442\u0430 1", demoOn: true }, { name: "\u041B\u0438\u043D\u0438\u044F \u0441\u0432\u0435\u0442\u0430 2", demoOn: false }] },
     { id: "bedroom", name: "\u0421\u043F\u0430\u043B\u044C\u043D\u044F", short: "\u0421\u043F\u0430\u043B\u044C\u043D\u044F", icon: "bed-double", channels: [{ name: "\u041B\u0438\u043D\u0438\u044F \u0441\u0432\u0435\u0442\u0430 1", demoOn: false }, { name: "\u041B\u0438\u043D\u0438\u044F \u0441\u0432\u0435\u0442\u0430 2", demoOn: false }] },
     { id: "children", name: "\u0414\u0435\u0442\u0441\u043A\u0430\u044F", short: "\u0414\u0435\u0442\u0441\u043A\u0430\u044F", icon: "blocks", channels: [{ name: "\u041B\u0438\u043D\u0438\u044F \u0441\u0432\u0435\u0442\u0430 1", demoOn: false }, { name: "\u041B\u0438\u043D\u0438\u044F \u0441\u0432\u0435\u0442\u0430 2", demoOn: false }] },
-    { id: "bath", name: "\u0412\u0430\u043D\u043D\u0430\u044F", short: "\u0412\u0430\u043D\u043D\u0430\u044F", icon: "bath", channels: [{ name: "\u041E\u0441\u043D\u043E\u0432\u043D\u043E\u0439 \u0441\u0432\u0435\u0442", note: "\u0421\u043F\u043E\u0442\u044B", demoOn: false }, { name: "\u041F\u043E\u0442\u043E\u043B\u043E\u0447\u043D\u0430\u044F \u043B\u0435\u043D\u0442\u0430", note: "\u041F\u043B\u0430\u043D\u0438\u0440\u0443\u0435\u0442\u0441\u044F \xB7 \u0435\u0449\u0451 \u043D\u0435 \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u0430", demoOn: false, planned: true }] },
+    { id: "bath", name: "\u0412\u0430\u043D\u043D\u0430\u044F", short: "\u0412\u0430\u043D\u043D\u0430\u044F", icon: "bath", channels: [{ name: "\u041E\u0441\u043D\u043E\u0432\u043D\u043E\u0439 \u0441\u0432\u0435\u0442", note: "\u041B\u0435\u0432\u0430\u044F \u043A\u043B\u0430\u0432\u0438\u0448\u0430 \xB7 \u0441\u043F\u043E\u0442\u044B", demoOn: false }, { name: "\u041F\u043E\u0442\u043E\u043B\u043E\u0447\u043D\u0430\u044F \u043B\u0435\u043D\u0442\u0430", note: "\u041F\u0440\u0430\u0432\u0430\u044F \u043A\u043B\u0430\u0432\u0438\u0448\u0430 \xB7 \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u0430", demoOn: false }] },
     { id: "utility", name: "\u0422\u0443\u0430\u043B\u0435\u0442 / \u043A\u043E\u0442\u0435\u043B\u044C\u043D\u0430\u044F", short: "\u041A\u043E\u0442\u0435\u043B\u044C\u043D\u0430\u044F", icon: "heater", description: "\u041E\u0434\u043D\u043E \u043F\u043E\u043C\u0435\u0449\u0435\u043D\u0438\u0435, \u0434\u0432\u0435 \u0444\u0443\u043D\u043A\u0446\u0438\u043E\u043D\u0430\u043B\u044C\u043D\u044B\u0435 \u0437\u043E\u043D\u044B", channels: [{ name: "\u0421\u0432\u0435\u0442 \u0442\u0443\u0430\u043B\u0435\u0442\u0430", demoOn: false }], pump: true },
     { id: "pantry", name: "\u041A\u043B\u0430\u0434\u043E\u0432\u0430\u044F", short: "\u041A\u043B\u0430\u0434\u043E\u0432\u0430\u044F", icon: "archive", channels: [{ name: "\u041E\u0441\u043D\u043E\u0432\u043D\u043E\u0439 \u0441\u0432\u0435\u0442", demoOn: false }] },
     { id: "corridor", name: "\u041A\u043E\u0440\u0438\u0434\u043E\u0440", short: "\u041A\u043E\u0440\u0438\u0434\u043E\u0440", icon: "move-up-right", description: "\u0423\u043C\u043D\u044B\u0445 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432 \u043F\u043E\u043A\u0430 \u043D\u0435\u0442", channels: [] },
@@ -62,7 +62,10 @@ var deviceTypes = {
   illuminance: { label: "\u041E\u0441\u0432\u0435\u0449\u0451\u043D\u043D\u043E\u0441\u0442\u044C", icon: "sun", module: "sensors", domains: ["sensor"], unit: "lx" },
   door: { label: "\u041E\u0442\u043A\u0440\u044B\u0442\u0438\u0435", icon: "door-open", module: "sensors", domains: ["binary_sensor"], classes: ["door", "opening", "window", "garage_door"] },
   smoke: { label: "\u0414\u044B\u043C", icon: "radio", module: "sensors", domains: ["binary_sensor"], classes: ["smoke"] },
-  motion: { label: "\u0414\u0432\u0438\u0436\u0435\u043D\u0438\u0435", icon: "scan-eye", module: "sensors", domains: ["binary_sensor"], classes: ["motion", "occupancy"] },
+  motion: { label: "\u0414\u0432\u0438\u0436\u0435\u043D\u0438\u0435", icon: "scan-eye", module: "sensors", domains: ["binary_sensor", "sensor"], classes: ["motion", "occupancy", "enum"] },
+  battery: { label: "\u0411\u0430\u0442\u0430\u0440\u0435\u0439\u043A\u0430", icon: "radio", module: "sensors", domains: ["sensor"], unit: "%" },
+  button_event: { label: "\u041C\u0430\u0441\u0442\u0435\u0440-\u043A\u043D\u043E\u043F\u043A\u0430 \xB7 \u0441\u043E\u0431\u044B\u0442\u0438\u0435", icon: "power", module: "sensors", domains: ["sensor"], classes: ["enum"] },
+  station: { label: "\u042F\u043D\u0434\u0435\u043A\u0441 \u0414\u0443\u043E \u041C\u0430\u043A\u0441", icon: "audio-lines", module: "media", domains: ["media_player"], controllable: true },
   leak: { label: "\u041F\u0440\u043E\u0442\u0435\u0447\u043A\u0430", icon: "droplets", module: "sensors", domains: ["binary_sensor"], classes: ["moisture"] },
   camera: { label: "\u041A\u0430\u043C\u0435\u0440\u0430", icon: "camera", module: "cameras", domains: ["camera"] },
   gate: { label: "\u041E\u0442\u043A\u0430\u0442\u043D\u044B\u0435 \u0432\u043E\u0440\u043E\u0442\u0430", icon: "door-open", module: "engineering", domains: ["cover"], locked: true },
@@ -86,7 +89,7 @@ var lightIDs = {
   utility: ["utility:0"],
   pantry: ["pantry:0"]
 };
-var make = (id, type, room, name, extra = {}) => ({ id, type, room, name, status: "installed", masterOff: type === "light", note: "", ...extra });
+var make = (id, type, room, name, extra2 = {}) => ({ id, type, room, name, status: "installed", masterOff: type === "light", note: "", ...extra2 });
 function defaultDevices() {
   return [
     ...house_default.rooms.flatMap((r) => r.channels.map((c, i) => make(lightIDs[r.id][i], "light", r.id === "hall" && i === 1 ? "terrace" : r.id, c.name, { status: c.planned ? "planned" : "installed", note: c.note || "", demoOn: c.demoOn }))),
@@ -142,7 +145,7 @@ function validateDevices(input) {
       name: raw.name.trim(),
       status: raw.status,
       note: raw.note || "",
-      masterOff: !!deviceTypes[raw.type].controllable && raw.masterOff === true && !seed?.powerId,
+      masterOff: ["light", "rgb"].includes(raw.type) && raw.masterOff === true && !seed?.powerId,
       ...seed?.powerId ? { powerId: seed.powerId } : {},
       ...seed?.demoOn !== void 0 ? { demoOn: seed.demoOn } : {},
       ...seed?.demoValue !== void 0 ? { demoValue: seed.demoValue } : {},
@@ -170,6 +173,7 @@ function validatePreferences(input, { importing = false } = {}) {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("\u041D\u0443\u0436\u0435\u043D \u043E\u0431\u044A\u0435\u043A\u0442 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043A.");
   if (input.version !== 3) throw new Error("\u0412\u0435\u0440\u0441\u0438\u044F \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043A \u043D\u0435 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u0441\u044F. \u041D\u0443\u0436\u043D\u0430 \u043A\u043E\u043F\u0438\u044F v3.");
   const raw = input, p = defaultPreferences();
+  if (Number.isInteger(raw.housePresetVersion) && raw.housePresetVersion >= 0 && raw.housePresetVersion <= 1) p.housePresetVersion = raw.housePresetVersion;
   if (!["dark", "light"].includes(raw.theme)) throw new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F \u0442\u0435\u043C\u0430.");
   if (!["auto", "on", "off"].includes(raw.nightMode)) throw new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u043D\u043E\u0447\u043D\u043E\u0439 \u0440\u0435\u0436\u0438\u043C.");
   if (![0, 10, 60, 90, 180].includes(raw.idleSeconds)) throw new Error("\u041D\u0435\u0432\u0435\u0440\u043D\u0430\u044F \u0437\u0430\u0434\u0435\u0440\u0436\u043A\u0430 \u043E\u0436\u0438\u0434\u0430\u043D\u0438\u044F.");
@@ -187,6 +191,19 @@ function validatePreferences(input, { importing = false } = {}) {
     p.bindings[definition.id] = { entityId, verified: !importing && definition.device.status === "installed" && !!entityId && b.verified === true };
   }
   return p;
+}
+
+// src/station.js
+var mediaFeatures = { PAUSE: 1, VOLUME_SET: 4, PLAY: 16384 };
+function stationAvailable(e) {
+  return !!e && ["playing", "paused", "idle", "on", "buffering"].includes(e.state);
+}
+function stationSupports(e, action, value) {
+  if (!stationAvailable(e)) return false;
+  const mask = Number(e.attributes?.supported_features) || 0;
+  if (action === "volume") return !!(mask & mediaFeatures.VOLUME_SET) && Number.isFinite(e.attributes?.volume_level);
+  if (action === "playing") return typeof value === "boolean" && !!(mask & (value ? mediaFeatures.PLAY : mediaFeatures.PAUSE));
+  return false;
 }
 
 // server/ha.js
@@ -230,7 +247,7 @@ var HomeAssistant = class {
     }
   }
   sanitize(e) {
-    const keys = ["friendly_name", "device_class", "unit_of_measurement", "temperature_unit", "brightness", "rgb_color", "supported_color_modes", "current_position", "current_temperature", "temperature", "hvac_action"];
+    const keys = ["friendly_name", "device_class", "unit_of_measurement", "temperature_unit", "brightness", "rgb_color", "supported_color_modes", "current_position", "current_temperature", "temperature", "hvac_action", "supported_features", "volume_level", "media_title", "media_artist"];
     return {
       entity_id: e.entity_id,
       state: e.state,
@@ -242,7 +259,7 @@ var HomeAssistant = class {
   async states() {
     const all = await this.request("/api/states");
     if (!Array.isArray(all)) throw new Error("\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u0441\u043F\u0438\u0441\u043E\u043A \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u0435\u0439.");
-    return all.filter((e) => /^(light|switch|sensor|binary_sensor|camera|cover|climate)\.[a-z0-9_]+$/.test(e.entity_id)).map((e) => this.sanitize(e));
+    return all.filter((e) => /^(light|switch|sensor|binary_sensor|camera|cover|climate|media_player)\.[a-z0-9_]+$/.test(e.entity_id)).map((e) => this.sanitize(e));
   }
   cameraEntity(id, p) {
     const d = p.devices.find((d2) => d2.id === id), b = p.bindings[id];
@@ -278,6 +295,7 @@ var HomeAssistant = class {
   async command(request, p) {
     if (p.mode !== "live") throw new Error("\u041A\u043E\u043C\u0430\u043D\u0434\u044B Home Assistant \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B \u0442\u043E\u043B\u044C\u043A\u043E \u0432 \u0440\u0430\u0431\u043E\u0447\u0435\u043C \u0440\u0435\u0436\u0438\u043C\u0435.");
     if (!request || typeof request.id !== "string") throw new Error("\u041D\u0435\u0432\u0435\u0440\u043D\u0430\u044F \u043A\u043E\u043C\u0430\u043D\u0434\u0430.");
+    if (request.id.startsWith("station:")) return this.stationCommand(request, p);
     const { key, action, device } = resolveAction(request.id, p.devices);
     const def = bindingDefinitions(p.devices).find((b) => b.id === key), binding = p.bindings[key];
     if (!def || device.status !== "installed" || !["light", "rgb"].includes(def.type) || !binding?.verified || !binding.entityId) throw new Error("\u0423\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0438\u0435 \u044D\u0442\u0438\u043C \u043A\u0430\u043D\u0430\u043B\u043E\u043C \u0437\u0430\u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u0430\u043D\u043E.");
@@ -322,6 +340,32 @@ var HomeAssistant = class {
         await new Promise((r) => setTimeout(r, 350));
       } while (Date.now() < deadline);
       throw new Error("\u0421\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u0435 \u043D\u0435 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u043E. \u041A\u043E\u043C\u0430\u043D\u0434\u0430 \u043C\u043E\u0433\u043B\u0430 \u0432\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u044C\u0441\u044F; \u043F\u0440\u043E\u0432\u0435\u0440\u044C \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E \u043F\u0435\u0440\u0435\u0434 \u043F\u043E\u0432\u0442\u043E\u0440\u043E\u043C.");
+    } finally {
+      this.pending.delete(entity);
+    }
+  }
+  async stationCommand(request, p) {
+    const d = p.devices.find((d2) => d2.id === "station"), b = p.bindings.station, action = request.id.slice(8);
+    if (d?.type !== "station" || d.status !== "installed" || !b?.verified || !/^media_player\.[a-z0-9_]+$/.test(b.entityId)) throw new Error("\u0421\u0442\u0430\u043D\u0446\u0438\u044F \u043D\u0435 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0430 \u0438\u043B\u0438 \u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u0430.");
+    if (action === "volume") {
+      if (!Number.isInteger(request.value) || request.value < 0 || request.value > 100) throw new Error("\u0413\u0440\u043E\u043C\u043A\u043E\u0441\u0442\u044C \u0434\u043E\u043B\u0436\u043D\u0430 \u0431\u044B\u0442\u044C \u043E\u0442 0 \u0434\u043E 100.");
+    } else if (action !== "playing" || typeof request.value !== "boolean") throw new Error("\u041A\u043E\u043C\u0430\u043D\u0434\u0430 \u0441\u0442\u0430\u043D\u0446\u0438\u0438 \u0437\u0430\u043F\u0440\u0435\u0449\u0435\u043D\u0430.");
+    const entity = b.entityId;
+    if (this.pending.has(entity)) throw new Error("\u0421\u0442\u0430\u043D\u0446\u0438\u044F \u0437\u0430\u043D\u044F\u0442\u0430 \u043F\u0440\u0435\u0434\u044B\u0434\u0443\u0449\u0435\u0439 \u043A\u043E\u043C\u0430\u043D\u0434\u043E\u0439.");
+    this.pending.add(entity);
+    try {
+      const before = await this.request("/api/states/" + entity);
+      if (!stationSupports(before, action, request.value)) throw new Error("\u0424\u0443\u043D\u043A\u0446\u0438\u044F \u0441\u0442\u0430\u043D\u0446\u0438\u0438 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430 \u0438\u043B\u0438 \u043D\u0435 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u0441\u044F \u0438\u043D\u0442\u0435\u0433\u0440\u0430\u0446\u0438\u0435\u0439.");
+      const target = action === "volume" ? (e) => Number.isFinite(e.attributes?.volume_level) && Math.abs(e.attributes.volume_level - request.value / 100) <= 0.015 : (e) => e.state === (request.value ? "playing" : "paused");
+      if (target(before)) return { id: request.id, value: request.value, confirmedAt: Date.now() };
+      const service = action === "volume" ? "volume_set" : request.value ? "media_play" : "media_pause";
+      await this.request("/api/services/media_player/" + service, { entity_id: entity, ...action === "volume" ? { volume_level: request.value / 100 } : {} });
+      const deadline = Date.now() + 1e4;
+      do {
+        if (target(await this.request("/api/states/" + entity))) return { id: request.id, value: request.value, confirmedAt: Date.now() };
+        await new Promise((r) => setTimeout(r, 350));
+      } while (Date.now() < deadline);
+      throw new Error("\u0421\u0442\u0430\u043D\u0446\u0438\u044F \u043D\u0435 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u043B\u0430 \u0441\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u0435. \u041A\u043E\u043C\u0430\u043D\u0434\u0430 \u043C\u043E\u0433\u043B\u0430 \u0432\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u044C\u0441\u044F; \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u043E\u0433\u043E \u043F\u043E\u0432\u0442\u043E\u0440\u0430 \u043D\u0435\u0442.");
     } finally {
       this.pending.delete(entity);
     }
@@ -464,6 +508,103 @@ var CameraStreams = class {
   }
 };
 
+// src/house-profile.js
+var houseBindings = {
+  "living:0": "light.gostinaia_levyi_vykliuchatel",
+  "living:1": "light.gostinaia_pravyi_vykliuchatel",
+  "hall:0": "light.prikhozhaia_levyi_vykliuchatel",
+  "hall:1": "light.prikhozhaia_pravyi_vykliuchatel",
+  "office:0": "light.kabinet_levyi_vykliuchatel",
+  "office:1": "light.kabinet_pravyi_vykliuchatel",
+  "bedroom:0": "light.spalnia_levyi_vykliuchatel",
+  "bedroom:1": "light.spalnia_pravyi_vykliuchatel",
+  "children:0": "light.detskaia_levyi_vykliuchatel",
+  "children:1": "light.detskaia_pravyi_vykliuchatel",
+  "bath:0": "light.vannaia_levyi_vykliuchatel",
+  "bath:1": "light.vannaia_pravyi_vykliuchatel",
+  "utility:0": "light.tualet_vykliuchatel",
+  "pantry:0": "light.kladovaia_vykliuchatel",
+  "temperature:living": "sensor.a4c1383cc159_temperature",
+  "humidity:living": "sensor.a4c1383cc159_humidity",
+  "temperature:well": "sensor.a4c1386265b5_temperature",
+  "humidity:well": "sensor.a4c1386265b5_humidity",
+  "temperature:attic": "sensor.cherdak_datchik_temperatury_temperatura",
+  "humidity:attic": "sensor.cherdak_datchik_temperatury_vlazhnost",
+  door: "binary_sensor.e4aaec90027a_contact",
+  "terrace-motion": "sensor.terrasa_datchik_dvizheniia_dvizhenie",
+  "terrace-lux": "sensor.terrasa_datchik_dvizheniia_osveshchennost",
+  "camera-yard": "camera.c320ws_mainstream",
+  "yard-motion": "binary_sensor.dvor_c320ws_motion_alarm",
+  "master-event": "sensor.prikhozhaia_master_svet_knopka",
+  "station": "media_player.yandex_station_c00mp0000t4w0z",
+  "battery:living": "sensor.a4c1383cc159_battery",
+  "battery:well": "sensor.a4c1386265b5_battery",
+  "battery:attic": "sensor.cherdak_datchik_temperatury_uroven_zariada",
+  "battery:door": "sensor.e4aaec90027a_battery",
+  "battery:terrace": "sensor.terrasa_datchik_dvizheniia_uroven_zariada",
+  "battery:master": "sensor.prikhozhaia_master_svet_uroven_zariada"
+};
+var extra = (id, type, room, name) => ({ id, type, room, name, status: "installed", masterOff: false, note: "\u041F\u043E \u0432\u044B\u0433\u0440\u0443\u0437\u043A\u0435 HA \xB7 \u0442\u043E\u043B\u044C\u043A\u043E \u043D\u0430\u0431\u043B\u044E\u0434\u0435\u043D\u0438\u0435" });
+var houseExtras = [
+  extra("station", "station", "living", "\u042F\u043D\u0434\u0435\u043A\u0441 \u0421\u0442\u0430\u043D\u0446\u0438\u044F \u0414\u0443\u043E \u041C\u0430\u043A\u0441"),
+  extra("yard-motion", "motion", "yard", "\u0414\u0432\u0438\u0436\u0435\u043D\u0438\u0435 \xB7 \u043A\u0430\u043C\u0435\u0440\u0430 \u0434\u0432\u043E\u0440\u0430"),
+  extra("master-event", "button_event", "hall", "\u041C\u0430\u0441\u0442\u0435\u0440-\u0441\u0432\u0435\u0442 \xB7 \u043F\u043E\u0441\u043B\u0435\u0434\u043D\u0435\u0435 \u0441\u043E\u0431\u044B\u0442\u0438\u0435"),
+  ...[
+    ["living", "living", "\u0411\u0430\u0442\u0430\u0440\u0435\u0439\u043A\u0430 \xB7 \u0433\u043E\u0441\u0442\u0438\u043D\u0430\u044F"],
+    ["well", "well", "\u0411\u0430\u0442\u0430\u0440\u0435\u0439\u043A\u0430 \xB7 \u0441\u043A\u0432\u0430\u0436\u0438\u043D\u0430"],
+    ["attic", "attic", "\u0411\u0430\u0442\u0430\u0440\u0435\u0439\u043A\u0430 \xB7 \u0447\u0435\u0440\u0434\u0430\u043A"],
+    ["door", "hall", "\u0411\u0430\u0442\u0430\u0440\u0435\u0439\u043A\u0430 \xB7 \u0432\u0445\u043E\u0434\u043D\u0430\u044F \u0434\u0432\u0435\u0440\u044C"],
+    ["terrace", "terrace", "\u0411\u0430\u0442\u0430\u0440\u0435\u0439\u043A\u0430 \xB7 \u0434\u0432\u0438\u0436\u0435\u043D\u0438\u0435 \u0442\u0435\u0440\u0440\u0430\u0441\u044B"],
+    ["master", "hall", "\u0411\u0430\u0442\u0430\u0440\u0435\u0439\u043A\u0430 \xB7 \u043C\u0430\u0441\u0442\u0435\u0440-\u043A\u043D\u043E\u043F\u043A\u0430"]
+  ].map(([id, room, name]) => extra("battery:" + id, "battery", room, name))
+];
+function migrateHouseProfile(input) {
+  if (input.housePresetVersion === 1) return input;
+  const p = JSON.parse(JSON.stringify(input));
+  for (const d of houseExtras) if (!p.devices.some((x) => x.id === d.id)) p.devices.push({ ...d });
+  const bath = p.devices.find((d) => d.id === "bath:1");
+  if (bath?.status === "planned" && !p.bindings["bath:1"]?.entityId) {
+    bath.status = "installed";
+    bath.note = "\u041F\u0440\u0430\u0432\u0430\u044F \u043A\u043B\u0430\u0432\u0438\u0448\u0430 \xB7 \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u0430";
+  }
+  p.devices = p.devices.filter((d) => d.id !== "pump" || p.bindings.pump?.entityId);
+  for (const d of p.devices) {
+    const entityId = houseBindings[d.id], old = p.bindings[d.id];
+    if (entityId && !old?.entityId && d.status === "installed") {
+      p.bindings[d.id] = { entityId, verified: false };
+      if (d.type !== "light") d.note = d.type === "station" ? "Yandex Station \xB7 \u043A\u043E\u043C\u0430\u043D\u0434\u044B \u0438 \u0441\u0442\u0430\u0442\u0443\u0441\u044B \u0447\u0435\u0440\u0435\u0437 HA" : "\u0421\u0443\u0449\u043D\u043E\u0441\u0442\u044C HA \u0438\u0437 \u0432\u044B\u0433\u0440\u0443\u0437\u043A\u0438 \u0434\u043E\u043C\u0430";
+    }
+    if (d.id === "smoke" && !old?.entityId) d.status = "planned";
+  }
+  p.housePresetVersion = 1;
+  return validatePreferences(p);
+}
+function bindingProblem(d, e) {
+  const t = deviceTypes[d.type];
+  if (!e || ["unknown", "unavailable", ""].includes(e.state)) return "\u043D\u0435\u0442 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u043E\u0433\u043E \u0441\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u044F";
+  if (!t.domains.includes(e.entity_id.split(".")[0])) return "\u043D\u0435\u0432\u0435\u0440\u043D\u044B\u0439 \u0434\u043E\u043C\u0435\u043D";
+  if (t.controllable && d.type !== "station" && !["on", "off"].includes(e.state)) return "\u043D\u0435\u0442 \u0441\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u044F on/off";
+  if (t.classes) {
+    if (!t.classes.includes(e.attributes?.device_class)) return "\u043D\u0435\u0432\u0435\u0440\u043D\u044B\u0439 \u043A\u043B\u0430\u0441\u0441 \u0434\u0430\u0442\u0447\u0438\u043A\u0430";
+    if (e.entity_id.startsWith("binary_sensor.") && !["on", "off"].includes(e.state)) return "\u043D\u0435\u0442 \u0441\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u044F on/off";
+  }
+  if (t.unit && (e.attributes?.unit_of_measurement !== t.unit || !Number.isFinite(Number(e.state)))) return "\u043D\u0435\u0432\u0435\u0440\u043D\u0430\u044F \u0435\u0434\u0438\u043D\u0438\u0446\u0430 \u0438\u043B\u0438 \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u0435";
+  if (d.type === "battery" && (Number(e.state) < 0 || Number(e.state) > 100)) return "\u0437\u0430\u0440\u044F\u0434 \u0432\u043D\u0435 \u0434\u0438\u0430\u043F\u0430\u0437\u043E\u043D\u0430 0\u2013100";
+  return "";
+}
+function activateHouseProfile(input, states) {
+  const p = validatePreferences(input), byEntity = new Map(states.map((e) => [e.entity_id, e])), report = [];
+  for (const d of p.devices) {
+    const b = p.bindings[d.id];
+    if (d.status !== "installed" || !houseBindings[d.id] || b.entityId !== houseBindings[d.id]) continue;
+    const problem = bindingProblem(d, byEntity.get(b.entityId));
+    b.verified = !problem;
+    report.push({ id: d.id, name: d.name, entityId: b.entityId, ok: !problem, problem });
+  }
+  p.mode = "live";
+  return { preferences: validatePreferences(p), report };
+}
+
 // server/index.js
 var port = Number(process.env.PORT || 8080);
 var preview = process.env.PANEL_PREVIEW === "1";
@@ -486,7 +627,9 @@ var getProfile = (id) => {
     db.prepare("INSERT INTO profiles(id,preferences) VALUES(?,?)").run(id, JSON.stringify(defaultPreferences()));
     row = db.prepare("SELECT * FROM profiles WHERE id=?").get(id);
   }
-  const preferences = validatePreferences(JSON.parse(row.preferences));
+  const stored = validatePreferences(JSON.parse(row.preferences));
+  const preferences = migrateHouseProfile(stored);
+  if (preferences !== stored) db.prepare("UPDATE profiles SET preferences=? WHERE id=?").run(JSON.stringify(preferences), id);
   return { preferences, photo: row.photo };
 };
 var json = (res, code, body2) => {
@@ -537,6 +680,14 @@ var server = http.createServer(async (req, res) => {
         return json(res, 200, { preferences: p.preferences, photo: !!p.photo, proof: proofs.get(id), preview, addon, haConfigured: ha.enabled });
       }
       if (req.method !== "GET") authorize(req, id);
+      if (route === "house-profile" && req.method === "POST") {
+        if (preview) throw new Error("\u041F\u0440\u043E\u0444\u0438\u043B\u044C \u0434\u043E\u043C\u0430 \u043F\u0440\u0438\u043C\u0435\u043D\u044F\u0435\u0442\u0441\u044F \u0442\u043E\u043B\u044C\u043A\u043E \u043D\u0430 \u043B\u043E\u043A\u0430\u043B\u044C\u043D\u043E\u0439 \u043F\u0430\u043D\u0435\u043B\u0438.");
+        if (pendingScopes.has(id)) throw new Error("\u0421\u043D\u0430\u0447\u0430\u043B\u0430 \u0434\u043E\u0436\u0434\u0438\u0441\u044C \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u044F \u043A\u043E\u043C\u0430\u043D\u0434\u044B.");
+        const result = activateHouseProfile(p.preferences, await ha.states());
+        if (!result.report.some((r) => r.ok)) throw new Error("\u041D\u0438 \u043E\u0434\u043D\u0430 \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u044C \u043F\u0440\u043E\u0444\u0438\u043B\u044F \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430. \u041F\u0440\u043E\u0432\u0435\u0440\u044C \u0438\u043D\u0442\u0435\u0433\u0440\u0430\u0446\u0438\u0438 \u0438 \u043F\u0440\u0438\u0432\u044F\u0437\u043A\u0438.");
+        db.prepare("UPDATE profiles SET preferences=? WHERE id=?").run(JSON.stringify(result.preferences), id);
+        return json(res, 200, result);
+      }
       if (route === "preferences" && req.method === "PUT") {
         if (pendingScopes.has(id)) throw new Error("\u0421\u043D\u0430\u0447\u0430\u043B\u0430 \u0434\u043E\u0436\u0434\u0438\u0441\u044C \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u044F \u043A\u043E\u043C\u0430\u043D\u0434\u044B.");
         const next = validatePreferences(JSON.parse((await body(req)).toString()));
@@ -554,10 +705,8 @@ var server = http.createServer(async (req, res) => {
           for (const def of newVerified) {
             const e = entities.get(next.bindings[def.id].entityId);
             if (!e) throw new Error(`\u0421\u0443\u0449\u043D\u043E\u0441\u0442\u044C \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u0430: ${def.name}`);
-            const type2 = deviceTypes[def.type];
-            if ((type2.controllable || type2.classes) && !["on", "off"].includes(e.state)) throw new Error(`\u0421\u0443\u0449\u043D\u043E\u0441\u0442\u044C \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430: ${def.name}`);
-            if (type2.unit && e.attributes.unit_of_measurement !== type2.unit) throw new Error(`\u0414\u043B\u044F ${def.name} \u043D\u0443\u0436\u043D\u0430 \u0435\u0434\u0438\u043D\u0438\u0446\u0430 ${type2.unit}.`);
-            if (type2.classes && !type2.classes.includes(e.attributes.device_class)) throw new Error(`\u041D\u0435\u0432\u0435\u0440\u043D\u044B\u0439 \u043A\u043B\u0430\u0441\u0441 \u0434\u0430\u0442\u0447\u0438\u043A\u0430: ${def.name}`);
+            const problem = bindingProblem(def.device, e);
+            if (problem) throw new Error(`${def.name}: ${problem}.`);
           }
         }
         db.prepare("UPDATE profiles SET preferences=? WHERE id=?").run(JSON.stringify(next), id);

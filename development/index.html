@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta name="theme-color" content="#171816"/>
+  <title>Дом — пространство под контролем</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <a class="brand" href="#home" aria-label="На главную">
+        <svg viewBox="0 0 36 36" aria-label="Знак дома" fill="none"><path d="M7 29V14L18 5l11 9v15H7Z" stroke="currentColor" stroke-width="2"/><path d="M14 29V18h8v11M3 15l15-12 15 12" stroke="currentColor" stroke-width="2"/><circle cx="26" cy="7" r="3" fill="currentColor"/></svg>
+        <div>дом<span>НОВОЖИВОТИННОЕ</span></div>
+      </a>
+      <div class="header-right">
+        <span class="demo-badge" id="connection-badge"><span></span>Подготовка панели</span>
+        <button class="icon-button" id="fullscreen" aria-label="Полный экран"><i data-lucide="maximize"></i></button>
+        <button class="icon-button" id="standby" aria-label="Включить режим ожидания"><i data-lucide="moon-star"></i></button>
+        <button class="icon-button" id="theme" aria-label="Переключить тему"><i data-lucide="sun"></i></button>
+        <button class="icon-button" id="info" aria-label="Настройки панели"><i data-lucide="sliders-horizontal"></i></button>
+      </div>
+    </header>
+    <main id="main"></main>
+    <footer>
+      <nav aria-label="Основная навигация">
+        <button data-view="home" aria-label="Главная"><i data-lucide="house"></i><span>Главная</span></button>
+        <button data-view="model" aria-label="Мой дом"><i data-lucide="box"></i><span>Мой дом</span></button>
+        <button data-view="rooms" aria-label="Свет"><i data-lucide="lightbulb"></i><span>Свет</span></button>
+        <button data-view="watch" aria-label="Обзор"><i data-lucide="scan-eye"></i><span>Обзор</span></button>
+        <button data-view="engineering" aria-label="Инженерия"><i data-lucide="heater"></i><span>Инженерия</span></button>
+      </nav>
+      <span class="footer-note" id="footer-storage" role="status">Подготовка панели</span>
+      <button id="master" class="master-button" aria-label="Выключить весь свет"><i data-lucide="power"></i><span class="master-label">Выключить свет</span><span class="master-label-short">Погасить</span></button>
+    </footer>
+  </div>
+  <div class="overlay" id="overlay" hidden><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title"><button class="icon-button close" aria-label="Закрыть"><i data-lucide="x"></i></button><div id="sheet-content"></div></section></div>
+  <div class="toast" role="status" id="toast"></div>
+  <button id="idle-screen" class="idle-screen" hidden aria-label="Вернуться к управлению">
+    <span class="idle-place">ДОМ · НОВОЖИВОТИННОЕ</span>
+    <span class="idle-time" id="idle-clock"></span>
+    <span class="idle-date" id="idle-date"></span>
+    <span class="idle-climate" id="idle-climate"></span>
+    <span class="idle-hint">Коснись экрана, чтобы вернуться</span>
+  </button>
+  <script type="module" src="app.js"></script>
+  <script>
+    (function(){
+      function failed(message){
+        if(window.__homePanelReady)return;
+        var main=document.getElementById('main');
+        if(!main)return;
+        main.innerHTML='<section class="boot-state"><h1>Не удалось запустить панель</h1><p>Проверь версию Android WebView в Fully: Other Settings → Device Info. После обновления очисти кэш и перезагрузи страницу.</p><pre id="boot-error"></pre></section>';
+        document.getElementById('boot-error').textContent=String(message||'Ошибка загрузки JavaScript').slice(0,300);
+        document.getElementById('connection-badge').textContent='Ошибка загрузки';
+      }
+      window.addEventListener('error',function(e){failed(e.message||(e.target&&e.target.src?'Не загрузился файл: '+e.target.src:'Ошибка JavaScript'))},true);
+      window.addEventListener('unhandledrejection',function(e){failed(e.reason&&e.reason.message?e.reason.message:e.reason)});
+      if(!('noModule' in document.createElement('script')))failed('Этот WebView не поддерживает JavaScript modules. Обнови Android WebView.');
+    })();
+    if(location.protocol==='file:')document.getElementById('main').innerHTML='<section class="boot-state"><h1>Запусти панель через сервер</h1><p>Открой «Запустить.cmd» из полного архива, затем «Открыть.cmd». Двойной клик по index.html не поддерживается браузером.</p></section>';
+  </script>
+</body>
+</html>

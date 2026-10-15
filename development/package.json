@@ -1,0 +1,20 @@
+{
+  "name": "home-panel",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "npm run build && node tests/run.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "Interior smart home design prototype with honest demo states",
+  "dependencies": {
+    "better-sqlite3": "^11.10.0",
+    "esbuild": "^0.28.2",
+    "hls.js": "1.6.16",
+    "lucide": "^1.56.0",
+    "three": "^0.186.1",
+    "ws": "8.18.3"
+  }
+}

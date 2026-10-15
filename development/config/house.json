@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "name": "Дом",
+  "location": "Новоживотинное",
+  "rooms": [
+    {"id":"living","name":"Гостиная / кухня","short":"Гостиная","icon":"sofa","description":"Две зоны одного пространства","channels":[{"name":"Зона гостиной","note":"Ближе к террасе","demoOn":true},{"name":"Зона кухни","note":"Кухонный свет","demoOn":true}],"climate":true},
+    {"id":"hall","name":"Прихожая","short":"Прихожая","icon":"door-open","description":"Правый канал выключателя управляет светом террасы","channels":[{"name":"Прихожая","note":"Левая клавиша","demoOn":false},{"name":"Терраса","note":"Правая клавиша · отдельная зона","demoOn":false}],"rgb":true},
+    {"id":"office","name":"Кабинет","short":"Кабинет","icon":"armchair","description":"Названия двух линий уточним при подключении","channels":[{"name":"Линия света 1","demoOn":true},{"name":"Линия света 2","demoOn":false}]},
+    {"id":"bedroom","name":"Спальня","short":"Спальня","icon":"bed-double","channels":[{"name":"Линия света 1","demoOn":false},{"name":"Линия света 2","demoOn":false}]},
+    {"id":"children","name":"Детская","short":"Детская","icon":"blocks","channels":[{"name":"Линия света 1","demoOn":false},{"name":"Линия света 2","demoOn":false}]},
+    {"id":"bath","name":"Ванная","short":"Ванная","icon":"bath","channels":[{"name":"Основной свет","note":"Левая клавиша · споты","demoOn":false},{"name":"Потолочная лента","note":"Правая клавиша · установлена","demoOn":false}]},
+    {"id":"utility","name":"Туалет / котельная","short":"Котельная","icon":"heater","description":"Одно помещение, две функциональные зоны","channels":[{"name":"Свет туалета","demoOn":false}],"pump":true},
+    {"id":"pantry","name":"Кладовая","short":"Кладовая","icon":"archive","channels":[{"name":"Основной свет","demoOn":false}]},
+    {"id":"corridor","name":"Коридор","short":"Коридор","icon":"move-up-right","description":"Умных устройств пока нет","channels":[]},
+    {"id":"terrace","name":"Терраса","short":"Терраса","icon":"trees","description":"Свет подключён к правой клавише в прихожей","channels":[],"terrace":true}
+  ]
+}

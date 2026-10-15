@@ -313,6 +313,16 @@ code{font-family:ui-monospace,monospace;font-size:.92em;background:var(--surface
 .camera-frame video:fullscreen{object-fit:contain;width:100vw;height:100vh}
 @media(max-width:600px){.camera-sheet{padding:var(--space-5)}.camera-sheet .camera-frame{height:calc(56.25vw - 50px);min-height:160px}.camera-actions button{flex:1 1 40%}}
 #camera-status{font-size:var(--text-xs);color:var(--muted);margin-bottom:var(--space-5)}
+.profile-invite{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:24px;padding:20px;border:1px solid var(--border);border-radius:16px;background:var(--surface-2)}
+.profile-invite p{font-size:var(--text-xs);color:var(--muted);margin:8px 0 0}
+.profile-invite button{flex-shrink:0}
+.house-profile{padding:20px;border:1px solid var(--border);border-radius:16px;margin-bottom:24px;background:var(--surface-2)}
+.house-profile summary{cursor:pointer;font-size:var(--text-sm);padding:12px 0}
+.profile-mappings{max-height:300px;overflow:auto}
+.profile-mappings>div{padding:12px 0;border-bottom:1px solid var(--border);font-size:var(--text-xs)}
+.profile-mappings code{display:block;overflow-wrap:anywhere;margin-top:6px;color:var(--muted)}
+.battery-low{border-color:var(--warning)}.battery-low .module-reading{color:var(--warning)}
+@media(max-width:600px){.profile-invite{align-items:stretch;flex-direction:column}.house-profile{padding:16px}}
 @media(max-width:900px){.module-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(min-width:801px){footer{position:sticky;bottom:0;z-index:20;background:var(--bg)}}
 @media(max-width:600px){

@@ -1,0 +1,14 @@
+development/node_modules/
+development/.qa/
+development/data/
+development/dist/
+development/release/
+development/addon-package/
+development/*.zip
+development/addon/home-panel/server.mjs
+development/addon/home-panel/node_modules/
+development/addon/home-panel/dist/
+.env
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
