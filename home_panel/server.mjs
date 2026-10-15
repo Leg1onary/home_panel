@@ -173,7 +173,7 @@ function validatePreferences(input, { importing = false } = {}) {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("\u041D\u0443\u0436\u0435\u043D \u043E\u0431\u044A\u0435\u043A\u0442 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043A.");
   if (input.version !== 3) throw new Error("\u0412\u0435\u0440\u0441\u0438\u044F \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043A \u043D\u0435 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u0441\u044F. \u041D\u0443\u0436\u043D\u0430 \u043A\u043E\u043F\u0438\u044F v3.");
   const raw = input, p = defaultPreferences();
-  if (Number.isInteger(raw.housePresetVersion) && raw.housePresetVersion >= 0 && raw.housePresetVersion <= 2) p.housePresetVersion = raw.housePresetVersion;
+  if (Number.isInteger(raw.housePresetVersion) && raw.housePresetVersion >= 0 && raw.housePresetVersion <= 3) p.housePresetVersion = raw.housePresetVersion;
   p.houseProfileConfirmed = !importing && raw.houseProfileConfirmed === true;
   if (!["dark", "light"].includes(raw.theme)) throw new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F \u0442\u0435\u043C\u0430.");
   if (!["auto", "on", "off"].includes(raw.nightMode)) throw new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u043D\u043E\u0447\u043D\u043E\u0439 \u0440\u0435\u0436\u0438\u043C.");
@@ -546,7 +546,7 @@ var houseBindings = {
   door: "binary_sensor.e4aaec90027a_contact",
   "terrace-motion": "sensor.terrasa_datchik_dvizheniia_dvizhenie",
   "terrace-lux": "sensor.terrasa_datchik_dvizheniia_osveshchennost",
-  "camera-yard": "camera.c320ws_mainstream",
+  "camera-yard": "camera.dvor_kamera_dvor_live_view",
   "yard-motion": "binary_sensor.dvor_c320ws_motion_alarm",
   "master-event": "sensor.prikhozhaia_master_svet_knopka",
   "station": "media_player.yandex_station_c00mp0000t4w0z",
@@ -572,10 +572,10 @@ var houseExtras = [
   ].map(([id, room, name]) => extra("battery:" + id, "battery", room, name))
 ];
 function migrateHouseProfile(input) {
-  if (input.housePresetVersion === 2) return input;
+  if (input.housePresetVersion === 3) return input;
   const p = JSON.parse(JSON.stringify(input));
   const previousVersion = input.housePresetVersion || 0;
-  p.houseProfileConfirmed = input.houseProfileConfirmed === true || input.mode === "live" && Object.values(input.bindings || {}).some((b) => b.verified);
+  p.houseProfileConfirmed = input.houseProfileConfirmed === true || previousVersion < 2 && input.mode === "live" && Object.values(input.bindings || {}).some((b) => b.verified);
   if (previousVersion < 1) {
     for (const d of houseExtras) if (!p.devices.some((x) => x.id === d.id)) p.devices.push({ ...d });
     const bath = p.devices.find((d) => d.id === "bath:1");
@@ -601,13 +601,18 @@ function migrateHouseProfile(input) {
     "battery:living": "sensor.a4c1383cc159_battery",
     "battery:well": "sensor.a4c1386265b5_battery"
   };
-  for (const [id, legacy] of Object.entries(oldClimate)) {
+  if (previousVersion < 2) for (const [id, legacy] of Object.entries(oldClimate)) {
     const d = p.devices.find((d2) => d2.id === id), b = p.bindings[id], next = houseBindings[id];
     if (!d || !b || b.entityId !== legacy || Object.entries(p.bindings).some(([key, v]) => key !== id && v.entityId === next)) continue;
     p.bindings[id] = { entityId: next, verified: false };
     d.note = "Yandex Station \xB7 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A \u0437\u0430\u043C\u0435\u043D\u0451\u043D \u043F\u043E \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0435 \u0432\u043B\u0430\u0434\u0435\u043B\u044C\u0446\u0430";
   }
-  p.housePresetVersion = 2;
+  const camera = p.devices.find((d) => d.id === "camera-yard"), binding = p.bindings["camera-yard"], nextCamera = houseBindings["camera-yard"];
+  if (camera && binding?.entityId === "camera.c320ws_mainstream" && !Object.entries(p.bindings).some(([id, b]) => id !== "camera-yard" && b.entityId === nextCamera)) {
+    p.bindings["camera-yard"] = { entityId: nextCamera, verified: false };
+    camera.note = "TP-Link \xB7 Live View \xB7 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A \u0437\u0430\u043C\u0435\u043D\u0451\u043D \u043F\u043E \u0432\u044B\u0431\u043E\u0440\u0443 \u0432\u043B\u0430\u0434\u0435\u043B\u044C\u0446\u0430";
+  }
+  p.housePresetVersion = 3;
   return validatePreferences(p);
 }
 function bindingProblem(d, e) {

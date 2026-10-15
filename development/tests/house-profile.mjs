@@ -25,7 +25,7 @@ assert.equal(p.devices.find(d=>d.id==='living:0').name,'Моё название'
 assert.equal(p.devices.find(d=>d.id==='hall:1').room,'terrace');
 assert.equal(p.devices.some(d=>d.id==='pump'),false);
 assert.equal(migrateHouseProfile(p),p);
-assert.equal(p.housePresetVersion,2);
+assert.equal(p.housePresetVersion,3);
 assert.equal(p.devices.filter(d=>d.type==='battery').length,6);
 const deleted=defaultPreferences();deleted.devices=deleted.devices.filter(d=>d.id!=='living:1');
 assert.equal(migrateHouseProfile(deleted).devices.some(d=>d.id==='living:1'),false);
@@ -62,6 +62,28 @@ const clean=migrateHouseProfile(defaultPreferences()),states=clean.devices.filte
 const all=activateHouseProfile(clean,states);
 assert.equal(all.report.length,33);assert.equal(all.report.every(r=>r.ok),true);
 assert.equal(all.preferences.mode,'live');
+const v2=structuredClone(all.preferences);v2.housePresetVersion=2;
+v2.bindings['camera-yard']={entityId:'camera.c320ws_mainstream',verified:true};
+// A deliberate manual climate choice after v2 must not be re-migrated.
+v2.bindings['temperature:living']={entityId:'sensor.a4c1383cc159_temperature',verified:true};
+const cameraUpgrade=migrateHouseProfile(v2);
+assert.deepEqual(cameraUpgrade.bindings['camera-yard'],{entityId:'camera.dvor_kamera_dvor_live_view',verified:false});
+assert.equal(cameraUpgrade.bindings['temperature:living'].entityId,'sensor.a4c1383cc159_temperature');
+assert.equal(cameraUpgrade.bindings['temperature:living'].verified,true);
+assert.deepEqual(cameraUpgrade.bindings.door,v2.bindings.door);
+assert.equal(cameraUpgrade.houseProfileConfirmed,true);
+assert.equal(migrateHouseProfile(cameraUpgrade),cameraUpgrade);
+const manualCamera=structuredClone(v2);
+manualCamera.bindings['camera-yard']={entityId:'camera.owner_custom',verified:true};
+assert.deepEqual(migrateHouseProfile(manualCamera).bindings['camera-yard'],manualCamera.bindings['camera-yard']);
+const alreadySelected=structuredClone(v2);
+alreadySelected.bindings['camera-yard']={entityId:houseBindings['camera-yard'],verified:true};
+assert.equal(migrateHouseProfile(alreadySelected).bindings['camera-yard'].verified,true);
+const removedCamera=structuredClone(v2);removedCamera.devices=removedCamera.devices.filter(d=>d.id!=='camera-yard');delete removedCamera.bindings['camera-yard'];
+assert.equal(migrateHouseProfile(removedCamera).devices.some(d=>d.id==='camera-yard'),false);
+const duplicateCamera=structuredClone(v2);
+duplicateCamera.bindings['camera-extra-1']={entityId:houseBindings['camera-yard'],verified:false};
+assert.equal(migrateHouseProfile(duplicateCamera).bindings['camera-yard'].entityId,'camera.c320ws_mainstream');
 const partial=activateHouseProfile(clean,states.filter(e=>e.entity_id!==houseBindings['bath:1']));
 assert.equal(partial.preferences.bindings['bath:1'].verified,false);
 assert.equal(partial.preferences.houseProfileConfirmed,true,'Unavailable sensors must not resurrect onboarding');

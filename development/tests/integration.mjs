@@ -51,7 +51,7 @@ try{
  let b=await call('bootstrap');assert.equal(b.status,200);proof=b.body.proof;let p=b.body.preferences;
  assert.equal(p.mode,'demo');assert.equal(Object.values(p.bindings).some(b=>b.verified),false);
  assert.equal(p.version,3);assert.equal(b.body.photo,false);
- assert.equal(p.housePresetVersion,2);
+ assert.equal(p.housePresetVersion,3);
  assert.equal(p.bindings['hall:1'].entityId,'light.prikhozhaia_pravyi_vykliuchatel');
  assert.equal(p.devices.some(d=>d.id==='pump'),false);
  assert.equal((await call('preferences',{method:'PUT',data:{...p,version:2}})).status,400);

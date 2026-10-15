@@ -28,7 +28,7 @@ export const houseBindings={
  door:'binary_sensor.e4aaec90027a_contact',
  'terrace-motion':'sensor.terrasa_datchik_dvizheniia_dvizhenie',
  'terrace-lux':'sensor.terrasa_datchik_dvizheniia_osveshchennost',
- 'camera-yard':'camera.c320ws_mainstream',
+ 'camera-yard':'camera.dvor_kamera_dvor_live_view',
  'yard-motion':'binary_sensor.dvor_c320ws_motion_alarm',
  'master-event':'sensor.prikhozhaia_master_svet_knopka',
  'station':'media_player.yandex_station_c00mp0000t4w0z',
@@ -51,12 +51,12 @@ export const houseExtras=[
  ].map(([id,room,name])=>extra('battery:'+id,'battery',room,name))
 ];
 export function migrateHouseProfile(input){
- if(input.housePresetVersion===2)return input;
+ if(input.housePresetVersion===3)return input;
  const p=JSON.parse(JSON.stringify(input));
  const previousVersion=input.housePresetVersion||0;
  // Existing live installs have already confirmed bindings in 1.0.5/1.0.6.
  p.houseProfileConfirmed=input.houseProfileConfirmed===true||
-  (input.mode==='live'&&Object.values(input.bindings||{}).some(b=>b.verified));
+  (previousVersion<2&&input.mode==='live'&&Object.values(input.bindings||{}).some(b=>b.verified));
  if(previousVersion<1){
  // Only add new capabilities. Do not resurrect a previously deleted original device.
  for(const d of houseExtras)if(!p.devices.some(x=>x.id===d.id))p.devices.push({...d});
@@ -80,13 +80,19 @@ export function migrateHouseProfile(input){
   'temperature:well':'sensor.a4c1386265b5_temperature','humidity:well':'sensor.a4c1386265b5_humidity',
   'battery:living':'sensor.a4c1383cc159_battery','battery:well':'sensor.a4c1386265b5_battery'
  };
- for(const [id,legacy]of Object.entries(oldClimate)){
+ if(previousVersion<2)for(const [id,legacy]of Object.entries(oldClimate)){
   const d=p.devices.find(d=>d.id===id),b=p.bindings[id],next=houseBindings[id];
   if(!d||!b||b.entityId!==legacy||Object.entries(p.bindings).some(([key,v])=>key!==id&&v.entityId===next))continue;
   p.bindings[id]={entityId:next,verified:false};
   d.note='Yandex Station · источник заменён по проверке владельца';
  }
- p.housePresetVersion=2;
+ const camera=p.devices.find(d=>d.id==='camera-yard'),binding=p.bindings['camera-yard'],nextCamera=houseBindings['camera-yard'];
+ if(camera&&binding?.entityId==='camera.c320ws_mainstream'&&
+  !Object.entries(p.bindings).some(([id,b])=>id!=='camera-yard'&&b.entityId===nextCamera)){
+  p.bindings['camera-yard']={entityId:nextCamera,verified:false};
+  camera.note='TP-Link · Live View · источник заменён по выбору владельца';
+ }
+ p.housePresetVersion=3;
  return validatePreferences(p);
 }
 export function bindingProblem(d,e){

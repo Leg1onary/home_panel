@@ -10,7 +10,7 @@ export function validatePreferences(input,{importing=false}={}){
  if(!input||typeof input!=='object'||Array.isArray(input))throw new Error('Нужен объект настроек.');
  if(input.version!==3)throw new Error('Версия настроек не поддерживается. Нужна копия v3.');
  const raw=input,p=defaultPreferences();
- if(Number.isInteger(raw.housePresetVersion)&&raw.housePresetVersion>=0&&raw.housePresetVersion<=2)p.housePresetVersion=raw.housePresetVersion;
+ if(Number.isInteger(raw.housePresetVersion)&&raw.housePresetVersion>=0&&raw.housePresetVersion<=3)p.housePresetVersion=raw.housePresetVersion;
  p.houseProfileConfirmed=!importing&&raw.houseProfileConfirmed===true;
  if(!['dark','light'].includes(raw.theme))throw new Error('Неизвестная тема.');
  if(!['auto','on','off'].includes(raw.nightMode))throw new Error('Неизвестный ночной режим.');
