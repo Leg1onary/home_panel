@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {RoundedBoxGeometry} from 'three/addons/geometries/RoundedBoxGeometry.js';
 import {floorVisual} from './model-state.js';
+import {modelLevels} from './model-geometry.js';
 let current;
 const floorPoints={
  living:[[220,27],[744,27],[744,291],[220,291]],
@@ -22,7 +23,7 @@ function shapeFloor(scene,id,pts){
  const s=new THREE.Shape();pts.map(project).forEach(([x,z],i)=>i?s.lineTo(x,-z):s.moveTo(x,-z));s.closePath();
  const g=new THREE.ShapeGeometry(s);
  const mat=new THREE.MeshBasicMaterial({color:'#303a35',side:THREE.DoubleSide,toneMapped:false});
- const m=new THREE.Mesh(g,mat);m.rotation.x=-Math.PI/2;m.position.y=.08;m.userData.room=id;scene.add(m);return m;
+ const m=new THREE.Mesh(g,mat);m.rotation.x=-Math.PI/2;m.position.y=modelLevels.floor;m.userData.room=id;scene.add(m);return m;
 }
 function wall(scene,a,b,height=.63){
  const [x1,z1]=project(a),[x2,z2]=project(b),dx=x2-x1,dz=z2-z1;
@@ -45,8 +46,9 @@ export function mountModel(canvas,rooms,state,onSelect){
  scene.add(new THREE.AmbientLight('#e9dfca',1.2));
  const hemisphere=new THREE.HemisphereLight('#f3f0e9','#625d50',2);scene.add(hemisphere);
  const sun=new THREE.DirectionalLight('#ffedcf',3);sun.position.set(-6,18,-9);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-12;sun.shadow.camera.right=12;sun.shadow.camera.top=12;sun.shadow.camera.bottom=-12;sun.shadow.normalBias=.025;sun.shadow.bias=-.00015;scene.add(sun);
- const ground=new THREE.Mesh(new THREE.PlaneGeometry(200,200),new THREE.ShadowMaterial({opacity:.24}));ground.rotation.x=-Math.PI/2;ground.position.y=-.11;ground.receiveShadow=true;scene.add(ground);
- box(scene,1,0,7.45,12,.18,'#9c998b',-.1);box(scene,-3.85,-1.85,2.5,8.3,.14,'#6c6e60',-.1);
+ const ground=new THREE.Mesh(new THREE.PlaneGeometry(200,200),new THREE.ShadowMaterial({opacity:.24}));ground.rotation.x=-Math.PI/2;ground.position.y=modelLevels.ground;ground.receiveShadow=true;scene.add(ground);
+ box(scene,1,0,7.45,12,modelLevels.houseThickness,'#9c998b',modelLevels.foundationTop-modelLevels.houseThickness);
+ box(scene,-3.85,-1.85,2.5,8.3,modelLevels.terraceThickness,'#6c6e60',modelLevels.foundationTop-modelLevels.terraceThickness);
  // Living room is covered by exactly two adjacent zone faces, not a third base.
  const floors={};for(const [id,pts]of Object.entries(floorPoints))if(id!=='living')floors[id]=shapeFloor(scene,id,pts);
  // Independent living and kitchen zones, sharing one physical room.
@@ -56,7 +58,7 @@ export function mountModel(canvas,rooms,state,onSelect){
  ];
  const outlines={};
  for(const [id,pts]of Object.entries(floorPoints)){
-  const geometry=new THREE.BufferGeometry().setFromPoints(pts.map(project).map(([x,z])=>new THREE.Vector3(x,.095,z)));
+  const geometry=new THREE.BufferGeometry().setFromPoints(pts.map(project).map(([x,z])=>new THREE.Vector3(x,modelLevels.outline,z)));
   const outline=new THREE.LineLoop(geometry,new THREE.LineBasicMaterial({color:'#d5e7b0',toneMapped:false}));
   outline.visible=false;scene.add(outline);outlines[id]=outline;
  }
