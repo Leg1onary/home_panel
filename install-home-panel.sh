@@ -13,5 +13,5 @@ fi
 mkdir -p "$target/home_panel"
 # Replaces source files only, never the Supervisor-managed /data volume.
 cp -R "$base/home_panel/." "$target/home_panel/"
-echo "Copied Home Panel 1.0.1 to $target/home_panel"
+echo "Copied Home Panel to $target/home_panel"
 echo "Open Apps store, Check for updates, then install Home Panel under Local apps."

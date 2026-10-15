@@ -26,6 +26,33 @@ var house_default = {
   ]
 };
 
+// src/compat.js
+if (!Array.prototype.flat) {
+  Object.defineProperty(Array.prototype, "flat", { configurable: true, writable: true, value: function(depth = 1) {
+    const out = [];
+    const walk = (list, n) => {
+      list.forEach((value) => {
+        if (Array.isArray(value) && n > 0) walk(value, n - 1);
+        else out.push(value);
+      });
+    };
+    walk(this, depth);
+    return out;
+  } });
+}
+if (!Array.prototype.flatMap) {
+  Object.defineProperty(Array.prototype, "flatMap", { configurable: true, writable: true, value: function(fn, thisArg) {
+    return this.map(fn, thisArg).flat();
+  } });
+}
+if (!Object.fromEntries) {
+  Object.fromEntries = (entries) => {
+    const out = {};
+    for (const [key, value] of entries) Object.defineProperty(out, key, { value, writable: true, enumerable: true, configurable: true });
+    return out;
+  };
+}
+
 // src/catalog.js
 var deviceTypes = {
   light: { label: "\u041B\u0438\u043D\u0438\u044F \u0441\u0432\u0435\u0442\u0430", icon: "lightbulb", module: "lights", domains: ["light", "switch"], controllable: true },

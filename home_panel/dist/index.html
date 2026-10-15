@@ -46,6 +46,19 @@
   </button>
   <script type="module" src="app.js"></script>
   <script>
+    (function(){
+      function failed(message){
+        if(window.__homePanelReady)return;
+        var main=document.getElementById('main');
+        if(!main)return;
+        main.innerHTML='<section class="boot-state"><h1>Не удалось запустить панель</h1><p>Проверь версию Android WebView в Fully: Other Settings → Device Info. После обновления очисти кэш и перезагрузи страницу.</p><pre id="boot-error"></pre></section>';
+        document.getElementById('boot-error').textContent=String(message||'Ошибка загрузки JavaScript').slice(0,300);
+        document.getElementById('connection-badge').textContent='Ошибка загрузки';
+      }
+      window.addEventListener('error',function(e){failed(e.message||(e.target&&e.target.src?'Не загрузился файл: '+e.target.src:'Ошибка JavaScript'))},true);
+      window.addEventListener('unhandledrejection',function(e){failed(e.reason&&e.reason.message?e.reason.message:e.reason)});
+      if(!('noModule' in document.createElement('script')))failed('Этот WebView не поддерживает JavaScript modules. Обнови Android WebView.');
+    })();
     if(location.protocol==='file:')document.getElementById('main').innerHTML='<section class="boot-state"><h1>Запусти панель через сервер</h1><p>Открой «Запустить.cmd» из полного архива, затем «Открыть.cmd». Двойной клик по index.html не поддерживается браузером.</p></section>';
   </script>
 </body>
