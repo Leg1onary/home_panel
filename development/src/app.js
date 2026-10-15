@@ -60,9 +60,11 @@ function toast(message){
 }
 function modal(content,room=null){
  clearCamera();
- $('.sheet').classList.remove('camera-sheet');
+ $('.sheet').classList.remove('camera-sheet','settings-sheet');
+ $('.sheet').scrollTop=0;
  lastFocus=document.activeElement;$('#sheet-content').innerHTML=content;
  $('#sheet-content').dataset.room=room||'';$('#overlay').hidden=false;icons();$('.close').focus();armIdle();
+ $('#sheet-content').scrollTop=0;
 }
 function closeModal(){
  stationAdjusting=false;
@@ -119,7 +121,7 @@ function home(){
  <div class="welcome-tag">${I('leaf')}Дом в своём ритме</div><div class="welcome-copy"><div class="eyebrow" id="date">${date()}</div>
  <div class="time" id="clock">${clock()}</div><h1>Хорошо быть дома.</h1><p>Всё важное — на расстоянии касания.</p></div>
  <span class="photo-note">${state.heroURL?(state.photoSaved?'Твоё фото · сохранено локально':'Твоё фото · ещё не сохранено'):'Интерьер · визуальный референс'}</span></section>
- ${!state.preview&&state.devices.some(d=>houseBindings[d.id]===state.bindings[d.id]?.entityId&&!state.bindings[d.id]?.verified)?'<div class="profile-invite"><div><strong>Дом готов к подключению</strong><p>Привязки из твоей выгрузки уже заполнены. Проверь профиль перед включением управления.</p></div><button class="secondary" data-action="house-review">Проверить профиль</button></div>':''}
+ ${!state.preview&&!state.houseProfileConfirmed&&state.devices.some(d=>houseBindings[d.id]===state.bindings[d.id]?.entityId)?'<div class="profile-invite"><div><strong>Дом готов к подключению</strong><p>Привязки из твоей выгрузки уже заполнены. Проверь профиль перед включением управления.</p></div><button class="secondary" data-action="house-review">Проверить профиль</button></div>':''}
  <div class="section-heading"><div><h2>Твой быстрый доступ</h2><p>${lightCountLabel()+(isLive()?' · Home Assistant':' · демоданные')}</p></div>
  <button class="text-button" data-action="favorites">${I('star')}Настроить</button></div>
  <div class="room-grid">${state.favorites.length?state.favorites.map(id=>roomCard(getRoom(id))).join(''):`<button class="empty-favorites" data-action="favorites">${I('star')}<span>Выбери комнаты для быстрого доступа</span><small>Настроить главную</small></button>`}</div>
@@ -170,7 +172,7 @@ function model(){
  <button class="text-button" data-action="allrooms">Список комнат ${I('arrow-right')}</button></div><div class="model-layout">
  <section class="model-stage"><canvas id="canvas" aria-label="Интерактивная объёмная модель дома"></canvas><div id="model-loading" class="model-loading">${I('loader-circle')}Загружаем модель только сейчас</div>
  <div class="model-top"><span id="model-name">Первый этаж · ${getRoom(state.selected).name}</span><button id="reset-model">${I('rotate-ccw')}Ракурс</button></div>
- <div class="model-bottom"><p>Перетаскивай для поворота · нажми на комнату</p><div class="legend"><span></span>${isLive()?'Подсветка только по данным HA':'Демонстрационная подсветка'}</div></div></section>
+ <div class="model-bottom"><p>Перетаскивай для поворота · нажми на комнату</p><div class="legend"><span></span>${isLive()?'Тёплый — свет · серый — нет данных':'Демонстрационная подсветка'}</div></div></section>
  <aside class="side-stack"><div id="selected-room">${selectedRoom()}</div><p class="model-note">Мебель и размеры условные.</p></aside></div></div>`;
 }
 function lights(){
@@ -307,7 +309,7 @@ function refresh(){
  if(state.view==='model'){updateDetail();modelAPI?.updateModel(rooms,state)}else render(false);
  if(!$('#overlay').hidden){
   if(state.techOpen&&techTab==='diagnostics')$('#sheet-content').innerHTML=technical();
-  else if(settingsOpen)$('#sheet-content').innerHTML=settings();
+  else if(settingsOpen){/* HA polling must not replace an open form or its focus. */}
   else if($('#sheet-content').dataset.station==='true'&&!stationAdjusting)$('#sheet-content').innerHTML=stationSheet();
   else updateDetail();
  }
@@ -381,18 +383,18 @@ function settings(){
  ${tab==='panel'?panelSettings():favoriteSettings()}`;
 }
 function panelSettings(){
- return `<label class="setting-field">Режим ожидания<select id="idle-setting">${[[0,'Выключен'],[10,'10 секунд · для проверки'],[60,'Через минуту'],[90,'Через 90 секунд'],[180,'Через 3 минуты']].map(([v,l])=>`<option value="${v}" ${state.idleSeconds===v?'selected':''}>${l}</option>`).join('')}</select></label>
+ return `<div class="panel-settings-grid"><section class="settings-section"><h3>Экран и режим ожидания</h3><label class="setting-field">Режим ожидания<select id="idle-setting">${[[0,'Выключен'],[10,'10 секунд · для проверки'],[60,'Через минуту'],[90,'Через 90 секунд'],[180,'Через 3 минуты']].map(([v,l])=>`<option value="${v}" ${state.idleSeconds===v?'selected':''}>${l}</option>`).join('')}</select></label>
  <button class="secondary full-width" data-action="standby">${I('moon-star')}Посмотреть экран ожидания</button>
  <label class="setting-field">Ночной интерфейс<select id="night-setting">${[['auto','Автоматически · 22:00–07:00 МСК'],['on','Всегда включён'],['off','Выключен']].map(([v,l])=>`<option value="${v}" ${state.nightMode===v?'selected':''}>${l}</option>`).join('')}</select></label>
  <p class="setting-help">Приглушается оформление панели, не аппаратная яркость планшета. Свет в доме не переключается.</p>
- <label class="setting-field">Постоянный экран<select id="kiosk-setting"><option value="off" ${!state.kiosk?'selected':''}>Обычная панель</option><option value="on" ${state.kiosk?'selected':''}>Компактный режим для экрана</option></select></label>
+ </section><section class="settings-section"><h3>Оформление и обслуживание</h3><label class="setting-field">Постоянный экран<select id="kiosk-setting"><option value="off" ${!state.kiosk?'selected':''}>Обычная панель</option><option value="on" ${state.kiosk?'selected':''}>Компактный режим для экрана</option></select></label>
  <button class="secondary full-width" data-action="fullscreen">${I('maximize')}Полный экран</button>
  <p class="setting-help">Полный экран включается по нажатию; Esc возвращает обычный режим. Настройки не скрываются и не блокируются паролем.</p>
  <label class="setting-field">Фото гостиной<input id="hero-upload" type="file" accept="image/jpeg,image/png,image/webp"/></label>
  <p class="setting-help">${state.preview?'В превью фото остаётся во вкладке. Постоянное сохранение доступно только при локальном запуске.':'Фото сначала остаётся во вкладке. По отдельной кнопке сохраняется в локальную базу на этом компьютере.'} До 10 МБ; сохраняем уменьшенный JPEG.</p>
  ${state.heroURL&&photoBlob&&!state.preview?'<button class="secondary full-width" data-action="save-photo">Сохранить фото на этом компьютере</button>':''}
  ${state.heroURL?'<button class="text-button" data-action="reset-photo">Вернуть интерьерный референс</button>':''}
- <div class="technical-entry"><button class="text-button" data-action="technical">${I('settings-2')}Технический раздел</button><button class="text-button" data-action="about">${I('info')}О панели</button></div>`;
+ <div class="technical-entry"><button class="text-button" data-action="technical">${I('settings-2')}Технический раздел</button><button class="text-button" data-action="about">${I('info')}О панели</button></div></section></div>`;
 }
 function favoriteSettings(){
  return `<p class="setting-help">До шести комнат. Порядок списка совпадает с порядком на главной.</p>
@@ -466,15 +468,15 @@ function technical(){
   <button class="secondary full-width" data-action="discover" ${disabled(hasPending())}>${I('radio')}Загрузить сущности из Home Assistant</button>
   <datalist id="ha-entities">${techEntities.map(e=>`<option value="${esc(e.entity_id)}">${esc(e.attributes.friendly_name||e.entity_id)} · ${esc(e.state)}</option>`).join('')}</datalist>
   <p class="setting-help">Не угадываем entity_id. Галочка означает, что ты физически проверил соответствие устройства и канала. Наличие сущности само по себе этого не доказывает.</p>
-  ${bindingDefinitions(state.devices).filter(b=>bindingRoom==='all'||b.device.room===bindingRoom).map(b=>{
+  <div class="binding-grid">${bindingDefinitions(state.devices).filter(b=>bindingRoom==='all'||b.device.room===bindingRoom).map(b=>{
    const binding=state.bindings[b.id];
    return `<fieldset class="binding-card"><legend>${esc(b.name)}</legend>
     <p class="setting-help">${deviceTypes[b.type].label} · ${b.device.status==='planned'?'планируется':deviceTypes[b.type].locked?'только наблюдение':'установлено'}</p>
     <label class="setting-field compact">Сущность Home Assistant<input data-binding="${b.id}" list="ha-entities" placeholder="${b.domains.join(' / ')} · пока не привязано" value="${esc(binding.entityId)}" autocomplete="off" spellcheck="false"/></label>
     <label class="check-field"><input type="checkbox" data-verified="${b.id}" ${binding.verified?'checked':''} ${disabled(b.device.status==='planned')}/>Соответствие проверено на месте</label>
    </fieldset>`;
-  }).join('')}
-  <button class="primary full-width" data-action="save-bindings" ${disabled(hasPending())}>Сохранить привязки</button>
+  }).join('')}</div>
+  <button class="primary full-width binding-save" data-action="save-bindings" ${disabled(hasPending())}>Сохранить привязки</button>
   <p class="setting-help">Планируемые устройства заблокированы. Камера открывается по нажатию; инженерное оборудование доступно только для наблюдения.</p>`;
  if(techTab==='diagnostics')content=testSettings()+`
   <p class="setting-help">Журнал хранится только до перезапуска вкладки. Реальные команды автоматически не повторяются.</p>
@@ -502,14 +504,14 @@ function technical(){
 }
 function houseProfileReview(){
  const devices=state.devices.filter(d=>houseBindings[d.id]&&state.bindings[d.id]?.entityId===houseBindings[d.id]);
- return `<section class="house-profile"><h3>Профиль твоего дома</h3><p class="setting-help">14 линий света в исходной выгрузке, включая обе линии ванной. Правая клавиша прихожей относится к террасе; свет туалета находится в зоне «Туалет / котельная». Сценарии Алисы не меняются.</p>
+ return `<section class="house-profile"><h3>Профиль твоего дома</h3><p class="setting-help">${state.houseProfileConfirmed?'Профиль уже подтверждён. Повторная проверка доступна здесь; недоступные датчики не означают, что дом не подключён.':'Проверь соответствия перед первым включением управления.'} Температура, влажность и батарейки гостиной, чердака и скважины — через Yandex Station. Дверь — через Xiaomi Gateway 3. Сценарии Алисы не меняются.</p>
  <details><summary>Проверить соответствия · ${devices.length}</summary><div class="profile-mappings">${devices.map(d=>`<div><strong>${esc(areaName(d.room))} · ${esc(d.name)}</strong><code>${esc(state.bindings[d.id].entityId)}</code></div>`).join('')}</div></details>
  <p class="setting-help">Кнопка ниже подтверждает выбранные соответствия, проверяет доступность и включает рабочий режим. Недоступные сущности останутся заблокированы. Команды устройствам не отправляются; существующие другие привязки не заменяются.</p>
  <button class="primary full-width" data-action="house-activate" ${disabled(!state.haConfigured||hasPending()||state.profileBusy)}>Подтвердить привязки и включить HA</button></section>`;
 }
 function openTechnical(tab='connection'){
  settingsOpen=false;state.techOpen=true;techTab=tab;techMessage='';$('#sheet-content').dataset.station='';
- modal(technical());state.techOpen=true;
+ modal(technical());$('.sheet').classList.add('settings-sheet');state.techOpen=true;
 }
 function updateTechnical(){
  if(!state.techOpen)return;
@@ -540,7 +542,7 @@ function downloadSettings(){
 }
 function openSettings(tab='panel'){
  state.settingsTab=tab;settingsOpen=true;$('#sheet-content').dataset.station='';
- modal(settings());settingsOpen=true;
+ modal(settings());$('.sheet').classList.add('settings-sheet');settingsOpen=true;
 }
 function updateSettings(){
  if(!settingsOpen)return;

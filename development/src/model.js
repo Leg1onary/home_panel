@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {RoundedBoxGeometry} from 'three/addons/geometries/RoundedBoxGeometry.js';
+import {floorVisual} from './model-state.js';
 let current;
 const floorPoints={
  living:[[220,27],[744,27],[744,291],[220,291]],
@@ -17,16 +18,11 @@ const floorPoints={
 const project=([x,y])=>[(x-390)/78,(y-470)/78];
 function material(color,roughness=.85){return new THREE.MeshStandardMaterial({color,roughness})}
 function box(scene,x,z,w,d,h,color,y=0,r=0){let m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material(color));m.position.set(x,y+h/2,z);m.rotation.y=r;m.castShadow=true;m.receiveShadow=true;scene.add(m);return m}
-function woodTexture(){
- const c=document.createElement('canvas');c.width=c.height=256;const ctx=c.getContext('2d');ctx.fillStyle='#b6a084';ctx.fillRect(0,0,256,256);
- for(let y=0;y<256;y+=32){ctx.fillStyle=y%64?'#ad957c':'#b9a68d';ctx.fillRect(0,y,256,32);ctx.fillStyle='#8e7d68';ctx.fillRect(0,y,256,1);ctx.fillRect((y*3+34)%230,y,1,32);for(let k=0;k<8;k++){ctx.strokeStyle='#a78f7620';ctx.beginPath();ctx.moveTo(0,y+4+k*3);ctx.bezierCurveTo(80,y+3+k*3,130,y+5+k*3,256,y+4+k*3);ctx.stroke()}}
- const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(3,3);t.colorSpace=THREE.SRGBColorSpace;return t;
-}
-function shapeFloor(scene,id,pts,texture){
+function shapeFloor(scene,id,pts){
  const s=new THREE.Shape();pts.map(project).forEach(([x,z],i)=>i?s.lineTo(x,-z):s.moveTo(x,-z));s.closePath();
  const g=new THREE.ShapeGeometry(s);
- const mat=new THREE.MeshStandardMaterial({color:id==='terrace'?'#827d70':'#c9bea6',map:id==='terrace'?null:texture,roughness:.9,side:THREE.DoubleSide});
- const m=new THREE.Mesh(g,mat);m.rotation.x=-Math.PI/2;m.position.y=.08;m.receiveShadow=true;m.userData.room=id;scene.add(m);return m;
+ const mat=new THREE.MeshBasicMaterial({color:'#303a35',side:THREE.DoubleSide,toneMapped:false});
+ const m=new THREE.Mesh(g,mat);m.rotation.x=-Math.PI/2;m.position.y=.08;m.userData.room=id;scene.add(m);return m;
 }
 function wall(scene,a,b,height=.63){
  const [x1,z1]=project(a),[x2,z2]=project(b),dx=x2-x1,dz=z2-z1;
@@ -51,13 +47,19 @@ export function mountModel(canvas,rooms,state,onSelect){
  const sun=new THREE.DirectionalLight('#ffedcf',3);sun.position.set(-6,18,-9);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-12;sun.shadow.camera.right=12;sun.shadow.camera.top=12;sun.shadow.camera.bottom=-12;sun.shadow.normalBias=.025;sun.shadow.bias=-.00015;scene.add(sun);
  const ground=new THREE.Mesh(new THREE.PlaneGeometry(200,200),new THREE.ShadowMaterial({opacity:.24}));ground.rotation.x=-Math.PI/2;ground.position.y=-.11;ground.receiveShadow=true;scene.add(ground);
  box(scene,1,0,7.45,12,.18,'#9c998b',-.1);box(scene,-3.85,-1.85,2.5,8.3,.14,'#6c6e60',-.1);
- const wood=woodTexture();
- const floors={};for(const [id,pts]of Object.entries(floorPoints))floors[id]=shapeFloor(scene,id,pts,wood);
+ // Living room is covered by exactly two adjacent zone faces, not a third base.
+ const floors={};for(const [id,pts]of Object.entries(floorPoints))if(id!=='living')floors[id]=shapeFloor(scene,id,pts);
  // Independent living and kitchen zones, sharing one physical room.
  const zoneFloors=[
- shapeFloor(scene,'living',[[220,27],[486,27],[486,291],[220,291]],wood),
- shapeFloor(scene,'living',[[486,27],[744,27],[744,291],[486,291]],wood)
- ];zoneFloors.forEach(m=>m.position.y=.085);
+ shapeFloor(scene,'living',[[220,27],[486,27],[486,291],[220,291]]),
+ shapeFloor(scene,'living',[[486,27],[744,27],[744,291],[486,291]])
+ ];
+ const outlines={};
+ for(const [id,pts]of Object.entries(floorPoints)){
+  const geometry=new THREE.BufferGeometry().setFromPoints(pts.map(project).map(([x,z])=>new THREE.Vector3(x,.095,z)));
+  const outline=new THREE.LineLoop(geometry,new THREE.LineBasicMaterial({color:'#d5e7b0',toneMapped:false}));
+  outline.visible=false;scene.add(outline);outlines[id]=outline;
+ }
  const segments=[
  [[220,27],[744,27]],[[744,27],[744,918]],[[220,27],[220,285]],
  [[220,302],[220,408]],[[220,433],[220,503]],[[220,517],[220,640]],[[220,655],[220,918]],
@@ -104,7 +106,7 @@ export function mountModel(canvas,rooms,state,onSelect){
   camera.zoom=r.width<600?.78:1.3;camera.updateProjectionMatrix();invalidate();
  });observer.observe(canvas);
  current={
-  renderer,scene,camera,orbit,floors,zoneFloors,observer,wood,invalidate,
+  renderer,scene,camera,orbit,floors,zoneFloors,outlines,observer,invalidate,
   setPaused:value=>{paused=value;if(value){cancelAnimationFrame(raf);raf=0}else invalidate()},
   cancel:()=>{
    dead=true;cancelAnimationFrame(raf);orbit.removeEventListener('change',invalidate);
@@ -116,14 +118,16 @@ export function mountModel(canvas,rooms,state,onSelect){
 }
 export function updateModel(rooms,state){
  if(!current)return;
- const {floors,zoneFloors}=current;
+ const {floors,zoneFloors,outlines}=current;
  for(const [id,m]of Object.entries(floors)){
-   const r=rooms.find(x=>x.id===id);let lit=r?.channels.some(c=>c.on&&!c.planned);
-   m.material.color.set(lit?'#e2c48b':id==='terrace'?'#827d70':'#b9b3a1');
-   m.material.emissive.set(lit?'#b58947':'#000000');m.material.emissiveIntensity=lit?.25:0;
-   if(state.selected===id){m.material.color.set(lit?'#ebce93':'#c4c9ad');}
+   const visual=floorVisual(rooms.find(x=>x.id===id)?.channels,state);
+   m.material.color.set(visual.color);
  }
- zoneFloors.forEach((m,i)=>{const on=rooms.find(x=>x.id==='living').channels.find(c=>c.id===`living:${i}`)?.on;m.material.color.set(on?'#ecd1a0':'#b9b3a1');m.material.emissive.set(on?'#b58947':'#000000');m.material.emissiveIntensity=on?.3:0});
+ zoneFloors.forEach((m,i)=>{
+  const c=rooms.find(x=>x.id==='living')?.channels.find(c=>c.id===`living:${i}`);
+  m.material.color.set(floorVisual(c?[c]:[],state).color);
+ });
+ for(const [id,outline]of Object.entries(outlines))outline.visible=state.selected===id;
  current.invalidate();
 }
 export function resetModel(){if(current){current.camera.position.set(10,16,16);current.camera.zoom=current.renderer.domElement.clientWidth<600?.78:1.3;current.orbit.target.set(0,0,0);current.camera.updateProjectionMatrix();current.orbit.update();current.invalidate()}}

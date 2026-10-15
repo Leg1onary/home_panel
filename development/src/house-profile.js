@@ -19,10 +19,10 @@ export const houseBindings={
  'bath:1':'light.vannaia_pravyi_vykliuchatel',
  'utility:0':'light.tualet_vykliuchatel',
  'pantry:0':'light.kladovaia_vykliuchatel',
- 'temperature:living':'sensor.a4c1383cc159_temperature',
- 'humidity:living':'sensor.a4c1383cc159_humidity',
- 'temperature:well':'sensor.a4c1386265b5_temperature',
- 'humidity:well':'sensor.a4c1386265b5_humidity',
+ 'temperature:living':'sensor.gostinaia_datchik_temperatury_temperatura',
+ 'humidity:living':'sensor.gostinaia_datchik_temperatury_vlazhnost',
+ 'temperature:well':'sensor.skvazhina_datchik_temperatury_temperatura',
+ 'humidity:well':'sensor.skvazhina_datchik_temperatury_vlazhnost',
  'temperature:attic':'sensor.cherdak_datchik_temperatury_temperatura',
  'humidity:attic':'sensor.cherdak_datchik_temperatury_vlazhnost',
  door:'binary_sensor.e4aaec90027a_contact',
@@ -32,8 +32,8 @@ export const houseBindings={
  'yard-motion':'binary_sensor.dvor_c320ws_motion_alarm',
  'master-event':'sensor.prikhozhaia_master_svet_knopka',
  'station':'media_player.yandex_station_c00mp0000t4w0z',
- 'battery:living':'sensor.a4c1383cc159_battery',
- 'battery:well':'sensor.a4c1386265b5_battery',
+ 'battery:living':'sensor.gostinaia_datchik_temperatury_uroven_zariada',
+ 'battery:well':'sensor.skvazhina_datchik_temperatury_uroven_zariada',
  'battery:attic':'sensor.cherdak_datchik_temperatury_uroven_zariada',
  'battery:door':'sensor.e4aaec90027a_battery',
  'battery:terrace':'sensor.terrasa_datchik_dvizheniia_uroven_zariada',
@@ -51,8 +51,13 @@ export const houseExtras=[
  ].map(([id,room,name])=>extra('battery:'+id,'battery',room,name))
 ];
 export function migrateHouseProfile(input){
- if(input.housePresetVersion===1)return input;
+ if(input.housePresetVersion===2)return input;
  const p=JSON.parse(JSON.stringify(input));
+ const previousVersion=input.housePresetVersion||0;
+ // Existing live installs have already confirmed bindings in 1.0.5/1.0.6.
+ p.houseProfileConfirmed=input.houseProfileConfirmed===true||
+  (input.mode==='live'&&Object.values(input.bindings||{}).some(b=>b.verified));
+ if(previousVersion<1){
  // Only add new capabilities. Do not resurrect a previously deleted original device.
  for(const d of houseExtras)if(!p.devices.some(x=>x.id===d.id))p.devices.push({...d});
  const bath=p.devices.find(d=>d.id==='bath:1');
@@ -69,7 +74,19 @@ export function migrateHouseProfile(input){
   }
   if(d.id==='smoke'&&!old?.entityId)d.status='planned';
  }
- p.housePresetVersion=1;
+ }
+ const oldClimate={
+  'temperature:living':'sensor.a4c1383cc159_temperature','humidity:living':'sensor.a4c1383cc159_humidity',
+  'temperature:well':'sensor.a4c1386265b5_temperature','humidity:well':'sensor.a4c1386265b5_humidity',
+  'battery:living':'sensor.a4c1383cc159_battery','battery:well':'sensor.a4c1386265b5_battery'
+ };
+ for(const [id,legacy]of Object.entries(oldClimate)){
+  const d=p.devices.find(d=>d.id===id),b=p.bindings[id],next=houseBindings[id];
+  if(!d||!b||b.entityId!==legacy||Object.entries(p.bindings).some(([key,v])=>key!==id&&v.entityId===next))continue;
+  p.bindings[id]={entityId:next,verified:false};
+  d.note='Yandex Station · источник заменён по проверке владельца';
+ }
+ p.housePresetVersion=2;
  return validatePreferences(p);
 }
 export function bindingProblem(d,e){
@@ -95,5 +112,6 @@ export function activateHouseProfile(input,states){
   report.push({id:d.id,name:d.name,entityId:b.entityId,ok:!problem,problem});
  }
  p.mode='live';
+ p.houseProfileConfirmed=true;
  return {preferences:validatePreferences(p),report};
 }

@@ -25,12 +25,33 @@ assert.equal(p.devices.find(d=>d.id==='living:0').name,'Моё название'
 assert.equal(p.devices.find(d=>d.id==='hall:1').room,'terrace');
 assert.equal(p.devices.some(d=>d.id==='pump'),false);
 assert.equal(migrateHouseProfile(p),p);
+assert.equal(p.housePresetVersion,2);
 assert.equal(p.devices.filter(d=>d.type==='battery').length,6);
 const deleted=defaultPreferences();deleted.devices=deleted.devices.filter(d=>d.id!=='living:1');
 assert.equal(migrateHouseProfile(deleted).devices.some(d=>d.id==='living:1'),false);
 const customPump=defaultPreferences();customPump.bindings.pump={entityId:'switch.owner_pump',verified:true};
 assert.ok(migrateHouseProfile(customPump).devices.some(d=>d.id==='pump'));
 assert.equal(validatePreferences(p,{importing:true}).bindings['living:0'].verified,false);
+const previous=structuredClone(p);
+previous.housePresetVersion=1;previous.mode='live';previous.houseProfileConfirmed=false;
+previous.bindings['temperature:living']={entityId:'sensor.a4c1383cc159_temperature',verified:true};
+previous.bindings['humidity:living']={entityId:'sensor.a4c1383cc159_humidity',verified:true};
+previous.bindings['temperature:well']={entityId:'sensor.a4c1386265b5_temperature',verified:false};
+previous.bindings['humidity:well']={entityId:'sensor.a4c1386265b5_humidity',verified:false};
+previous.bindings['battery:living']={entityId:'sensor.a4c1383cc159_battery',verified:true};
+previous.bindings['battery:well']={entityId:'sensor.a4c1386265b5_battery',verified:true};
+previous.devices=previous.devices.filter(d=>d.id!=='yard-motion');
+const migrated=migrateHouseProfile(previous);
+for(const id of ['temperature:living','humidity:living','temperature:well','humidity:well','battery:living','battery:well']){
+ assert.equal(migrated.bindings[id].entityId,houseBindings[id]);assert.equal(migrated.bindings[id].verified,false);
+}
+assert.equal(migrated.houseProfileConfirmed,true);
+assert.equal(migrated.devices.some(d=>d.id==='yard-motion'),false,'Do not resurrect deleted devices in v2');
+assert.equal(migrated.bindings.door.entityId,'binary_sensor.e4aaec90027a_contact');
+assert.equal(validatePreferences(migrated,{importing:true}).houseProfileConfirmed,false);
+const customClimate=structuredClone(previous);customClimate.bindings['temperature:living']={entityId:'sensor.owner_temperature',verified:true};
+assert.equal(migrateHouseProfile(customClimate).bindings['temperature:living'].entityId,'sensor.owner_temperature');
+assert.equal(migrateHouseProfile(migrated),migrated);
 
 const clean=migrateHouseProfile(defaultPreferences()),states=clean.devices.filter(d=>houseBindings[d.id]).map(d=>{
  const t=deviceTypes[d.type],domain=houseBindings[d.id].split('.')[0];
@@ -43,6 +64,7 @@ assert.equal(all.report.length,33);assert.equal(all.report.every(r=>r.ok),true);
 assert.equal(all.preferences.mode,'live');
 const partial=activateHouseProfile(clean,states.filter(e=>e.entity_id!==houseBindings['bath:1']));
 assert.equal(partial.preferences.bindings['bath:1'].verified,false);
+assert.equal(partial.preferences.houseProfileConfirmed,true,'Unavailable sensors must not resurrect onboarding');
 assert.equal(partial.report.filter(r=>r.ok).length,32);
 const battery=clean.devices.find(d=>d.type==='battery');
 assert.ok(bindingProblem(battery,{entity_id:houseBindings[battery.id],state:'-1',attributes:{unit_of_measurement:'%'}}));
@@ -87,6 +109,7 @@ try{
  boot=await call('bootstrap');proof=boot.body.proof;
  assert.equal(boot.body.preferences.mode,'live');assert.equal(boot.body.preferences.theme,'light');
  assert.equal(boot.body.preferences.bindings['bath:1'].verified,true);assert.equal(boot.body.photo,true);
+ assert.equal(boot.body.preferences.houseProfileConfirmed,true);
  assert.equal((await call('house-profile','POST',{})).code,200);assert.equal(commands,0);
  console.log('PASS: 33 curated bindings, dual bathroom, migration/idempotency, theme/photo/custom mappings preserved, partial activation, numeric units/classes, CSRF, zero service calls, read-only events/batteries, persistence.');
 }finally{await stop();await new Promise(r=>fake.close(r));await rm(dir,{recursive:true,force:true})}

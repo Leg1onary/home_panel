@@ -173,7 +173,8 @@ function validatePreferences(input, { importing = false } = {}) {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("\u041D\u0443\u0436\u0435\u043D \u043E\u0431\u044A\u0435\u043A\u0442 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043A.");
   if (input.version !== 3) throw new Error("\u0412\u0435\u0440\u0441\u0438\u044F \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043A \u043D\u0435 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u0441\u044F. \u041D\u0443\u0436\u043D\u0430 \u043A\u043E\u043F\u0438\u044F v3.");
   const raw = input, p = defaultPreferences();
-  if (Number.isInteger(raw.housePresetVersion) && raw.housePresetVersion >= 0 && raw.housePresetVersion <= 1) p.housePresetVersion = raw.housePresetVersion;
+  if (Number.isInteger(raw.housePresetVersion) && raw.housePresetVersion >= 0 && raw.housePresetVersion <= 2) p.housePresetVersion = raw.housePresetVersion;
+  p.houseProfileConfirmed = !importing && raw.houseProfileConfirmed === true;
   if (!["dark", "light"].includes(raw.theme)) throw new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F \u0442\u0435\u043C\u0430.");
   if (!["auto", "on", "off"].includes(raw.nightMode)) throw new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u043D\u043E\u0447\u043D\u043E\u0439 \u0440\u0435\u0436\u0438\u043C.");
   if (![0, 10, 60, 90, 180].includes(raw.idleSeconds)) throw new Error("\u041D\u0435\u0432\u0435\u0440\u043D\u0430\u044F \u0437\u0430\u0434\u0435\u0440\u0436\u043A\u0430 \u043E\u0436\u0438\u0434\u0430\u043D\u0438\u044F.");
@@ -524,10 +525,10 @@ var houseBindings = {
   "bath:1": "light.vannaia_pravyi_vykliuchatel",
   "utility:0": "light.tualet_vykliuchatel",
   "pantry:0": "light.kladovaia_vykliuchatel",
-  "temperature:living": "sensor.a4c1383cc159_temperature",
-  "humidity:living": "sensor.a4c1383cc159_humidity",
-  "temperature:well": "sensor.a4c1386265b5_temperature",
-  "humidity:well": "sensor.a4c1386265b5_humidity",
+  "temperature:living": "sensor.gostinaia_datchik_temperatury_temperatura",
+  "humidity:living": "sensor.gostinaia_datchik_temperatury_vlazhnost",
+  "temperature:well": "sensor.skvazhina_datchik_temperatury_temperatura",
+  "humidity:well": "sensor.skvazhina_datchik_temperatury_vlazhnost",
   "temperature:attic": "sensor.cherdak_datchik_temperatury_temperatura",
   "humidity:attic": "sensor.cherdak_datchik_temperatury_vlazhnost",
   door: "binary_sensor.e4aaec90027a_contact",
@@ -537,8 +538,8 @@ var houseBindings = {
   "yard-motion": "binary_sensor.dvor_c320ws_motion_alarm",
   "master-event": "sensor.prikhozhaia_master_svet_knopka",
   "station": "media_player.yandex_station_c00mp0000t4w0z",
-  "battery:living": "sensor.a4c1383cc159_battery",
-  "battery:well": "sensor.a4c1386265b5_battery",
+  "battery:living": "sensor.gostinaia_datchik_temperatury_uroven_zariada",
+  "battery:well": "sensor.skvazhina_datchik_temperatury_uroven_zariada",
   "battery:attic": "sensor.cherdak_datchik_temperatury_uroven_zariada",
   "battery:door": "sensor.e4aaec90027a_battery",
   "battery:terrace": "sensor.terrasa_datchik_dvizheniia_uroven_zariada",
@@ -559,24 +560,42 @@ var houseExtras = [
   ].map(([id, room, name]) => extra("battery:" + id, "battery", room, name))
 ];
 function migrateHouseProfile(input) {
-  if (input.housePresetVersion === 1) return input;
+  if (input.housePresetVersion === 2) return input;
   const p = JSON.parse(JSON.stringify(input));
-  for (const d of houseExtras) if (!p.devices.some((x) => x.id === d.id)) p.devices.push({ ...d });
-  const bath = p.devices.find((d) => d.id === "bath:1");
-  if (bath?.status === "planned" && !p.bindings["bath:1"]?.entityId) {
-    bath.status = "installed";
-    bath.note = "\u041F\u0440\u0430\u0432\u0430\u044F \u043A\u043B\u0430\u0432\u0438\u0448\u0430 \xB7 \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u0430";
-  }
-  p.devices = p.devices.filter((d) => d.id !== "pump" || p.bindings.pump?.entityId);
-  for (const d of p.devices) {
-    const entityId = houseBindings[d.id], old = p.bindings[d.id];
-    if (entityId && !old?.entityId && d.status === "installed") {
-      p.bindings[d.id] = { entityId, verified: false };
-      if (d.type !== "light") d.note = d.type === "station" ? "Yandex Station \xB7 \u043A\u043E\u043C\u0430\u043D\u0434\u044B \u0438 \u0441\u0442\u0430\u0442\u0443\u0441\u044B \u0447\u0435\u0440\u0435\u0437 HA" : "\u0421\u0443\u0449\u043D\u043E\u0441\u0442\u044C HA \u0438\u0437 \u0432\u044B\u0433\u0440\u0443\u0437\u043A\u0438 \u0434\u043E\u043C\u0430";
+  const previousVersion = input.housePresetVersion || 0;
+  p.houseProfileConfirmed = input.houseProfileConfirmed === true || input.mode === "live" && Object.values(input.bindings || {}).some((b) => b.verified);
+  if (previousVersion < 1) {
+    for (const d of houseExtras) if (!p.devices.some((x) => x.id === d.id)) p.devices.push({ ...d });
+    const bath = p.devices.find((d) => d.id === "bath:1");
+    if (bath?.status === "planned" && !p.bindings["bath:1"]?.entityId) {
+      bath.status = "installed";
+      bath.note = "\u041F\u0440\u0430\u0432\u0430\u044F \u043A\u043B\u0430\u0432\u0438\u0448\u0430 \xB7 \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u0430";
     }
-    if (d.id === "smoke" && !old?.entityId) d.status = "planned";
+    p.devices = p.devices.filter((d) => d.id !== "pump" || p.bindings.pump?.entityId);
+    for (const d of p.devices) {
+      const entityId = houseBindings[d.id], old = p.bindings[d.id];
+      if (entityId && !old?.entityId && d.status === "installed") {
+        p.bindings[d.id] = { entityId, verified: false };
+        if (d.type !== "light") d.note = d.type === "station" ? "Yandex Station \xB7 \u043A\u043E\u043C\u0430\u043D\u0434\u044B \u0438 \u0441\u0442\u0430\u0442\u0443\u0441\u044B \u0447\u0435\u0440\u0435\u0437 HA" : "\u0421\u0443\u0449\u043D\u043E\u0441\u0442\u044C HA \u0438\u0437 \u0432\u044B\u0433\u0440\u0443\u0437\u043A\u0438 \u0434\u043E\u043C\u0430";
+      }
+      if (d.id === "smoke" && !old?.entityId) d.status = "planned";
+    }
   }
-  p.housePresetVersion = 1;
+  const oldClimate = {
+    "temperature:living": "sensor.a4c1383cc159_temperature",
+    "humidity:living": "sensor.a4c1383cc159_humidity",
+    "temperature:well": "sensor.a4c1386265b5_temperature",
+    "humidity:well": "sensor.a4c1386265b5_humidity",
+    "battery:living": "sensor.a4c1383cc159_battery",
+    "battery:well": "sensor.a4c1386265b5_battery"
+  };
+  for (const [id, legacy] of Object.entries(oldClimate)) {
+    const d = p.devices.find((d2) => d2.id === id), b = p.bindings[id], next = houseBindings[id];
+    if (!d || !b || b.entityId !== legacy || Object.entries(p.bindings).some(([key, v]) => key !== id && v.entityId === next)) continue;
+    p.bindings[id] = { entityId: next, verified: false };
+    d.note = "Yandex Station \xB7 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A \u0437\u0430\u043C\u0435\u043D\u0451\u043D \u043F\u043E \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0435 \u0432\u043B\u0430\u0434\u0435\u043B\u044C\u0446\u0430";
+  }
+  p.housePresetVersion = 2;
   return validatePreferences(p);
 }
 function bindingProblem(d, e) {
@@ -602,6 +621,7 @@ function activateHouseProfile(input, states) {
     report.push({ id: d.id, name: d.name, entityId: b.entityId, ok: !problem, problem });
   }
   p.mode = "live";
+  p.houseProfileConfirmed = true;
   return { preferences: validatePreferences(p), report };
 }
 

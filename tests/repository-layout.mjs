@@ -14,7 +14,7 @@ async function walk(path){
 await walk(root);
 assert.deepEqual(manifests,['home_panel/config.json'],'Supervisor must discover only the installable add-on, never a source template.');
 const app=JSON.parse(await readFile(join(root,manifests[0]),'utf8'));
-assert.equal(app.slug,'home_panel');assert.equal(app.version,'1.0.6');
+assert.equal(app.slug,'home_panel');assert.equal(app.version,'1.0.7');
 for(const file of ['Dockerfile','package.json','package-lock.json','server.mjs','startup.mjs','dist/index.html']){
  assert.ok((await readFile(join(root,'home_panel',file))).length,`Missing Docker build input: ${file}`);
 }
