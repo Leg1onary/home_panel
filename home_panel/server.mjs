@@ -4,7 +4,7 @@ import { readFile, stat, mkdir } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 import { spawn } from "node:child_process";
 import { isIP } from "node:net";
-import { randomBytes, createHash, timingSafeEqual } from "node:crypto";
+import { randomBytes as randomBytes2, createHash, timingSafeEqual } from "node:crypto";
 import Database from "better-sqlite3";
 
 // config/house.json
@@ -244,13 +244,17 @@ var HomeAssistant = class {
     if (!Array.isArray(all)) throw new Error("\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u0441\u043F\u0438\u0441\u043E\u043A \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u0435\u0439.");
     return all.filter((e) => /^(light|switch|sensor|binary_sensor|camera|cover|climate)\.[a-z0-9_]+$/.test(e.entity_id)).map((e) => this.sanitize(e));
   }
-  async camera(id, p) {
+  cameraEntity(id, p) {
     const d = p.devices.find((d2) => d2.id === id), b = p.bindings[id];
     if (p.mode !== "live" || d?.type !== "camera" || d.status !== "installed" || !b?.verified || !/^camera\.[a-z0-9_]+$/.test(b.entityId)) throw new Error("\u041A\u0430\u043C\u0435\u0440\u0430 \u043D\u0435 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0430 \u0438\u043B\u0438 \u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u0430.");
     if (!this.enabled) throw new Error("\u041A\u0430\u043C\u0435\u0440\u0430 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430 \u0432 \u0434\u0435\u043C\u043E\u043F\u0440\u0435\u0432\u044C\u044E.");
+    return b.entityId;
+  }
+  async camera(id, p) {
+    const entity = this.cameraEntity(id, p);
     let response;
     try {
-      response = await fetch(this.url + "/api/camera_proxy/" + b.entityId, { headers: { Authorization: `Bearer ${this.token}` }, redirect: "error", signal: AbortSignal.timeout(1e4) });
+      response = await fetch(this.url + "/api/camera_proxy/" + entity, { headers: { Authorization: `Bearer ${this.token}` }, redirect: "error", signal: AbortSignal.timeout(1e4) });
     } catch {
       throw new Error("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u043E\u043B\u0443\u0447\u0438\u0442\u044C \u043A\u0430\u0434\u0440 \u043A\u0430\u043C\u0435\u0440\u044B.");
     }
@@ -324,6 +328,142 @@ var HomeAssistant = class {
   }
 };
 
+// server/stream.js
+import WebSocket from "ws";
+import { randomBytes } from "node:crypto";
+var assetPattern = /^(?:master_playlist\.m3u8|playlist\.m3u8|init\.mp4|segment\/\d+(?:\.\d+)?\.m4s)$/;
+var CameraStreams = class {
+  constructor(ha2) {
+    this.ha = ha2;
+    this.sessions = /* @__PURE__ */ new Map();
+  }
+  prune() {
+    for (const [key, s] of this.sessions) if (s.expires < Date.now()) this.close(key);
+  }
+  close(key) {
+    const s = this.sessions.get(key);
+    if (s) for (const c of s.pending) c.abort();
+    this.sessions.delete(key);
+  }
+  async start(id, preferences, owner) {
+    this.prune();
+    const entity = this.ha.cameraEntity(id, preferences);
+    if (this.sessions.size >= 12) throw new Error("\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u043C\u043D\u043E\u0433\u043E \u043E\u0442\u043A\u0440\u044B\u0442\u044B\u0445 \u043F\u0440\u043E\u0441\u043C\u043E\u0442\u0440\u043E\u0432. \u0417\u0430\u043A\u0440\u043E\u0439 \u0434\u0440\u0443\u0433\u043E\u0435 \u043E\u043A\u043D\u043E \u043A\u0430\u043C\u0435\u0440\u044B.");
+    const url = await this.streamURL(entity);
+    const match = /^\/api\/hls\/([a-f0-9]+)\/master_playlist\.m3u8$/.exec(url);
+    if (!match) throw new Error("Home Assistant \u0432\u0435\u0440\u043D\u0443\u043B \u043D\u0435\u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u043C\u044B\u0439 \u0430\u0434\u0440\u0435\u0441 HLS.");
+    const key = randomBytes(24).toString("hex");
+    this.sessions.set(key, { owner, id, entity, token: match[1], expires: Date.now() + 9e4, pending: /* @__PURE__ */ new Set() });
+    return { key, url: `ha/stream/${key}/master_playlist.m3u8` };
+  }
+  streamURL(entity) {
+    const endpoint = new URL(this.ha.url);
+    endpoint.protocol = endpoint.protocol === "https:" ? "wss:" : "ws:";
+    endpoint.pathname = endpoint.hostname === "supervisor" ? "/core/websocket" : endpoint.pathname.replace(/\/$/, "") + "/api/websocket";
+    return new Promise((resolve2, reject) => {
+      let settled = false;
+      const ws = new WebSocket(endpoint, { headers: { Authorization: `Bearer ${this.ha.token}` }, maxPayload: 1024 * 1024, followRedirects: false });
+      const finish = (error, url) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        ws.close();
+        error ? reject(error) : resolve2(url);
+      };
+      const timer = setTimeout(() => {
+        finish(new Error("Home Assistant \u043D\u0435 \u043F\u043E\u0434\u0433\u043E\u0442\u043E\u0432\u0438\u043B \u043F\u043E\u0442\u043E\u043A \u0437\u0430 25 \u0441\u0435\u043A\u0443\u043D\u0434. \u041F\u0440\u043E\u0432\u0435\u0440\u044C \u0432\u0438\u0434\u0435\u043E \u0432 HA."));
+        ws.terminate();
+      }, 25e3);
+      ws.on("error", () => finish(new Error("\u041D\u0435\u0442 \u0441\u043E\u0435\u0434\u0438\u043D\u0435\u043D\u0438\u044F \u0441 \u0432\u0438\u0434\u0435\u043E API Home Assistant.")));
+      ws.on("close", () => {
+        if (!settled) finish(new Error("\u0421\u043E\u0435\u0434\u0438\u043D\u0435\u043D\u0438\u0435 \u0441 \u0432\u0438\u0434\u0435\u043E API Home Assistant \u0437\u0430\u043A\u0440\u044B\u0442\u043E."));
+      });
+      ws.on("message", (bytes) => {
+        try {
+          const message = JSON.parse(bytes.toString());
+          if (message.type === "auth_required") ws.send(JSON.stringify({ type: "auth", access_token: this.ha.token }));
+          else if (message.type === "auth_invalid") finish(new Error("Home Assistant \u043E\u0442\u043A\u043B\u043E\u043D\u0438\u043B \u0430\u0432\u0442\u043E\u0440\u0438\u0437\u0430\u0446\u0438\u044E \u0432\u0438\u0434\u0435\u043E."));
+          else if (message.type === "auth_ok") ws.send(JSON.stringify({ id: 1, type: "camera/stream", entity_id: entity, format: "hls" }));
+          else if (message.type === "result" && message.id === 1) {
+            if (message.success && typeof message.result?.url === "string") finish(null, message.result.url);
+            else finish(new Error("\u041A\u0430\u043C\u0435\u0440\u0430 \u043D\u0435 \u043E\u0442\u0434\u0430\u043B\u0430 HLS-\u043F\u043E\u0442\u043E\u043A. \u041F\u0440\u043E\u0432\u0435\u0440\u044C \u0432\u043E\u0441\u043F\u0440\u043E\u0438\u0437\u0432\u0435\u0434\u0435\u043D\u0438\u0435 \u044D\u0442\u043E\u0439 \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u0438 \u0432 Home Assistant \u0438 \u0438\u043D\u0442\u0435\u0433\u0440\u0430\u0446\u0438\u044E Stream."));
+          }
+        } catch {
+          finish(new Error("\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u043E\u0442\u0432\u0435\u0442 \u0432\u0438\u0434\u0435\u043E API Home Assistant."));
+        }
+      });
+    });
+  }
+  get(key, owner, p) {
+    this.prune();
+    const s = this.sessions.get(key);
+    if (!s || s.owner !== owner) throw new Error("\u041F\u0440\u043E\u0441\u043C\u043E\u0442\u0440 \u0437\u0430\u0432\u0435\u0440\u0448\u0451\u043D. \u041E\u0442\u043A\u0440\u043E\u0439 \u043A\u0430\u043C\u0435\u0440\u0443 \u0437\u0430\u043D\u043E\u0432\u043E.");
+    if (this.ha.cameraEntity(s.id, p) !== s.entity) {
+      this.close(key);
+      throw new Error("\u041F\u0440\u0438\u0432\u044F\u0437\u043A\u0430 \u043A\u0430\u043C\u0435\u0440\u044B \u0438\u0437\u043C\u0435\u043D\u0438\u043B\u0430\u0441\u044C. \u041E\u0442\u043A\u0440\u043E\u0439 \u0435\u0451 \u0437\u0430\u043D\u043E\u0432\u043E.");
+    }
+    s.expires = Date.now() + 9e4;
+    return s;
+  }
+  async proxy(key, asset, query, owner, p, req, res) {
+    if (!assetPattern.test(asset)) throw new Error("\u041D\u0435\u0434\u043E\u043F\u0443\u0441\u0442\u0438\u043C\u044B\u0439 \u0444\u0430\u0439\u043B \u043F\u043E\u0442\u043E\u043A\u0430.");
+    const s = this.get(key, owner, p), params = new URLSearchParams();
+    for (const [name, value] of query) {
+      if (!["_HLS_msn", "_HLS_part", "_HLS_skip"].includes(name) || !(/^\d{1,12}$/.test(value) || name === "_HLS_skip" && ["YES", "v2"].includes(value))) throw new Error("\u041D\u0435\u0434\u043E\u043F\u0443\u0441\u0442\u0438\u043C\u044B\u0439 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440 \u043F\u043E\u0442\u043E\u043A\u0430.");
+      params.set(name, value);
+    }
+    const controller = new AbortController();
+    s.pending.add(controller);
+    const abort = () => controller.abort(), timer = setTimeout(abort, 3e4);
+    res.once("close", abort);
+    try {
+      const upstream = await fetch(`${this.ha.url}/api/hls/${s.token}/${asset}${params.size ? "?" + params : ""}`, {
+        headers: { Authorization: `Bearer ${this.ha.token}` },
+        redirect: "error",
+        signal: controller.signal
+      });
+      if (!upstream.ok) {
+        await upstream.body?.cancel();
+        throw new Error(`\u041F\u043E\u0442\u043E\u043A Home Assistant \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D (${upstream.status}).`);
+      }
+      const playlist = asset.endsWith(".m3u8"), limit = playlist ? 512 * 1024 : 24 * 1024 * 1024;
+      const reader = upstream.body.getReader(), parts = [];
+      let size = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          size += value.length;
+          if (size > limit) throw new Error("\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u0431\u043E\u043B\u044C\u0448\u043E\u0439 \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442 \u0432\u0438\u0434\u0435\u043E.");
+          parts.push(Buffer.from(value));
+        }
+      } finally {
+        await reader.cancel();
+      }
+      let bytes = Buffer.concat(parts);
+      if (playlist) {
+        const text = bytes.toString("utf8");
+        if (!text.startsWith("#EXTM3U")) throw new Error("\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 HLS-\u043F\u043B\u0435\u0439\u043B\u0438\u0441\u0442.");
+        const rewrite = (value) => {
+          const u = new URL(value, `http://stream/api/hls/${s.token}/${asset}`);
+          const prefix = `/api/hls/${s.token}/`, relative = u.pathname.slice(prefix.length);
+          if (u.origin !== "http://stream" || !u.pathname.startsWith(prefix) || !assetPattern.test(relative) || u.search || u.hash) throw new Error("\u041D\u0435\u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u043C\u044B\u0439 \u0440\u0435\u0441\u0443\u0440\u0441 HLS.");
+          return `/api/panel/ha/stream/${key}/${relative}`;
+        };
+        bytes = Buffer.from(text.split("\n").map((line) => line.startsWith("#") ? line.replace(/URI="([^"]+)"/g, (_, value) => `URI="${rewrite(value)}"`) : line.trim() ? rewrite(line.trim()) : line).join("\n"));
+      }
+      if (!res.destroyed) {
+        res.writeHead(200, { "Content-Type": playlist ? "application/vnd.apple.mpegurl" : asset === "init.mp4" ? "video/mp4" : "video/iso.segment", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer" });
+        res.end(bytes);
+      }
+    } finally {
+      clearTimeout(timer);
+      res.removeListener("close", abort);
+      s.pending.delete(controller);
+    }
+  }
+};
+
 // server/index.js
 var port = Number(process.env.PORT || 8080);
 var preview = process.env.PANEL_PREVIEW === "1";
@@ -336,6 +476,8 @@ var db = new Database(resolve(data, "panel.sqlite"));
 db.pragma("journal_mode = WAL");
 db.exec("CREATE TABLE IF NOT EXISTS profiles (id TEXT PRIMARY KEY, preferences TEXT NOT NULL, photo BLOB);");
 var ha = new HomeAssistant({ url: process.env.HA_URL, token: process.env.HA_TOKEN, preview });
+var streams = new CameraStreams(ha);
+setInterval(() => streams.prune(), 3e4).unref();
 var proofs = /* @__PURE__ */ new Map();
 var pendingScopes = /* @__PURE__ */ new Map();
 var getProfile = (id) => {
@@ -391,7 +533,7 @@ var server = http.createServer(async (req, res) => {
     if (path.startsWith("/api/panel/")) {
       const id = identify(req), p = getProfile(id), route = path.slice("/api/panel/".length);
       if (req.method === "GET" && route === "bootstrap") {
-        if (!proofs.has(id)) proofs.set(id, randomBytes(32).toString("hex"));
+        if (!proofs.has(id)) proofs.set(id, randomBytes2(32).toString("hex"));
         return json(res, 200, { preferences: p.preferences, photo: !!p.photo, proof: proofs.get(id), preview, addon, haConfigured: ha.enabled });
       }
       if (req.method !== "GET") authorize(req, id);
@@ -439,6 +581,23 @@ var server = http.createServer(async (req, res) => {
         }
       }
       if (route === "ha/states" && req.method === "GET") return json(res, 200, { states: await ha.states(), receivedAt: Date.now() });
+      if (route === "ha/stream/start" && req.method === "POST") {
+        const request = JSON.parse((await body(req)).toString());
+        return json(res, 200, await streams.start(request.id, p.preferences, id));
+      }
+      const streamRoute = /^ha\/stream\/([a-f0-9]{48})(?:\/(.+))?$/.exec(route);
+      if (streamRoute) {
+        const [, key, asset] = streamRoute;
+        if (req.method === "DELETE" && !asset) {
+          streams.get(key, id, p.preferences);
+          streams.close(key);
+          return json(res, 200, { stopped: true });
+        }
+        if (req.method === "GET" && asset) {
+          if (req.headers["sec-fetch-site"] === "cross-site") throw new Error("\u041C\u0435\u0436\u0441\u0430\u0439\u0442\u043E\u0432\u044B\u0439 \u0437\u0430\u043F\u0440\u043E\u0441 \u0437\u0430\u043F\u0440\u0435\u0449\u0451\u043D.");
+          return await streams.proxy(key, asset, url.searchParams, id, p.preferences, req, res);
+        }
+      }
       if (route === "ha/camera" && req.method === "POST") {
         const request = JSON.parse((await body(req)).toString()), image = await ha.camera(request.id, p.preferences);
         res.writeHead(200, { "Content-Type": image.type, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
@@ -459,7 +618,7 @@ var server = http.createServer(async (req, res) => {
     }
     if (req.method !== "GET" && req.method !== "HEAD") return json(res, 405, { error: "\u041C\u0435\u0442\u043E\u0434 \u0437\u0430\u043F\u0440\u0435\u0449\u0451\u043D." });
     const relative = path === "/" ? "index.html" : path.slice(1);
-    if (!/^(index\.html|style\.css|app\.js|model-[A-Za-z0-9_-]+\.js|assets\/[A-Za-z0-9_./-]+\.(webp|woff2|ttf|txt))$/.test(relative) || relative.includes("..")) return json(res, 404, { error: "\u0424\u0430\u0439\u043B \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D." });
+    if (!/^(index\.html|style\.css|app\.js|model-[A-Za-z0-9_-]+\.js|assets\/[A-Za-z0-9_./-]+\.(webp|woff2|ttf|txt|js))$/.test(relative) || relative.includes("..")) return json(res, 404, { error: "\u0424\u0430\u0439\u043B \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D." });
     const file = resolve(root, relative);
     await stat(file);
     const type = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".webp": "image/webp", ".woff2": "font/woff2", ".ttf": "font/ttf", ".txt": "text/plain; charset=utf-8" }[extname(file)];

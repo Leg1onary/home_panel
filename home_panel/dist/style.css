@@ -303,6 +303,15 @@ code{font-family:ui-monospace,monospace;font-size:.92em;background:var(--surface
 .catalog-item code{display:inline-block;max-width:100%;overflow-wrap:anywhere;font-size:11px}
 .camera-frame{aspect-ratio:16/9;background:var(--surface-2);border:1px solid var(--border);border-radius:16px;display:grid;place-items:center;overflow:hidden;margin:var(--space-5) 0;color:var(--muted);font-size:var(--text-xs)}
 .camera-frame img{width:100%;height:100%;object-fit:contain}
+.camera-frame video{display:block;width:100%;height:100%;object-fit:contain;background:#000}
+.camera-sheet{width:min(960px,100%)}
+.camera-sheet .camera-frame{position:relative;aspect-ratio:auto;height:48vh;max-height:480px;min-height:160px}
+.camera-sheet .camera-frame video,.camera-sheet .camera-frame img{position:absolute;left:0;top:0;width:100%;height:100%;min-height:0;min-width:0}
+.camera-actions{display:flex;gap:var(--space-3);flex-wrap:wrap;align-items:center}
+.camera-actions button{display:flex;align-items:center;justify-content:center;gap:var(--space-2);min-height:44px}
+.camera-frame span{padding:var(--space-4);text-align:center}
+.camera-frame video:fullscreen{object-fit:contain;width:100vw;height:100vh}
+@media(max-width:600px){.camera-sheet{padding:var(--space-5)}.camera-sheet .camera-frame{height:calc(56.25vw - 50px);min-height:160px}.camera-actions button{flex:1 1 40%}}
 #camera-status{font-size:var(--text-xs);color:var(--muted);margin-bottom:var(--space-5)}
 @media(max-width:900px){.module-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(min-width:801px){footer{position:sticky;bottom:0;z-index:20;background:var(--bg)}}

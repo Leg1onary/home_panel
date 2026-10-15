@@ -1,6 +1,6 @@
 {
   "name": "Home Panel",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "slug": "home_panel",
   "description": "Домашняя панель управления умным домом с 3D-моделью планировки",
   "arch": ["amd64"],
