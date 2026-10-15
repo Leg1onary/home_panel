@@ -59,7 +59,7 @@ async function raw(path,{method='GET',data,headers={}}={}){
  });
 }
 try{
- const manifest=JSON.parse(await readFile('addon/home-panel/config.json','utf8'));
+ const manifest=JSON.parse(await readFile('addon/home-panel/manifest.json','utf8'));
  assert.equal(manifest.name,'Home Panel');assert.equal(manifest.homeassistant_api,true);
  assert.equal(manifest.ports['8090/tcp'],8090);assert.equal(manifest.image,undefined);
  assert.deepEqual(manifest.arch,['amd64']);

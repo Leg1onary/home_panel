@@ -5,7 +5,7 @@ const output=resolve('addon-package'),app=resolve(output,'home_panel');
 await rm(output,{recursive:true,force:true});
 await mkdir(app,{recursive:true});
 for(const name of ['config.json','Dockerfile','.dockerignore','startup.mjs']){
- await copyFile(resolve('addon/home-panel',name),resolve(app,name));
+ await copyFile(resolve('addon/home-panel',name==='config.json'?'manifest.json':name),resolve(app,name));
 }
 for(const name of ['server.mjs','package.json','package-lock.json']){
  await copyFile(resolve('release',name),resolve(app,name));
