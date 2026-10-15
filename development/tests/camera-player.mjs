@@ -55,7 +55,7 @@ globalThis.fetch=async(url,options)=>{
  if(options.method==='DELETE')releases++;
  return {ok:true,json:async()=>({key:'test-session',url:'ha/stream/test-session/master_playlist.m3u8'})};
 };
-const {startCameraPlayer}=await import('../src/camera-player.js');
+const {startHlsCameraPlayer:startCameraPlayer}=await import('../src/hls-camera-player.js');
 const status={textContent:''},video=new Video();
 const player=startCameraPlayer('camera-yard',video,status);
 await player.ready;

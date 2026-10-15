@@ -8,6 +8,7 @@ import Database from 'better-sqlite3';
 import {defaultPreferences,validatePreferences,bindingDefinitions} from '../src/preferences.js';
 import {HomeAssistant} from './ha.js';
 import {CameraStreams} from './stream.js';
+import {CameraRTC} from './rtc.js';
 import {deviceTypes,samePhysicalDevice} from '../src/catalog.js';
 import {migrateHouseProfile,activateHouseProfile,bindingProblem} from '../src/house-profile.js';
 
@@ -21,7 +22,9 @@ db.pragma('journal_mode = WAL');
 db.exec('CREATE TABLE IF NOT EXISTS profiles (id TEXT PRIMARY KEY, preferences TEXT NOT NULL, photo BLOB);');
 const ha=new HomeAssistant({url:process.env.HA_URL,token:process.env.HA_TOKEN,preview});
 const streams=new CameraStreams(ha);
+const rtc=new CameraRTC(ha);
 setInterval(()=>streams.prune(),30000).unref();
+setInterval(()=>rtc.prune(),30000).unref();
 const proofs=new Map(),pendingScopes=new Map();
 const getProfile=id=>{
  let row=db.prepare('SELECT * FROM profiles WHERE id=?').get(id);
@@ -126,6 +129,24 @@ const server=http.createServer(async(req,res)=>{
    if(route==='ha/stream/start'&&req.method==='POST'){
     const request=JSON.parse((await body(req)).toString());
     return json(res,200,await streams.start(request.id,p.preferences,id));
+   }
+   if(route==='ha/rtc/start'&&req.method==='POST'){
+    const request=JSON.parse((await body(req)).toString());
+    return json(res,200,await rtc.start(request.id,p.preferences,id));
+   }
+   const rtcRoute=/^ha\/rtc\/([a-f0-9]{48})(?:\/(offer|candidate|events))?$/.exec(route);
+   if(rtcRoute){
+    const [,key,action]=rtcRoute;
+    if(req.method==='DELETE'&&!action){rtc.get(key,id,p.preferences);rtc.close(key);return json(res,200,{stopped:true})}
+    if(req.method==='GET'&&action==='events'){
+     if(req.headers['sec-fetch-site']==='cross-site')throw new Error('Межсайтовый запрос запрещён.');
+     if([...url.searchParams.keys()].some(k=>k!=='after'))throw new Error('Неверный параметр WebRTC.');
+     return json(res,200,rtc.events(key,id,p.preferences,Number(url.searchParams.get('after')||0)));
+    }
+    if(req.method==='POST'&&['offer','candidate'].includes(action)){
+     const request=JSON.parse((await body(req,140000)).toString());
+     return json(res,200,action==='offer'?await rtc.offer(key,id,p.preferences,request.offer):await rtc.addCandidate(key,id,p.preferences,request.candidate));
+    }
    }
    const streamRoute=/^ha\/stream\/([a-f0-9]{48})(?:\/(.+))?$/.exec(route);
    if(streamRoute){

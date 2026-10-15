@@ -242,15 +242,15 @@ function openYardCamera(){
 function cameraSheet(id){
  const d=state.devices.find(d=>d.id===id);if(!d)return;
  const e=observed(id),enabled=isLive()&&!state.preview&&d.status==='installed'&&e&&!['unknown','unavailable'].includes(e.state);
- modal(`<div class="eyebrow">${esc(areaName(d.room))}</div><h2>${esc(d.name)}</h2><p class="description">${d.status==='planned'?'Камера ещё не установлена.':'Прямой эфир по запросу. Закрой окно, чтобы остановить просмотр.'}</p><div id="camera-frame" class="camera-frame"><span>${enabled?'Подключаем видео…':'Сначала привяжи и проверь сущность камеры в настройках'}</span></div><p id="camera-status" role="status">${enabled?'Подключаем прямой эфир…':'Подключение камеры ещё не проверено'}</p><div class="camera-actions"><button class="primary" data-camera-start="${id}" ${disabled(!enabled)}>${I('play')}Прямой эфир</button><button class="secondary" data-action="camera-stop" ${disabled(!enabled)}>${I('pause')}Стоп</button><button class="secondary" data-action="camera-fullscreen" ${disabled(!enabled)}>${I('maximize')}На весь экран</button><button class="text-button" data-camera-frame="${id}" ${disabled(!enabled)}>${I('camera')}Снимок</button></div>`);
+ modal(`<div class="eyebrow">${esc(areaName(d.room))}</div><h2>${esc(d.name)}</h2><p class="description">${d.status==='planned'?'Камера ещё не установлена.':'Прямой эфир по запросу. Закрой окно, чтобы остановить просмотр.'}</p><div id="camera-frame" class="camera-frame"><span>${enabled?'Подключаем видео…':'Сначала привяжи и проверь сущность камеры в настройках'}</span></div><p id="camera-status" role="status">${enabled?'Подключаем прямой эфир…':'Подключение камеры ещё не проверено'}</p><div class="camera-actions"><button class="primary" data-camera-start="${id}" ${disabled(!enabled)}>${I('play')}Прямой эфир</button><button class="secondary" data-action="camera-stop" ${disabled(!enabled)}>${I('pause')}Стоп</button><button class="secondary" data-action="camera-fullscreen" ${disabled(!enabled)}>${I('maximize')}На весь экран</button><button class="text-button" data-camera-hls="${id}" ${disabled(!enabled)}>HLS · резерв</button><button class="text-button" data-camera-frame="${id}" ${disabled(!enabled)}>${I('camera')}Снимок</button></div>`);
  $('.sheet').classList.add('camera-sheet');$('#overlay').classList.add('camera-overlay');cameraDevice=id;
  if(enabled)cameraStart(id);
 }
-function cameraStart(id){
+function cameraStart(id,transport='auto'){
  clearCamera();cameraDevice=id;
  $('#camera-frame').innerHTML='<video id="camera-video" controls autoplay muted playsinline webkit-playsinline aria-label="Прямой эфир камеры двора"></video>';
  const video=$('#camera-video');video.muted=true;
- cameraPlayer=startCameraPlayer(id,video,$('#camera-status'));
+ cameraPlayer=startCameraPlayer(id,video,$('#camera-status'),{transport});
  clearTimeout(idleTimer);
 }
 function cameraStop(){
@@ -590,6 +590,7 @@ document.addEventListener('click',e=>{
  if(b.dataset.sensor)return simpleSheet(sensorSheet(b.dataset.sensor));
  if(b.dataset.camera)return cameraSheet(b.dataset.camera);
  if(b.dataset.cameraStart)return cameraStart(b.dataset.cameraStart);
+ if(b.dataset.cameraHls)return cameraStart(b.dataset.cameraHls,'hls');
  if(b.dataset.cameraFrame)return cameraFrame(b.dataset.cameraFrame,b);
  if(b.dataset.editDevice){catalogEdit=b.dataset.editDevice;techMessage='';updateTechnical();return}
  if(b.dataset.orderDevice){

@@ -1,119 +1,101 @@
-import {api,panelURL,assetURL} from './api.js';
-import {stableHlsConfig,bufferedPlaylistLoader,bufferedAhead,frameLoss} from './camera-policy.js';
+import {api} from './api.js';
+import {frameLoss} from './camera-policy.js';
+import {startHlsCameraPlayer} from './hls-camera-player.js';
 
-let library;
-function loadHls(){
- if(window.HomePanelHls)return Promise.resolve(window.HomePanelHls);
- if(!library)library=new Promise((resolve,reject)=>{
-  const script=document.createElement('script');script.src=assetURL('assets/hls-player.js');
-  script.onload=()=>window.HomePanelHls?resolve(window.HomePanelHls):reject(new Error('Не загрузился видеоплеер.'));
-  script.onerror=()=>{script.remove();library=null;reject(new Error('Не загрузился видеоплеер. Перезагрузи панель.'))};
-  document.head.appendChild(script);
- });
- return library;
-}
-export function startCameraPlayer(id,video,status){
- let disposed=false,session=null,hls=null,timer,stalledTimer,engine='подключение',codec='',recoveries=0,recoveryTimer,recovering=false;
- let statsTimer,networkTimer,networkRetries=0,buffering=false,stalls=0,started=false,lastIssue='';
- let delivery='',loadedParts=0;
- const message=text=>{if(!disposed)status.textContent=text};
- const diagnostic=()=>`${engine}${delivery?' · '+delivery:''}${codec?' · '+codec:''}${video.videoWidth?' · '+video.videoWidth+'×'+video.videoHeight:''}`;
- const statistics=()=>`буфер ${bufferedAhead(video).toFixed(1)} с · скорость ${(video.playbackRate||1).toFixed(2)}×${hls&&Number.isFinite(hls.latency)?' · задержка '+hls.latency.toFixed(1)+' с':''} · остановок ${stalls} · пропущено кадров ${frameLoss(video)}${delivery==='LL-HLS'?' · частей '+loadedParts:''}${lastIssue?' · посл. '+lastIssue:''}`;
- const showStats=()=>{
-  if(disposed||!started||recovering||video.paused)return;
-  message((buffering?'Буферизация':'Прямой эфир')+' · '+diagnostic()+' · '+statistics()+(hls?' · стабильный режим':' · встроенный плеер'));
+export function startCameraPlayer(id,video,status,{transport='auto'}={}){
+ let stopped=false,rtcClosed=false,session,peer,stream,hls,pollTimer,startTimer,statsTimer,disconnectTimer,cursor=0,sessionReady=false,answered=false,flushing=false;
+ const local=[],remote=[];
+ const message=text=>{if(!stopped)status.textContent=text};
+ const cleanupRTC=()=>{
+  if(rtcClosed)return;rtcClosed=true;
+  clearTimeout(pollTimer);clearTimeout(startTimer);clearTimeout(disconnectTimer);clearInterval(statsTimer);
+  video.removeEventListener('playing',playing);video.removeEventListener('waiting',waiting);
+  if(peer){peer.onicecandidate=null;peer.ontrack=null;peer.onconnectionstatechange=null;peer.close()}
+  stream?.getTracks().forEach(t=>t.stop());video.pause();video.srcObject=null;video.removeAttribute('src');video.load();
+  if(session)api('ha/rtc/'+session.key,{method:'DELETE'}).catch(()=>{});
  };
- const fail=text=>{if(disposed)return;message(text+' ['+diagnostic()+'] Можно повторить запуск или получить снимок.');cleanup()};
- const release=key=>api('ha/stream/'+key,{method:'DELETE'}).catch(()=>{});
- const cleanup=()=>{
-  if(disposed)return;disposed=true;clearTimeout(timer);clearTimeout(stalledTimer);clearTimeout(recoveryTimer);clearTimeout(networkTimer);clearInterval(statsTimer);
-  video.removeEventListener('playing',playing);video.removeEventListener('waiting',waiting);video.removeEventListener('error',videoError);
-  if(hls)hls.destroy();video.pause();video.removeAttribute('src');video.load();
-  if(session)release(session.key);
+ const fallback=reason=>{
+  if(stopped||hls)return;
+  cleanupRTC();
+  const notice=reason?'Резерв HLS: '+reason+' · ':'';
+  hls=startHlsCameraPlayer(id,video,{set textContent(text){message(notice+text)}});
  };
- const playback=()=>{
-  if(disposed)return;
-  const result=video.play();
-  if(result&&result.catch)result.catch(()=>message('Нажми ▶ на видео для начала просмотра.'));
+ const play=()=>{
+  if(stopped||rtcClosed)return;
+  const result=video.play();result?.catch(()=>message('WebRTC подключён. Нажми ▶ на видео.'));
  };
- const playing=()=>{if(disposed)return;started=true;buffering=false;recovering=false;clearTimeout(timer);clearTimeout(stalledTimer);clearTimeout(recoveryTimer);showStats()};
- const waiting=()=>{
-  if(disposed)return;
-  if(!buffering&&started)stalls++;
-  buffering=true;message('Буферизация видео · '+statistics());clearTimeout(stalledTimer);
-  stalledTimer=setTimeout(()=>fail('Поток перестал обновляться. '+statistics()),45000);
+ const playing=()=>{if(stopped||rtcClosed)return;clearTimeout(startTimer);message(`Прямой эфир · WebRTC · ${video.videoWidth}×${video.videoHeight} · пропущено кадров ${frameLoss(video)}`)};
+ const waiting=()=>message('WebRTC · ожидаем видеоданные…');
+ const flushLocal=async()=>{
+  if(flushing||!sessionReady||stopped||rtcClosed)return;flushing=true;
+  try{while(local.length&&!stopped&&!rtcClosed)await api('ha/rtc/'+session.key+'/candidate',{method:'POST',body:{candidate:local.shift()}})}
+  catch{fallback('не удалось передать ICE-кандидат')}
+  finally{flushing=false}
  };
- const recover=()=>{
-  if(disposed||!hls||recoveries)return false;
-  recoveries++;recovering=true;message('Перезапускаем видеодекодер · '+diagnostic());
-  // One bounded recovery, not an endless flashing/reconnect loop.
-  recoveryTimer=setTimeout(()=>{
-   if(disposed)return;
-   try{hls.recoverMediaError();timer=setTimeout(()=>fail('После восстановления видео не запустилось.'),30000)}
-   catch{fail('Не удалось восстановить видеодекодер.')}
-  },200);
-  return true;
+ const addRemote=async c=>{
+  if(stopped||rtcClosed)return;
+  await peer.addIceCandidate(c.sdpMid!=null||c.sdpMLineIndex!=null?c:{...c,sdpMid:'0'});
  };
- const videoError=()=>{
-  const code=video.error?.code;
-  if(code===3&&recover())return;
-  if(code===3&&recovering)return;
-  const label=({1:'Просмотр прерван',2:'Ошибка загрузки видео',3:'Ошибка декодирования видео',4:'Формат видео не поддерживается'})[code]||'Не удалось воспроизвести видео';
-  fail(label+' (MediaError '+(code||'неизвестен')+').');
- };
- video.addEventListener('playing',playing);video.addEventListener('waiting',waiting);video.addEventListener('error',videoError);
- statsTimer=setInterval(showStats,1000);
- message('Подключаем прямой эфир…');
- const ready=(async()=>{
+ const poll=async()=>{
+  if(stopped||rtcClosed)return;
   try{
-   const nativeSupport=!!video.canPlayType('application/vnd.apple.mpegurl');
-   let Hls;
-   try{Hls=await loadHls()}catch(error){if(!nativeSupport)throw error}
-   if(disposed)return;
-   // canPlayType may return "maybe" while the native HLS implementation fails.
-   // Prefer MSE/HLS.js whenever available; native HLS is a last capability fallback.
-   const mse=!!Hls&&Hls.isSupported();
-   if(!mse&&!nativeSupport)throw new Error('Этот WebView не поддерживает HLS-видео. Обнови WebView или используй снимок.');
-   engine=mse?'HLS.js':'встроенный HLS';
-   session=await api('ha/stream/start',{method:'POST',body:{id}});
-   if(disposed){release(session.key);return}
-   timer=setTimeout(()=>fail('Видео не началось за 60 секунд.'),60000);
-   const source=panelURL(session.url);
-   if(!mse){video.src=source;video.addEventListener('loadedmetadata',playback,{once:true});playback()}
-   else{
-    hls=new Hls({...stableHlsConfig,pLoader:bufferedPlaylistLoader(Hls)});
-    hls.on(Hls.Events.LEVEL_LOADED,(_,data)=>{
-     delivery=data.details?.partTarget>0||data.details?.partList?.length?'LL-HLS':'HLS';
-    });
-    hls.on(Hls.Events.FRAG_LOADED,(_,data)=>{if(data.part)loadedParts++});
-    hls.on(Hls.Events.MANIFEST_PARSED,(_,data)=>{
-     const value=data.levels?.[0]?.videoCodec;
-     if(typeof value==='string'&&/^[a-zA-Z0-9.,_-]{1,64}$/.test(value))codec=value;
-     playback();
-    });
-    hls.on(Hls.Events.ERROR,(_,data)=>{
-     if(disposed)return;
-     const detail=/^[a-zA-Z0-9_-]{1,80}$/.test(data.details||'')?data.details:'unknown';
-     lastIssue=detail;
-     if(!data.fatal)return;
-     if(data.type===Hls.ErrorTypes.MEDIA_ERROR){
-      if(recover()||recovering)return;
-     }
-     if(data.type===Hls.ErrorTypes.NETWORK_ERROR&&networkRetries<2){
-      networkRetries++;clearTimeout(networkTimer);
-      message(`Повтор загрузки видео ${networkRetries} / 2 · ${detail}`);
-      networkTimer=setTimeout(()=>{
-       if(!disposed){hls.startLoad();clearTimeout(timer);timer=setTimeout(()=>fail('Не удалось продолжить загрузку видео. '+statistics()),45000)}
-      },networkRetries*1500);
-      return;
-     }
-     fail(`Ошибка видеопотока (${detail}). Проверь эту сущность в HA на том же устройстве.`);
-    });
-    hls.loadSource(source);hls.attachMedia(video);
+   const result=await api('ha/rtc/'+session.key+'/events?after='+cursor);
+   if(stopped||rtcClosed)return;
+   for(const e of result.events){
+    if(stopped||rtcClosed)return;
+    if(e.type==='session'){sessionReady=true;flushLocal()}
+    else if(e.type==='answer'){
+     if(!answered){await peer.setRemoteDescription({type:'answer',sdp:e.answer});answered=true;
+      while(remote.length&&!stopped&&!rtcClosed)await addRemote(remote.shift())}
+    }else if(e.type==='candidate'){
+     if(answered)await addRemote(e.candidate);else remote.push(e.candidate);
+    }else if(e.type==='error'){fallback('HA не подготовил WebRTC');return}
    }
-  }catch(error){fail(error.message)}
+   cursor=result.cursor;
+   if(!stopped&&!rtcClosed)pollTimer=setTimeout(poll,500);
+  }catch{fallback('сигнальный канал WebRTC недоступен')}
+ };
+ const ready=(async()=>{
+  if(transport==='hls'){fallback('');await hls.ready;return}
+  if(typeof RTCPeerConnection==='undefined'||typeof MediaStream==='undefined'){fallback('WebRTC не поддерживается браузером');await hls.ready;return}
+  message('Проверяем WebRTC камеры…');
+  startTimer=setTimeout(()=>fallback('WebRTC не подключился за 20 секунд'),20000);
+  try{
+   let created;
+   try{created=await api('ha/rtc/start',{method:'POST',body:{id}})}
+   catch(error){fallback(error.message?.includes('не поддерживает')?'HA не предоставляет WebRTC для этой сущности':'WebRTC API HA недоступен');return}
+   if(stopped||rtcClosed){api('ha/rtc/'+created.key,{method:'DELETE'}).catch(()=>{});return}
+   session=created;peer=new RTCPeerConnection(created.configuration);
+   if(created.dataChannel)peer.createDataChannel(created.dataChannel);
+   stream=new MediaStream();
+   peer.ontrack=e=>{
+    if(stopped||rtcClosed)return;
+    if(e.track.kind==='audio'&&video.muted)return;
+    stream.addTrack(e.track);video.srcObject=stream;play();
+   };
+   peer.onicecandidate=e=>{
+    if(!e.candidate?.candidate||stopped||rtcClosed)return;
+    if(local.length>=128){fallback('слишком много ICE-кандидатов');return}
+    local.push(e.candidate.toJSON());flushLocal();
+   };
+   peer.onconnectionstatechange=()=>{
+    if(stopped||rtcClosed)return;
+    if(peer.connectionState==='failed'){fallback('нет маршрута WebRTC до камеры');return}
+    if(peer.connectionState==='disconnected'){
+     clearTimeout(disconnectTimer);disconnectTimer=setTimeout(()=>fallback('соединение WebRTC потеряно'),8000);
+    }else clearTimeout(disconnectTimer);
+   };
+   video.addEventListener('playing',playing);video.addEventListener('waiting',waiting);
+   statsTimer=setInterval(()=>{if(!stopped&&!rtcClosed&&!video.paused&&video.readyState>=2)playing()},1000);
+   peer.addTransceiver('audio',{direction:'recvonly'});peer.addTransceiver('video',{direction:'recvonly'});
+   const offer=await peer.createOffer();
+   if(stopped||rtcClosed)return;
+   await peer.setLocalDescription(offer);
+   if(stopped||rtcClosed)return;
+   await api('ha/rtc/'+session.key+'/offer',{method:'POST',body:{offer:offer.sdp}});
+   if(stopped||rtcClosed)return;
+   message('WebRTC · устанавливаем соединение…');poll();
+  }catch{if(!stopped&&!rtcClosed)fallback('WebRTC недоступен для этой камеры')}
  })();
- return {ready,stop(){
-  cleanup();
- }};
+ return {ready,stop(){if(stopped)return;stopped=true;cleanupRTC();hls?.stop()}};
 }

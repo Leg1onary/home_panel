@@ -1,0 +1,31 @@
+<!doctype html><html lang="en"><title>Generated WebRTC sender</title>
+<canvas width="640" height="360"></canvas><pre id="status"></pre>
+<script>
+const canvas=document.querySelector('canvas'),ctx=canvas.getContext('2d'),peers=new Map(),source=canvas.captureStream(20);
+let frame=0;
+setInterval(()=>{ctx.fillStyle='#163d52';ctx.fillRect(0,0,640,360);ctx.fillStyle='#e3eabc';ctx.font='36px monospace';ctx.fillText('GENERATED '+frame++,30,90);ctx.fillRect((frame*3)%600,160,40,100)},50);
+async function answer(job){
+ const peer=new RTCPeerConnection({iceServers:[]});peers.set(job.key,peer);
+ for(const t of source.getTracks())peer.addTrack(t,source);
+ await peer.setRemoteDescription({type:'offer',sdp:job.offer});
+ await peer.setLocalDescription(await peer.createAnswer());
+ await new Promise(resolve=>{
+  if(peer.iceGatheringState==='complete')return resolve();
+  peer.onicegatheringstatechange=()=>{if(peer.iceGatheringState==='complete')resolve()};
+ });
+ await fetch('/qa/answer',{method:'POST',body:JSON.stringify({key:job.key,answer:peer.localDescription.sdp})});
+}
+async function poll(){
+ try{
+  const jobs=await(await fetch('/qa/jobs')).json(),live=new Set(jobs.map(j=>j.key));
+  for(const [key,peer]of peers)if(!live.has(key)){peer.close();peers.delete(key)}
+  for(const job of jobs){
+   if(!peers.has(job.key))await answer(job);
+   for(const c of job.candidates)await peers.get(job.key).addIceCandidate(c);
+  }
+  document.querySelector('#status').textContent='peers '+peers.size;
+ }catch(e){document.querySelector('#status').textContent=e.message}
+ setTimeout(poll,100);
+}
+poll();
+</script></html>

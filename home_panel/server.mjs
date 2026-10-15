@@ -4,7 +4,7 @@ import { readFile, stat, mkdir } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 import { spawn } from "node:child_process";
 import { isIP } from "node:net";
-import { randomBytes as randomBytes2, createHash, timingSafeEqual } from "node:crypto";
+import { randomBytes as randomBytes3, createHash, timingSafeEqual } from "node:crypto";
 import Database from "better-sqlite3";
 
 // config/house.json
@@ -521,6 +521,180 @@ var CameraStreams = class {
   }
 };
 
+// server/rtc.js
+import WebSocket2 from "ws";
+import { randomBytes as randomBytes2 } from "node:crypto";
+function candidate(value) {
+  if (!value || typeof value.candidate !== "string" || value.candidate.length > 4096) throw new Error("\u041D\u0435\u0432\u0435\u0440\u043D\u044B\u0439 ICE-\u043A\u0430\u043D\u0434\u0438\u0434\u0430\u0442.");
+  const result = { candidate: value.candidate };
+  if (value.sdpMid != null) {
+    if (typeof value.sdpMid !== "string" || value.sdpMid.length > 64) throw new Error("\u041D\u0435\u0432\u0435\u0440\u043D\u044B\u0439 ICE mid.");
+    result.sdpMid = value.sdpMid;
+  }
+  if (value.sdpMLineIndex != null) {
+    if (!Number.isInteger(value.sdpMLineIndex) || value.sdpMLineIndex < 0 || value.sdpMLineIndex > 32) throw new Error("\u041D\u0435\u0432\u0435\u0440\u043D\u044B\u0439 ICE index.");
+    result.sdpMLineIndex = value.sdpMLineIndex;
+  }
+  if (value.usernameFragment != null && typeof value.usernameFragment === "string" && value.usernameFragment.length <= 256) result.usernameFragment = value.usernameFragment;
+  return result;
+}
+function clientConfig(raw) {
+  const c = raw?.configuration || {}, configuration = {};
+  if (Array.isArray(c.iceServers)) {
+    configuration.iceServers = c.iceServers.slice(0, 12).map((server2) => {
+      const urls = (Array.isArray(server2.urls) ? server2.urls : [server2.urls]).filter((u) => typeof u === "string" && /^(stun|stuns|turn|turns):[^@\s]+$/.test(u) && u.length < 2048);
+      if (!urls.length) throw new Error("\u041D\u0435\u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u043C\u0430\u044F \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u044F ICE.");
+      const out2 = { urls };
+      for (const key of ["username", "credential"]) if (typeof server2[key] === "string" && server2[key].length <= 4096) out2[key] = server2[key];
+      return out2;
+    });
+  }
+  for (const [key, values] of Object.entries({ iceTransportPolicy: ["all", "relay"], bundlePolicy: ["balanced", "max-compat", "max-bundle"], rtcpMuxPolicy: ["require"] })) if (values.includes(c[key])) configuration[key] = c[key];
+  const out = { configuration };
+  if (typeof raw?.dataChannel === "string" && raw.dataChannel.length <= 128) out.dataChannel = raw.dataChannel;
+  return out;
+}
+var CameraRTC = class {
+  constructor(ha2) {
+    this.ha = ha2;
+    this.sessions = /* @__PURE__ */ new Map();
+  }
+  prune() {
+    for (const [key, s] of this.sessions) if (s.expires < Date.now()) this.close(key);
+  }
+  close(key) {
+    const s = this.sessions.get(key);
+    if (!s) return;
+    this.sessions.delete(key);
+    s.closed = true;
+    for (const pending of s.pending.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error("\u041F\u0440\u043E\u0441\u043C\u043E\u0442\u0440 \u0437\u0430\u0432\u0435\u0440\u0448\u0451\u043D."));
+    }
+    s.pending.clear();
+    if (s.ws.readyState === WebSocket2.OPEN) s.ws.close();
+    else s.ws.terminate();
+  }
+  get(key, owner, p) {
+    this.prune();
+    const s = this.sessions.get(key);
+    if (!s || s.owner !== owner) throw new Error("WebRTC-\u043F\u0440\u043E\u0441\u043C\u043E\u0442\u0440 \u0437\u0430\u0432\u0435\u0440\u0448\u0451\u043D.");
+    if (this.ha.cameraEntity(s.id, p) !== s.entity) {
+      this.close(key);
+      throw new Error("\u041F\u0440\u0438\u0432\u044F\u0437\u043A\u0430 \u043A\u0430\u043C\u0435\u0440\u044B \u0438\u0437\u043C\u0435\u043D\u0438\u043B\u0430\u0441\u044C.");
+    }
+    s.expires = Date.now() + 9e4;
+    return s;
+  }
+  push(s, event) {
+    if (s.closed) return;
+    if (s.events.length >= 128) {
+      s.events.shift();
+    }
+    s.events.push({ seq: ++s.seq, ...event });
+  }
+  call(s, type, fields = {}) {
+    if (s.closed || s.ws.readyState !== WebSocket2.OPEN) return Promise.reject(new Error("\u041D\u0435\u0442 \u0441\u0432\u044F\u0437\u0438 \u0441 \u0432\u0438\u0434\u0435\u043E API HA."));
+    const id = ++s.counter;
+    return new Promise((resolve2, reject) => {
+      const timer = setTimeout(() => {
+        s.pending.delete(id);
+        reject(new Error("\u0412\u0438\u0434\u0435\u043E API HA \u043D\u0435 \u043E\u0442\u0432\u0435\u0442\u0438\u043B \u0437\u0430 12 \u0441\u0435\u043A\u0443\u043D\u0434."));
+      }, 12e3);
+      s.pending.set(id, { resolve: resolve2, reject, timer });
+      s.ws.send(JSON.stringify({ id, type, ...fields }));
+    });
+  }
+  async start(id, p, owner) {
+    this.prune();
+    const entity = this.ha.cameraEntity(id, p);
+    if (this.sessions.size >= 6) throw new Error("\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u043C\u043D\u043E\u0433\u043E WebRTC-\u043F\u0440\u043E\u0441\u043C\u043E\u0442\u0440\u043E\u0432.");
+    const endpoint = new URL(this.ha.url);
+    endpoint.protocol = endpoint.protocol === "https:" ? "wss:" : "ws:";
+    endpoint.pathname = endpoint.hostname === "supervisor" ? "/core/websocket" : endpoint.pathname.replace(/\/$/, "") + "/api/websocket";
+    const key = randomBytes2(24).toString("hex");
+    const ws = new WebSocket2(endpoint, { headers: { Authorization: `Bearer ${this.ha.token}` }, maxPayload: 256 * 1024, followRedirects: false });
+    const s = { key, owner, id, entity, ws, expires: Date.now() + 9e4, counter: 0, pending: /* @__PURE__ */ new Map(), events: [], seq: 0, closed: false, offered: false, subscription: null, sessionId: null, candidates: 0 };
+    this.sessions.set(key, s);
+    try {
+      await new Promise((resolve2, reject) => {
+        const timer = setTimeout(() => reject(new Error("\u041D\u0435\u0442 \u0441\u0432\u044F\u0437\u0438 \u0441 WebRTC API HA.")), 12e3);
+        const done = (error) => {
+          clearTimeout(timer);
+          error ? reject(error) : resolve2();
+        };
+        ws.on("message", (bytes) => {
+          try {
+            const m = JSON.parse(bytes.toString());
+            if (m.type === "auth_required") ws.send(JSON.stringify({ type: "auth", access_token: this.ha.token }));
+            else if (m.type === "auth_invalid") done(new Error("HA \u043E\u0442\u043A\u043B\u043E\u043D\u0438\u043B \u0430\u0432\u0442\u043E\u0440\u0438\u0437\u0430\u0446\u0438\u044E WebRTC."));
+            else if (m.type === "auth_ok") done();
+            else if (m.type === "result") {
+              const request = s.pending.get(m.id);
+              if (request) {
+                s.pending.delete(m.id);
+                clearTimeout(request.timer);
+                m.success ? request.resolve(m.result) : request.reject(new Error("HA \u043E\u0442\u043A\u043B\u043E\u043D\u0438\u043B \u0437\u0430\u043F\u0440\u043E\u0441 WebRTC."));
+              }
+            } else if (m.type === "event" && m.id === s.subscription) {
+              const e = m.event;
+              if (e?.type === "session" && typeof e.session_id === "string" && e.session_id.length <= 256) {
+                s.sessionId = e.session_id;
+                this.push(s, { type: "session" });
+              } else if (e?.type === "answer" && typeof e.answer === "string" && e.answer.startsWith("v=0") && e.answer.length <= 131072) this.push(s, { type: "answer", answer: e.answer });
+              else if (e?.type === "candidate") this.push(s, { type: "candidate", candidate: candidate(e.candidate) });
+              else if (e?.type === "error") this.push(s, { type: "error", message: "Home Assistant \u043D\u0435 \u0441\u043C\u043E\u0433 \u043F\u043E\u0434\u0433\u043E\u0442\u043E\u0432\u0438\u0442\u044C WebRTC-\u043F\u043E\u0442\u043E\u043A." });
+            }
+          } catch {
+            this.push(s, { type: "error", message: "\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u043E\u0442\u0432\u0435\u0442 \u0432\u0438\u0434\u0435\u043E API HA." });
+          }
+        });
+        ws.on("error", () => done(new Error("\u041D\u0435\u0442 \u0441\u0432\u044F\u0437\u0438 \u0441 WebRTC API HA.")));
+        ws.on("close", () => {
+          done(new Error("\u0421\u043E\u0435\u0434\u0438\u043D\u0435\u043D\u0438\u0435 WebRTC \u0441 HA \u0437\u0430\u043A\u0440\u044B\u0442\u043E."));
+          if (!s.closed) {
+            for (const request of s.pending.values()) {
+              clearTimeout(request.timer);
+              request.reject(new Error("\u0421\u043E\u0435\u0434\u0438\u043D\u0435\u043D\u0438\u0435 WebRTC \u0441 HA \u0437\u0430\u043A\u0440\u044B\u0442\u043E."));
+            }
+            s.pending.clear();
+            this.push(s, { type: "error", message: "\u0421\u043E\u0435\u0434\u0438\u043D\u0435\u043D\u0438\u0435 \u0432\u0438\u0434\u0435\u043E API HA \u0437\u0430\u043A\u0440\u044B\u0442\u043E." });
+          }
+        });
+      });
+      const caps = await this.call(s, "camera/capabilities", { entity_id: entity });
+      if (!caps?.frontend_stream_types?.includes("web_rtc")) throw new Error("\u042D\u0442\u0430 \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u044C HA \u043D\u0435 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442 WebRTC.");
+      const config = clientConfig(await this.call(s, "camera/webrtc/get_client_config", { entity_id: entity }));
+      return { key, ...config };
+    } catch (error) {
+      this.close(key);
+      throw error;
+    }
+  }
+  async offer(key, owner, p, offer) {
+    const s = this.get(key, owner, p);
+    if (s.offered) throw new Error("WebRTC offer \u0443\u0436\u0435 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D.");
+    if (typeof offer !== "string" || !offer.startsWith("v=0") || offer.length > 131072) throw new Error("\u041D\u0435\u0432\u0435\u0440\u043D\u044B\u0439 WebRTC offer.");
+    s.offered = true;
+    s.subscription = s.counter + 1;
+    await this.call(s, "camera/webrtc/offer", { entity_id: s.entity, offer });
+    return { accepted: true };
+  }
+  async addCandidate(key, owner, p, value) {
+    const s = this.get(key, owner, p), c = candidate(value);
+    if (!s.sessionId) throw new Error("ICE-\u0441\u0435\u0441\u0441\u0438\u044F \u0435\u0449\u0451 \u043D\u0435 \u0441\u043E\u0437\u0434\u0430\u043D\u0430.");
+    if (++s.candidates > 128) throw new Error("\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u043C\u043D\u043E\u0433\u043E ICE-\u043A\u0430\u043D\u0434\u0438\u0434\u0430\u0442\u043E\u0432.");
+    await this.call(s, "camera/webrtc/candidate", { entity_id: s.entity, session_id: s.sessionId, candidate: c });
+    return { accepted: true };
+  }
+  events(key, owner, p, after) {
+    if (!Number.isSafeInteger(after) || after < 0) throw new Error("\u041D\u0435\u0432\u0435\u0440\u043D\u044B\u0439 \u043A\u0443\u0440\u0441\u043E\u0440 WebRTC.");
+    const s = this.get(key, owner, p);
+    if (after > s.seq || s.events.length && after < s.events[0].seq - 1) throw new Error("WebRTC-\u0441\u0438\u0433\u043D\u0430\u043B\u044B \u0443\u0441\u0442\u0430\u0440\u0435\u043B\u0438. \u041E\u0442\u043A\u0440\u043E\u0439 \u043A\u0430\u043C\u0435\u0440\u0443 \u0437\u0430\u043D\u043E\u0432\u043E.");
+    return { events: s.events.filter((e) => e.seq > after), cursor: s.seq };
+  }
+};
+
 // src/house-profile.js
 var houseBindings = {
   "living:0": "light.gostinaia_levyi_vykliuchatel",
@@ -655,7 +829,9 @@ db.pragma("journal_mode = WAL");
 db.exec("CREATE TABLE IF NOT EXISTS profiles (id TEXT PRIMARY KEY, preferences TEXT NOT NULL, photo BLOB);");
 var ha = new HomeAssistant({ url: process.env.HA_URL, token: process.env.HA_TOKEN, preview });
 var streams = new CameraStreams(ha);
+var rtc = new CameraRTC(ha);
 setInterval(() => streams.prune(), 3e4).unref();
+setInterval(() => rtc.prune(), 3e4).unref();
 var proofs = /* @__PURE__ */ new Map();
 var pendingScopes = /* @__PURE__ */ new Map();
 var getProfile = (id) => {
@@ -717,11 +893,11 @@ var server = http.createServer(async (req, res) => {
     if (path.startsWith("/api/panel/")) {
       const id = identify(req), p = getProfile(id), route = path.slice("/api/panel/".length);
       if (req.method === "GET" && route === "session") {
-        if (!proofs.has(id)) proofs.set(id, randomBytes2(32).toString("hex"));
+        if (!proofs.has(id)) proofs.set(id, randomBytes3(32).toString("hex"));
         return json(res, 200, { proof: proofs.get(id) });
       }
       if (req.method === "GET" && route === "bootstrap") {
-        if (!proofs.has(id)) proofs.set(id, randomBytes2(32).toString("hex"));
+        if (!proofs.has(id)) proofs.set(id, randomBytes3(32).toString("hex"));
         return json(res, 200, { preferences: p.preferences, photo: !!p.photo, proof: proofs.get(id), preview, addon, haConfigured: ha.enabled });
       }
       if (req.method !== "GET") authorize(req, id);
@@ -778,6 +954,28 @@ var server = http.createServer(async (req, res) => {
       if (route === "ha/stream/start" && req.method === "POST") {
         const request = JSON.parse((await body(req)).toString());
         return json(res, 200, await streams.start(request.id, p.preferences, id));
+      }
+      if (route === "ha/rtc/start" && req.method === "POST") {
+        const request = JSON.parse((await body(req)).toString());
+        return json(res, 200, await rtc.start(request.id, p.preferences, id));
+      }
+      const rtcRoute = /^ha\/rtc\/([a-f0-9]{48})(?:\/(offer|candidate|events))?$/.exec(route);
+      if (rtcRoute) {
+        const [, key, action] = rtcRoute;
+        if (req.method === "DELETE" && !action) {
+          rtc.get(key, id, p.preferences);
+          rtc.close(key);
+          return json(res, 200, { stopped: true });
+        }
+        if (req.method === "GET" && action === "events") {
+          if (req.headers["sec-fetch-site"] === "cross-site") throw new Error("\u041C\u0435\u0436\u0441\u0430\u0439\u0442\u043E\u0432\u044B\u0439 \u0437\u0430\u043F\u0440\u043E\u0441 \u0437\u0430\u043F\u0440\u0435\u0449\u0451\u043D.");
+          if ([...url.searchParams.keys()].some((k) => k !== "after")) throw new Error("\u041D\u0435\u0432\u0435\u0440\u043D\u044B\u0439 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440 WebRTC.");
+          return json(res, 200, rtc.events(key, id, p.preferences, Number(url.searchParams.get("after") || 0)));
+        }
+        if (req.method === "POST" && ["offer", "candidate"].includes(action)) {
+          const request = JSON.parse((await body(req, 14e4)).toString());
+          return json(res, 200, action === "offer" ? await rtc.offer(key, id, p.preferences, request.offer) : await rtc.addCandidate(key, id, p.preferences, request.candidate));
+        }
       }
       const streamRoute = /^ha\/stream\/([a-f0-9]{48})(?:\/(.+))?$/.exec(route);
       if (streamRoute) {
