@@ -8,6 +8,7 @@ import Database from 'better-sqlite3';
 import {defaultPreferences,validatePreferences} from '../src/preferences.js';
 import {migrateHouseProfile,activateHouseProfile,houseBindings,bindingProblem} from '../src/house-profile.js';
 import {deviceTypes} from '../src/catalog.js';
+import {detachChannel} from '../src/device-model.js';
 
 const old=defaultPreferences();
 delete old.housePresetVersion;
@@ -41,6 +42,7 @@ previous.bindings['humidity:well']={entityId:'sensor.a4c1386265b5_humidity',veri
 previous.bindings['battery:living']={entityId:'sensor.a4c1383cc159_battery',verified:true};
 previous.bindings['battery:well']={entityId:'sensor.a4c1386265b5_battery',verified:true};
 previous.devices=previous.devices.filter(d=>d.id!=='yard-motion');
+previous.deviceModel=detachChannel(previous.deviceModel,'yard-motion');
 const migrated=migrateHouseProfile(previous);
 for(const id of ['temperature:living','humidity:living','temperature:well','humidity:well','battery:living','battery:well']){
  assert.equal(migrated.bindings[id].entityId,houseBindings[id]);assert.equal(migrated.bindings[id].verified,false);
@@ -80,6 +82,7 @@ const alreadySelected=structuredClone(v2);
 alreadySelected.bindings['camera-yard']={entityId:houseBindings['camera-yard'],verified:true};
 assert.equal(migrateHouseProfile(alreadySelected).bindings['camera-yard'].verified,true);
 const removedCamera=structuredClone(v2);removedCamera.devices=removedCamera.devices.filter(d=>d.id!=='camera-yard');delete removedCamera.bindings['camera-yard'];
+removedCamera.deviceModel=detachChannel(removedCamera.deviceModel,'camera-yard');
 assert.equal(migrateHouseProfile(removedCamera).devices.some(d=>d.id==='camera-yard'),false);
 const duplicateCamera=structuredClone(v2);
 duplicateCamera.bindings['camera-extra-1']={entityId:houseBindings['camera-yard'],verified:false};

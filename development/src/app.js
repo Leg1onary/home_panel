@@ -15,6 +15,8 @@ import {api} from './api.js';
 import {startCameraPlayer} from './camera-player.js';
 import {houseBindings} from './house-profile.js';
 import {stationSupports,stationStateLabel} from './station.js';
+import {buildDeviceModel,detachChannel} from './device-model.js';
+import {deviceStructure,equipmentFromForm} from './device-model-ui.js';
 
 const $=s=>document.querySelector(s);
 const I=name=>`<i data-lucide="${name}"></i>`;
@@ -36,6 +38,7 @@ const reading=n=>n.toFixed(1).replace('.',',');
 let modelAPI=null,modelPromise=null,viewRevision=0,lastFocus=null,toastTimer,idleTimer,settingsOpen=false,photoBlob=null;
 let techTab='connection',bindingRoom='living',techEntities=[],techMessage='';
 let catalogEdit=null,cameraRevision=0,cameraURL=null,cameraPlayer=null,cameraDevice=null;
+let equipmentEdit=null;
 const channel=id=>rooms.flatMap(r=>r.channels).find(c=>c.id===id);
 const hallPowered=()=>!!channel('hall:0')?.on;
 const noConnection=()=>isLive()?!state.liveOnline:state.demoOffline;
@@ -153,7 +156,8 @@ function controls(r){
  ${r.pump?'<div class="inline-note">Насос тёплого пола — отдельно от света. Привязку канала Yeelight проверим на месте.</div><button class="text-button" data-action="pump">Питание насоса '+I('arrow-right')+'</button>':''}
  ${r.id==='corridor'?'<div class="inline-note">Новые линии добавляются в техническом разделе. Планируемые выключатели не управляют оборудованием.</div>':''}
  ${r.terrace?'<div class="status-line">'+I('sun')+'Датчик движения и освещённости</div><div class="inline-note">Сценарий включает свет, когда темно. Настройки проверим при подключении.</div>':''}
- ${r.id==='hall'?'<div class="status-line">'+I('door-closed')+binaryLabel('door','Открыта','Закрыта')+'</div><button class="text-button" data-room="terrace">Правая клавиша · свет террасы '+I('arrow-right')+'</button>':''}`;
+ ${r.id==='hall'?'<div class="status-line">'+I('door-closed')+binaryLabel('door','Открыта','Закрыта')+'</div><button class="text-button" data-room="terrace">Правая клавиша · свет террасы '+I('arrow-right')+'</button>':''}
+ ${state.devices.filter(d=>d.room===r.id&&['curtain','vacuum'].includes(d.type)).map(sensorCard).join('')}`;
 }
 function rgbControls(){
  const d=state.devices.find(d=>d.id==='rgb'),powered=d?.status==='installed'&&hallPowered();
@@ -191,7 +195,17 @@ function watch(){
  <div class="status-line"><span>${I('radio')}Датчик дыма</span><strong>${binaryLabel('smoke','Тревога','Нет тревоги')}</strong></div>
  <div class="status-line"><span>${I('trees')}Терраса</span><strong>Сценарий света</strong></div>
  ${state.devices.some(d=>d.id==='rgb')?`<div class="status-line"><span>${I('lightbulb')}RGB прихожей</span><strong>${noConnection()?'Нет связи':isLive()&&!observed('hall:0')?'Нет данных':hallPowered()?'Есть питание':'Без питания'}</strong></div>`:''}</section>
- ${climate()}</aside></div>${deviceHealth()}<section class="sensor-catalog"><div class="section-heading"><div><h2>Датчики дома</h2><p>Установленные и запланированные устройства из каталога</p></div></div><div class="module-grid">${state.devices.filter(d=>sensorTypes.includes(d.type)&&d.type!=='battery').map(sensorCard).join('')||'<p>Датчики пока не добавлены.</p>'}</div></section></div>`;
+ ${climate()}</aside></div>${deviceHealth()}<section class="sensor-catalog"><div class="section-heading"><div><h2>Датчики дома</h2><p>Логические устройства: показания и батарейка вместе</p></div></div><div class="module-grid">${logicalSensorCards()||'<p>Датчики пока не добавлены.</p>'}</div></section>
+ ${state.devices.some(d=>['curtain','vacuum'].includes(d.type))?`<section class="sensor-catalog"><div class="section-heading"><div><h2>Новые категории</h2><p>Карнизы и пылесосы: пока только наблюдение, без команд</p></div></div><div class="module-grid">${state.devices.filter(d=>['curtain','vacuum'].includes(d.type)).map(sensorCard).join('')}</div></section>`:''}</div>`;
+}
+function logicalSensorCards(){
+ const byId=new Map(state.devices.map(d=>[d.id,d]));
+ return buildDeviceModel(preferences(),state.entityStates,isLive()&&state.liveOnline)
+  .map(g=>({...g,components:g.components.filter(c=>sensorTypes.includes(c.type))}))
+  .filter(g=>g.components.some(c=>c.type!=='battery'))
+  .map(g=>`<article class="module-card"><div class="title-line"><span>${esc(areaName(g.room))}</span>${I(g.icon)}</div><h3>${esc(g.name)}</h3>
+   ${g.components.map(c=>`<div class="status-line"><span>${esc(deviceTypes[c.type].label)}</span><strong>${esc(deviceReading(byId.get(c.id)))}</strong></div>`).join('')}
+   <p>${isLive()?'Только проверенные данные HA':'Демонстрационный режим'}</p></article>`).join('');
 }
 function deviceHealth(){
  const batteries=state.devices.filter(d=>d.type==='battery'&&d.status==='installed');
@@ -221,6 +235,8 @@ function deviceReading(d){
  const labels={door:['Открыта','Закрыта'],smoke:['Тревога','Нет тревоги'],motion:['Есть движение','Нет движения'],leak:['Протечка','Сухо'],pump:['Питание включено','Питание выключено']};
  if(labels[d.type])return value==='on'?labels[d.type][0]:value==='off'?labels[d.type][1]:'Нет данных';
  if(d.type==='gate')return ({open:'Открыты',closed:'Закрыты',opening:'Открываются',closing:'Закрываются'})[value]||'Положение неизвестно';
+ if(d.type==='curtain')return (({open:'Открыты',closed:'Закрыты',opening:'Открываются',closing:'Закрываются',stopped:'Остановлены'})[value]||String(value))+(Number.isFinite(e?.attributes.current_position)?` · ${e.attributes.current_position} %`:'');
+ if(d.type==='vacuum')return (({cleaning:'Убирает',docked:'На базе',returning:'Возвращается',idle:'Ожидание',paused:'Пауза',error:'Ошибка'})[value]||String(value))+(Number.isFinite(e?.attributes.battery_level)?` · заряд ${e.attributes.battery_level} %`:'');
  if(d.type==='heating')return e?.attributes.current_temperature!==undefined?`${e.attributes.current_temperature} ${e.attributes.temperature_unit||e.attributes.unit_of_measurement||'(единицы HA)'} · ${value}`:String(value);
  return 'Нет данных';
 }
@@ -425,7 +441,7 @@ function updateHeader(){
  document.documentElement.dataset.mode=state.mode;
 }
 function catalogSettings(){
- const d=catalogEdit==='new'?{type:'light',room:'corridor',name:'',status:'planned',note:'',masterOff:true}:state.devices.find(d=>d.id===catalogEdit);
+ const d=catalogEdit==='new'?{type:'light',room:'corridor',name:'',status:'planned',note:'',masterOff:false}:state.devices.find(d=>d.id===catalogEdit);
  if(d)return `<div class="eyebrow">${d.id?'Редактирование · '+esc(d.id):'Новое устройство'}</div>
   <label class="setting-field">Тип<select id="catalog-type" ${disabled(!!d.id)}>${Object.entries(deviceTypes).map(([id,t])=>`<option value="${id}" ${d.type===id?'selected':''}>${t.label}</option>`).join('')}</select></label>
   <label class="setting-field">Комната / зона<select id="catalog-room">${areas.map(a=>`<option value="${a.id}" ${d.room===a.id?'selected':''}>${a.name}</option>`).join('')}</select></label>
@@ -452,9 +468,20 @@ function saveDevice(){
  else{next.devices.push(d);next.bindings[d.id]={entityId:'',verified:false}}
  commitCatalog(next);
 }
+async function saveEquipmentModel(next){
+ if(hasPending())return;
+ const old=preferences();
+ try{
+  applyPreferences(next);await flushStorage();equipmentEdit=null;
+  techMessage='Структура сохранена. Entity_id и отметки проверки не менялись.';
+  refresh();updateTechnical();
+ }catch(error){
+  applyPreferences(old);techMessage='Структура не изменена: '+error.message;updateTechnical();
+ }
+}
 function technical(){
  const ready=readiness();
- const tabs=[['connection','Связь'],['catalog','Каталог'],['bindings','Привязки'],['diagnostics','Проверка'],['backup','Копия'],['checklist','На месте']];
+ const tabs=[['connection','Связь'],['structure','Устройства'],['catalog','Каталог'],['bindings','Привязки'],['diagnostics','Проверка'],['backup','Копия'],['checklist','На месте']];
  let content='';
  if(techTab==='connection')content=`
   ${!state.preview?houseProfileReview():''}
@@ -463,6 +490,7 @@ function technical(){
   <div class="inline-note">В рабочем режиме нет подстановки демоданных: до получения состояния линии и датчики недоступны.</div>
   ${state.addon?'<ol class="setup-list"><li>Home Panel работает на системнике Home Assistant OS.</li><li>Доступ к HA настроен автоматически через Supervisor. .env и личный токен не нужны.</li><li>Во вкладке «Привязки» загрузи сущности и проверь соответствие каждой линии.</li></ol><p class="setting-help">Настройки сохраняются в /data/homepanel. Панель доступна в доверенной домашней сети; порт 8090 не выставляй в интернет.</p>':'<ol class="setup-list"><li>Локальный запуск через <code>Запустить.cmd</code>.</li><li>На месте создай <code>.env</code> по примеру. Адрес и токен вводятся только в локальный файл, не в браузер и не в чат.</li><li>Перезапусти сервер, загрузи список сущностей и проверь каждую привязку.</li></ol><p class="setting-help">Токен не включается в сборку и резервную копию. Локальный сервер слушает только этот компьютер; сетевой доступ для отдельного планшета настроим позже безопасным способом.</p>'}`;
  if(techTab==='catalog')content=catalogSettings();
+ if(techTab==='structure')content=deviceStructure(preferences(),{editing:equipmentEdit,esc,areaName,areas,blocked:hasPending()});
  if(techTab==='bindings')content=`
   <div class="readiness"><strong>${ready.verified} / ${ready.total}</strong><span>линий света отмечено проверенными</span></div>
   <label class="setting-field">Группа устройств<select id="binding-room">${[...areas.map(a=>({...a,short:a.name})),{id:'all',short:'Все устройства'}].map(r=>`<option value="${r.id}" ${bindingRoom===r.id?'selected':''}>${r.short}</option>`).join('')}</select></label>
@@ -483,7 +511,7 @@ function technical(){
   <p class="setting-help">Журнал хранится только до перезапуска вкладки. Реальные команды автоматически не повторяются.</p>
   <button class="secondary full-width" data-action="reconnect" ${disabled(hasPending())}>Перепроверить связь</button>`;
  if(techTab==='backup')content=`
-  <div class="inline-note">Копия v3 содержит оформление, избранное, весь каталог и entity_id. Без токена, фото и состояний устройств. Принимаются только копии v3.</div>
+  <div class="inline-note">Копия v3 содержит оформление, избранное, каталог, entity_id и модель устройств v1. Старые копии v3 принимаются с автоматическим созданием структуры. Без токена, фото и состояний устройств.</div>
   <button class="primary full-width" data-action="export">${I('download')}Скачать настройки JSON</button>
   <label class="setting-field">Восстановить настройки<input id="import-settings" type="file" accept="application/json,.json" ${disabled(hasPending())}/></label>
   <p class="setting-help">Импорт всегда включает деморежим и снимает отметки проверки каналов. Перед рабочим управлением их потребуется подтвердить снова.</p>`;
@@ -603,7 +631,12 @@ document.addEventListener('click',e=>{
   $('#sheet-content').innerHTML=`<h2>Удалить устройство?</h2><p class="description">${esc(techMessage)}</p><div class="sheet-actions"><button class="primary" data-confirm-delete="${d.id}">Удалить из панели</button><button class="secondary" data-action="catalog-back">Отмена</button></div>`;icons();return;
  }
  if(b.dataset.confirmDelete){
-  const next=preferences();next.devices=next.devices.filter(d=>d.id!==b.dataset.confirmDelete);delete next.bindings[b.dataset.confirmDelete];return commitCatalog(next);
+  const next=preferences();next.devices=next.devices.filter(d=>d.id!==b.dataset.confirmDelete);delete next.bindings[b.dataset.confirmDelete];next.deviceModel=detachChannel(next.deviceModel,b.dataset.confirmDelete);return commitCatalog(next);
+ }
+ if(b.dataset.editEquipment){equipmentEdit=b.dataset.editEquipment;techMessage='';updateTechnical();return}
+ if(b.dataset.dissolveEquipment){
+  const next=preferences();next.deviceModel.groups=next.deviceModel.groups.filter(g=>g.id!==b.dataset.dissolveEquipment);
+  return saveEquipmentModel(next);
  }
  if(b.dataset.settingsTab){state.settingsTab=b.dataset.settingsTab;updateSettings();return}
  if(b.dataset.techTab){techTab=b.dataset.techTab;techMessage='';updateTechnical();return}
@@ -626,6 +659,14 @@ document.addEventListener('click',e=>{
   const c=commandFor(b.dataset.retry);if(c)return command(c.id,c.value);return;
  }
  const a=b.dataset.action;
+ if(a==='new-equipment'){equipmentEdit='new';techMessage='';updateTechnical();return}
+ if(a==='equipment-back'){equipmentEdit=null;techMessage='';updateTechnical();return}
+ if(a==='save-equipment'){
+  const next=preferences(),g=equipmentFromForm($('.sheet'),next,equipmentEdit,'unit-'+deviceId());
+  const index=next.deviceModel.groups.findIndex(x=>x.id===g.id);
+  if(index<0)next.deviceModel.groups.push(g);else next.deviceModel.groups[index]=g;
+  return saveEquipmentModel(next);
+ }
  if(a==='house-review')return openTechnical('connection');
  if(a==='house-activate'){
   if(state.profileBusy||hasPending())return;
@@ -731,6 +772,10 @@ document.addEventListener('change',async e=>{
  }
 });
 document.addEventListener('input',e=>{
+ if(e.target.id==='equipment-filter'){
+  const query=e.target.value.trim().toLowerCase();
+  $('.sheet').querySelectorAll('[data-equipment-option]').forEach(el=>{el.hidden=!el.dataset.search.includes(query)});
+ }
  if(e.target.id==='brightness')$('#brightness-label').textContent=e.target.value+' % · ещё не отправлено';
  if(e.target.id==='station-volume'){stationAdjusting=true;$('#station-volume-label').textContent=e.target.value+' % · ещё не отправлено'}
 });

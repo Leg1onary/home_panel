@@ -297,6 +297,13 @@ code{font-family:ui-monospace,monospace;font-size:.92em;background:var(--surface
 .setting-field input:not([type=file]){width:100%;min-width:0;min-height:44px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;color:var(--text);padding:var(--space-3);font-size:var(--text-sm)}
 .setting-field.compact{margin:var(--space-3) 0}
 .check-field{display:flex;align-items:center;gap:var(--space-3);font-size:var(--text-xs);min-height:44px}.check-field input{width:20px;height:20px;accent-color:var(--accent)}
+.equipment-editor .sheet-actions{flex-wrap:wrap}
+.equipment-list{margin-top:var(--space-4)}
+.equipment-card .title-line{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-3)}
+.equipment-card .title-line>span{flex-shrink:0;font-size:var(--text-xs);color:var(--muted)}
+.equipment-members .check-field span,.equipment-card h3,.equipment-card li{min-width:0;word-break:break-word;overflow-wrap:anywhere}
+.equipment-members input{flex-shrink:0}
+.equipment-members small{font-size:inherit;color:var(--muted)}
 .site-checklist{padding:0;list-style:none}.site-checklist li{display:flex;align-items:flex-start;gap:var(--space-3);margin:var(--space-5) 0;color:var(--muted);font-size:var(--text-sm)}.site-checklist svg{color:var(--accent)}
 .boot-state{min-height:55vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--space-5);padding:var(--space-8);color:var(--muted);text-align:center}
 [data-kiosk=true] .brand span,[data-kiosk=true] .footer-note{display:none}

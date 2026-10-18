@@ -1,4 +1,5 @@
 import {defaultDevices,validateDevices,bindingDefinitions,areas} from './catalog.js';
+import {validateDeviceModel} from './device-model.js';
 export {bindingDefinitions} from './catalog.js';
 
 export const defaultPreferences=()=>({
@@ -18,6 +19,7 @@ export function validatePreferences(input,{importing=false}={}){
  if(!Array.isArray(raw.favorites)||raw.favorites.length>6||new Set(raw.favorites).size!==raw.favorites.length||raw.favorites.some(id=>!areas.some(r=>r.id===id)))throw new Error('Проверь список избранных комнат.');
  if(!['demo','live'].includes(raw.mode))throw new Error('Неизвестный источник данных.');
  Object.assign(p,{theme:raw.theme,nightMode:raw.nightMode,idleSeconds:raw.idleSeconds,favorites:[...raw.favorites],kiosk:raw.kiosk===true,mode:importing?'demo':raw.mode,devices:validateDevices(raw.devices)});
+ p.deviceModel=validateDeviceModel(raw.deviceModel,p.devices,areas);
  const used=new Set();p.bindings={};
  for(const definition of bindingDefinitions(p.devices)){
   const b=raw.bindings?.[definition.id]||{},entityId=typeof b.entityId==='string'?b.entityId.trim():'';

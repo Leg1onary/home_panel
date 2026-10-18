@@ -53,10 +53,10 @@ if (!Object.fromEntries) {
   };
 }
 
-// src/catalog.js
-var deviceTypes = {
-  light: { label: "\u041B\u0438\u043D\u0438\u044F \u0441\u0432\u0435\u0442\u0430", icon: "lightbulb", module: "lights", domains: ["light", "switch"], controllable: true },
-  rgb: { label: "RGB-\u043B\u0430\u043C\u043F\u0430", icon: "lightbulb", module: "lights", domains: ["light"], controllable: true },
+// src/device-types.js
+var types = {
+  light: { label: "\u041B\u0438\u043D\u0438\u044F \u0441\u0432\u0435\u0442\u0430", icon: "lightbulb", module: "lights", domains: ["light", "switch"], controllable: true, capabilities: ["power"] },
+  rgb: { label: "RGB-\u043B\u0430\u043C\u043F\u0430", icon: "lightbulb", module: "lights", domains: ["light"], controllable: true, capabilities: ["power", "brightness", "color"] },
   temperature: { label: "\u0422\u0435\u043C\u043F\u0435\u0440\u0430\u0442\u0443\u0440\u0430", icon: "thermometer", module: "sensors", domains: ["sensor"], unit: "\xB0C" },
   humidity: { label: "\u0412\u043B\u0430\u0436\u043D\u043E\u0441\u0442\u044C", icon: "droplets", module: "sensors", domains: ["sensor"], unit: "%" },
   illuminance: { label: "\u041E\u0441\u0432\u0435\u0449\u0451\u043D\u043D\u043E\u0441\u0442\u044C", icon: "sun", module: "sensors", domains: ["sensor"], unit: "lx" },
@@ -65,13 +65,22 @@ var deviceTypes = {
   motion: { label: "\u0414\u0432\u0438\u0436\u0435\u043D\u0438\u0435", icon: "scan-eye", module: "sensors", domains: ["binary_sensor", "sensor"], classes: ["motion", "occupancy", "enum"] },
   battery: { label: "\u0411\u0430\u0442\u0430\u0440\u0435\u0439\u043A\u0430", icon: "radio", module: "sensors", domains: ["sensor"], unit: "%" },
   button_event: { label: "\u041C\u0430\u0441\u0442\u0435\u0440-\u043A\u043D\u043E\u043F\u043A\u0430 \xB7 \u0441\u043E\u0431\u044B\u0442\u0438\u0435", icon: "power", module: "sensors", domains: ["sensor"], classes: ["enum"] },
-  station: { label: "\u042F\u043D\u0434\u0435\u043A\u0441 \u0414\u0443\u043E \u041C\u0430\u043A\u0441", icon: "audio-lines", module: "media", domains: ["media_player"], controllable: true },
+  station: { label: "\u041C\u0435\u0434\u0438\u0430\u043F\u043B\u0435\u0435\u0440 / \u0441\u0442\u0430\u043D\u0446\u0438\u044F", icon: "audio-lines", module: "media", domains: ["media_player"], controllable: true, capabilities: ["play", "pause", "volume"] },
   leak: { label: "\u041F\u0440\u043E\u0442\u0435\u0447\u043A\u0430", icon: "droplets", module: "sensors", domains: ["binary_sensor"], classes: ["moisture"] },
-  camera: { label: "\u041A\u0430\u043C\u0435\u0440\u0430", icon: "camera", module: "cameras", domains: ["camera"] },
+  camera: { label: "\u041A\u0430\u043C\u0435\u0440\u0430", icon: "camera", module: "cameras", domains: ["camera"], capabilities: ["snapshot", "live"] },
+  curtain: { label: "\u0428\u0442\u043E\u0440\u044B / \u043A\u0430\u0440\u043D\u0438\u0437 \xB7 \u043D\u0430\u0431\u043B\u044E\u0434\u0435\u043D\u0438\u0435", icon: "door-open", module: "covers", domains: ["cover"], locked: true, capabilities: ["state", "position"] },
+  vacuum: { label: "\u0420\u043E\u0431\u043E\u0442-\u043F\u044B\u043B\u0435\u0441\u043E\u0441 \xB7 \u043D\u0430\u0431\u043B\u044E\u0434\u0435\u043D\u0438\u0435", icon: "radio", module: "cleaning", domains: ["vacuum"], locked: true, capabilities: ["state", "battery"] },
   gate: { label: "\u041E\u0442\u043A\u0430\u0442\u043D\u044B\u0435 \u0432\u043E\u0440\u043E\u0442\u0430", icon: "door-open", module: "engineering", domains: ["cover"], locked: true },
   heating: { label: "\u041E\u0442\u043E\u043F\u043B\u0435\u043D\u0438\u0435 / \u043A\u043E\u0442\u0451\u043B", icon: "heater", module: "engineering", domains: ["climate"], locked: true },
   pump: { label: "\u041F\u0438\u0442\u0430\u043D\u0438\u0435 \u043D\u0430\u0441\u043E\u0441\u0430", icon: "heater", module: "engineering", domains: ["switch"], locked: true }
 };
+function freeze(value) {
+  for (const child of Object.values(value)) if (child && typeof child === "object") freeze(child);
+  return Object.freeze(value);
+}
+var deviceTypes = freeze(types);
+
+// src/catalog.js
 var areas = [
   ...house_default.rooms.map((r) => ({ id: r.id, name: r.name })),
   { id: "attic", name: "\u0427\u0435\u0440\u0434\u0430\u043A" },
@@ -130,7 +139,7 @@ function validateDevices(input) {
   if (!Array.isArray(input) || input.length > 128) throw new Error("\u0412 \u043A\u0430\u0442\u0430\u043B\u043E\u0433\u0435 \u043C\u043E\u0436\u0435\u0442 \u0431\u044B\u0442\u044C \u043D\u0435 \u0431\u043E\u043B\u0435\u0435 128 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432.");
   const defaults = defaultDevices(), used = /* @__PURE__ */ new Set();
   return input.map((raw) => {
-    if (!raw || typeof raw !== "object" || !deviceTypes[raw.type] || !areas.some((a) => a.id === raw.room)) throw new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u0442\u0438\u043F \u0438\u043B\u0438 \u0437\u043E\u043D\u0430 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430.");
+    if (!raw || typeof raw !== "object" || !Object.prototype.hasOwnProperty.call(deviceTypes, raw.type) || !areas.some((a) => a.id === raw.room)) throw new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u0442\u0438\u043F \u0438\u043B\u0438 \u0437\u043E\u043D\u0430 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430.");
     if (typeof raw.id !== "string" || !/^[a-z][a-z0-9:_-]{1,63}$/.test(raw.id) || used.has(raw.id)) throw new Error("ID \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430 \u043D\u0435\u0432\u0435\u0440\u043D\u044B\u0439 \u0438\u043B\u0438 \u043F\u043E\u0432\u0442\u043E\u0440\u044F\u0435\u0442\u0441\u044F.");
     used.add(raw.id);
     const seed = defaults.find((d) => d.id === raw.id);
@@ -157,6 +166,139 @@ function samePhysicalDevice(a, b) {
   return !!a && !!b && a.type === b.type && a.room === b.room && a.status === b.status && a.powerId === b.powerId;
 }
 
+// src/station.js
+var mediaFeatures = { PAUSE: 1, VOLUME_SET: 4, PLAY: 16384 };
+function stationAvailable(e) {
+  return !!e && ["playing", "paused", "idle", "on", "buffering"].includes(e.state);
+}
+function stationSupports(e, action, value) {
+  if (!stationAvailable(e)) return false;
+  const mask = Number(e.attributes?.supported_features) || 0;
+  if (action === "volume") return !!(mask & mediaFeatures.VOLUME_SET) && Number.isFinite(e.attributes?.volume_level);
+  if (action === "playing") return typeof value === "boolean" && !!(mask & (value ? mediaFeatures.PLAY : mediaFeatures.PAUSE));
+  return false;
+}
+
+// src/device-model.js
+var DEVICE_MODEL_VERSION = 1;
+var object = (v) => v && typeof v === "object" && !Array.isArray(v);
+var modes = ["room", "none"];
+function seedDeviceModel(devices) {
+  const groups = [];
+  const add = (id, name, ids) => {
+    const members = ids.filter((id2) => devices.some((d) => d.id === id2));
+    const found = members.map((id2) => devices.find((d) => d.id === id2));
+    if (members.length < 2 || new Set(found.map((d) => d.room)).size !== 1) return;
+    groups.push({ id: "unit-" + id, name, room: found[0].room, members, visual: { mode: "room" } });
+  };
+  for (const [id, label] of [["living", "\u0433\u043E\u0441\u0442\u0438\u043D\u0430\u044F"], ["attic", "\u0447\u0435\u0440\u0434\u0430\u043A"], ["well", "\u0441\u043A\u0432\u0430\u0436\u0438\u043D\u0430"]]) {
+    add("climate-" + id, "\u0414\u0430\u0442\u0447\u0438\u043A \u043A\u043B\u0438\u043C\u0430\u0442\u0430 \xB7 " + label, ["temperature:" + id, "humidity:" + id, "battery:" + id]);
+  }
+  add("door", "\u0412\u0445\u043E\u0434\u043D\u0430\u044F \u0434\u0432\u0435\u0440\u044C", ["door", "battery:door"]);
+  add("terrace-motion", "\u0414\u0430\u0442\u0447\u0438\u043A \u0434\u0432\u0438\u0436\u0435\u043D\u0438\u044F \xB7 \u0442\u0435\u0440\u0440\u0430\u0441\u0430", ["terrace-motion", "terrace-lux", "battery:terrace"]);
+  add("master-button", "\u041C\u0430\u0441\u0442\u0435\u0440-\u043A\u043D\u043E\u043F\u043A\u0430", ["master-event", "battery:master"]);
+  add("yard-camera", "\u041A\u0430\u043C\u0435\u0440\u0430 \u0434\u0432\u043E\u0440\u0430", ["camera-yard", "yard-motion"]);
+  return { version: DEVICE_MODEL_VERSION, groups };
+}
+function validateDeviceModel(input, devices, areas2) {
+  if (input === void 0) return seedDeviceModel(devices);
+  if (!object(input) || input.version !== DEVICE_MODEL_VERSION) throw new Error("\u0412\u0435\u0440\u0441\u0438\u044F \u043C\u043E\u0434\u0435\u043B\u0438 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432 \u043D\u0435 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u0441\u044F.");
+  if (!Array.isArray(input.groups) || input.groups.length > 128) throw new Error("\u041D\u0435 \u0431\u043E\u043B\u0435\u0435 128 \u043B\u043E\u0433\u0438\u0447\u0435\u0441\u043A\u0438\u0445 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432.");
+  const ids = /* @__PURE__ */ new Set(), assigned = /* @__PURE__ */ new Set(), byId = new Map(devices.map((d) => [d.id, d]));
+  const groups = input.groups.map((g) => {
+    if (!object(g) || typeof g.id !== "string" || !/^unit-[a-z0-9][a-z0-9_-]{1,58}$/.test(g.id) || ids.has(g.id)) throw new Error("ID \u043B\u043E\u0433\u0438\u0447\u0435\u0441\u043A\u043E\u0433\u043E \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430 \u043D\u0435\u0432\u0435\u0440\u043D\u044B\u0439 \u0438\u043B\u0438 \u043F\u043E\u0432\u0442\u043E\u0440\u044F\u0435\u0442\u0441\u044F.");
+    ids.add(g.id);
+    if (typeof g.name !== "string" || !g.name.trim() || g.name.trim().length > 64) throw new Error("\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430: \u043E\u0442 1 \u0434\u043E 64 \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432.");
+    if (!areas2.some((a) => a.id === g.room)) throw new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F \u0437\u043E\u043D\u0430 \u043B\u043E\u0433\u0438\u0447\u0435\u0441\u043A\u043E\u0433\u043E \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430.");
+    if (!Array.isArray(g.members) || !g.members.length || g.members.length > 32) throw new Error("\u0412 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0435 \u0434\u043E\u043B\u0436\u043D\u043E \u0431\u044B\u0442\u044C \u043E\u0442 1 \u0434\u043E 32 \u043A\u0430\u043D\u0430\u043B\u043E\u0432.");
+    const members = g.members.map((id) => {
+      if (typeof id !== "string" || !byId.has(id) || assigned.has(id)) throw new Error("\u041A\u0430\u043D\u0430\u043B \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442 \u0438\u043B\u0438 \u0443\u0436\u0435 \u0432\u043A\u043B\u044E\u0447\u0451\u043D \u0432 \u0434\u0440\u0443\u0433\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E.");
+      assigned.add(id);
+      return id;
+    });
+    if (g.visual !== void 0 && !object(g.visual)) throw new Error("\u041D\u0435\u0432\u0435\u0440\u043D\u044B\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u043E\u0442\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u044F \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430.");
+    const mode = g.visual?.mode ?? "room";
+    if (!modes.includes(mode)) throw new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u0440\u0435\u0436\u0438\u043C \u043E\u0442\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u044F \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430.");
+    return { id: g.id, name: g.name.trim(), room: g.room, members, visual: { mode } };
+  });
+  return { version: DEVICE_MODEL_VERSION, groups };
+}
+function roleFor(type) {
+  return { light: "power", rgb: "power", station: "media", camera: "camera", button_event: "event" }[type] || type;
+}
+function effectiveCapabilities(channel, entity) {
+  const type = deviceTypes[channel.type];
+  if (!type) return [];
+  const result = ["state"];
+  if (!entity || ["unknown", "unavailable", ""].includes(entity.state)) return result;
+  if (channel.type === "curtain" && Number.isFinite(entity.attributes?.current_position)) result.push("position");
+  if (channel.type === "vacuum" && Number.isFinite(entity.attributes?.battery_level)) result.push("battery");
+  if (type.controllable && channel.status === "installed" && !type.locked) {
+    if (["light", "rgb"].includes(channel.type) && ["on", "off"].includes(entity.state)) {
+      result.push("power");
+      const colors = entity.attributes?.supported_color_modes || [];
+      if (channel.type === "rgb" && colors.some((c) => c !== "onoff")) result.push("brightness");
+      if (channel.type === "rgb" && colors.includes("rgb")) result.push("color");
+    }
+    if (channel.type === "station") {
+      if (stationSupports(entity, "playing", true)) result.push("play");
+      if (stationSupports(entity, "playing", false)) result.push("pause");
+      if (stationSupports(entity, "volume")) result.push("volume");
+    }
+  }
+  if (channel.type === "camera") result.push("snapshot", "live");
+  return result;
+}
+function buildDeviceModel(preferences, entities = {}, online) {
+  const devices = preferences.devices, model = preferences.deviceModel || seedDeviceModel(devices);
+  const assigned = new Set(model.groups.flatMap((g) => g.members));
+  const groups = [...model.groups, ...devices.filter((d) => !assigned.has(d.id)).map((d) => ({
+    id: "channel:" + d.id,
+    name: d.name,
+    room: d.room,
+    members: [d.id],
+    visual: { mode: "room" },
+    implicit: true
+  }))];
+  const byId = new Map(devices.map((d) => [d.id, d]));
+  return groups.map((g) => {
+    const components = g.members.map((id) => {
+      const d = byId.get(id), b = preferences.bindings[id], t = deviceTypes[d.type];
+      const entity = online && d.status === "installed" && b?.verified ? entities[b.entityId] : void 0;
+      const available2 = !!entity && !["unknown", "unavailable", ""].includes(entity.state);
+      return {
+        id: d.id,
+        role: roleFor(d.type),
+        type: d.type,
+        room: d.room,
+        name: d.name,
+        module: t.module,
+        installed: d.status === "installed",
+        verified: b?.verified === true,
+        available: available2,
+        state: available2 ? entity.state : null,
+        unit: t.unit || null,
+        capabilities: effectiveCapabilities(d, entity),
+        locked: !!t.locked
+      };
+    });
+    const primary = components.find((c) => c.type !== "battery") || components[0];
+    const count = components.filter((c) => c.installed).length, available = components.filter((c) => c.available).length;
+    return {
+      id: g.id,
+      name: g.name,
+      room: g.room,
+      visual: g.visual,
+      implicit: g.implicit === true,
+      module: primary.module,
+      modules: [...new Set(components.map((c) => c.module))],
+      icon: deviceTypes[primary.type].icon,
+      components,
+      availability: !count ? "planned" : online === void 0 ? "unobserved" : !online ? "offline" : !available ? "unavailable" : available === count ? "available" : "partial"
+    };
+  });
+}
+
 // src/preferences.js
 var defaultPreferences = () => ({
   version: 3,
@@ -181,6 +323,7 @@ function validatePreferences(input, { importing = false } = {}) {
   if (!Array.isArray(raw.favorites) || raw.favorites.length > 6 || new Set(raw.favorites).size !== raw.favorites.length || raw.favorites.some((id) => !areas.some((r) => r.id === id))) throw new Error("\u041F\u0440\u043E\u0432\u0435\u0440\u044C \u0441\u043F\u0438\u0441\u043E\u043A \u0438\u0437\u0431\u0440\u0430\u043D\u043D\u044B\u0445 \u043A\u043E\u043C\u043D\u0430\u0442.");
   if (!["demo", "live"].includes(raw.mode)) throw new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A \u0434\u0430\u043D\u043D\u044B\u0445.");
   Object.assign(p, { theme: raw.theme, nightMode: raw.nightMode, idleSeconds: raw.idleSeconds, favorites: [...raw.favorites], kiosk: raw.kiosk === true, mode: importing ? "demo" : raw.mode, devices: validateDevices(raw.devices) });
+  p.deviceModel = validateDeviceModel(raw.deviceModel, p.devices, areas);
   const used = /* @__PURE__ */ new Set();
   p.bindings = {};
   for (const definition of bindingDefinitions(p.devices)) {
@@ -192,19 +335,6 @@ function validatePreferences(input, { importing = false } = {}) {
     p.bindings[definition.id] = { entityId, verified: !importing && definition.device.status === "installed" && !!entityId && b.verified === true };
   }
   return p;
-}
-
-// src/station.js
-var mediaFeatures = { PAUSE: 1, VOLUME_SET: 4, PLAY: 16384 };
-function stationAvailable(e) {
-  return !!e && ["playing", "paused", "idle", "on", "buffering"].includes(e.state);
-}
-function stationSupports(e, action, value) {
-  if (!stationAvailable(e)) return false;
-  const mask = Number(e.attributes?.supported_features) || 0;
-  if (action === "volume") return !!(mask & mediaFeatures.VOLUME_SET) && Number.isFinite(e.attributes?.volume_level);
-  if (action === "playing") return typeof value === "boolean" && !!(mask & (value ? mediaFeatures.PLAY : mediaFeatures.PAUSE));
-  return false;
 }
 
 // server/ha.js
@@ -248,7 +378,7 @@ var HomeAssistant = class {
     }
   }
   sanitize(e) {
-    const keys = ["friendly_name", "device_class", "unit_of_measurement", "temperature_unit", "brightness", "rgb_color", "supported_color_modes", "current_position", "current_temperature", "temperature", "hvac_action", "supported_features", "volume_level", "media_title", "media_artist"];
+    const keys = ["friendly_name", "device_class", "unit_of_measurement", "temperature_unit", "brightness", "rgb_color", "supported_color_modes", "current_position", "battery_level", "current_temperature", "temperature", "hvac_action", "supported_features", "volume_level", "media_title", "media_artist"];
     return {
       entity_id: e.entity_id,
       state: e.state,
@@ -260,7 +390,7 @@ var HomeAssistant = class {
   async states() {
     const all = await this.request("/api/states");
     if (!Array.isArray(all)) throw new Error("\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u0441\u043F\u0438\u0441\u043E\u043A \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u0435\u0439.");
-    return all.filter((e) => /^(light|switch|sensor|binary_sensor|camera|cover|climate|media_player)\.[a-z0-9_]+$/.test(e.entity_id)).map((e) => this.sanitize(e));
+    return all.filter((e) => /^(light|switch|sensor|binary_sensor|camera|cover|climate|media_player|vacuum)\.[a-z0-9_]+$/.test(e.entity_id)).map((e) => this.sanitize(e));
   }
   cameraEntity(id, p) {
     const d = p.devices.find((d2) => d2.id === id), b = p.bindings[id];
@@ -827,6 +957,7 @@ await mkdir(data, { recursive: true });
 var db = new Database(resolve(data, "panel.sqlite"));
 db.pragma("journal_mode = WAL");
 db.exec("CREATE TABLE IF NOT EXISTS profiles (id TEXT PRIMARY KEY, preferences TEXT NOT NULL, photo BLOB);");
+db.exec("CREATE TABLE IF NOT EXISTS profile_backups (profile_id TEXT NOT NULL, reason TEXT NOT NULL, preferences TEXT NOT NULL, PRIMARY KEY(profile_id,reason));");
 var ha = new HomeAssistant({ url: process.env.HA_URL, token: process.env.HA_TOKEN, preview });
 var streams = new CameraStreams(ha);
 var rtc = new CameraRTC(ha);
@@ -840,9 +971,14 @@ var getProfile = (id) => {
     db.prepare("INSERT INTO profiles(id,preferences) VALUES(?,?)").run(id, JSON.stringify(defaultPreferences()));
     row = db.prepare("SELECT * FROM profiles WHERE id=?").get(id);
   }
-  const stored = validatePreferences(JSON.parse(row.preferences));
-  const preferences = migrateHouseProfile(stored);
-  if (preferences !== stored) db.prepare("UPDATE profiles SET preferences=? WHERE id=?").run(JSON.stringify(preferences), id);
+  const raw = JSON.parse(row.preferences), stored = validatePreferences(raw);
+  let preferences = migrateHouseProfile(stored);
+  if (raw.deviceModel === void 0) preferences = validatePreferences({ ...preferences, deviceModel: seedDeviceModel(preferences.devices) });
+  const normalized = JSON.stringify(preferences);
+  if (normalized !== row.preferences) db.transaction(() => {
+    if (raw.deviceModel === void 0) db.prepare("INSERT OR IGNORE INTO profile_backups(profile_id,reason,preferences) VALUES(?,?,?)").run(id, "before-device-model-v1", row.preferences);
+    db.prepare("UPDATE profiles SET preferences=? WHERE id=?").run(normalized, id);
+  })();
   return { preferences, photo: row.photo };
 };
 var json = (res, code, body2) => {
@@ -911,7 +1047,12 @@ var server = http.createServer(async (req, res) => {
       }
       if (route === "preferences" && req.method === "PUT") {
         if (pendingScopes.has(id)) throw new Error("\u0421\u043D\u0430\u0447\u0430\u043B\u0430 \u0434\u043E\u0436\u0434\u0438\u0441\u044C \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u044F \u043A\u043E\u043C\u0430\u043D\u0434\u044B.");
-        const next = validatePreferences(JSON.parse((await body(req)).toString()));
+        const input = JSON.parse((await body(req)).toString());
+        if (input && typeof input === "object" && input.deviceModel === void 0 && Array.isArray(input.devices)) {
+          const ids = new Set(input.devices.map((d) => d?.id));
+          input.deviceModel = { ...p.preferences.deviceModel, groups: p.preferences.deviceModel.groups.map((g) => ({ ...g, members: g.members.filter((id2) => ids.has(id2)) })).filter((g) => g.members.length) };
+        }
+        const next = validatePreferences(input);
         for (const d of next.devices) {
           const old = p.preferences.devices.find((old2) => old2.id === d.id);
           if (old && old.type !== d.type) throw new Error("\u0422\u0438\u043F \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u044E\u0449\u0435\u0433\u043E \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430 \u043D\u0435\u043B\u044C\u0437\u044F \u043C\u0435\u043D\u044F\u0442\u044C.");
@@ -951,6 +1092,7 @@ var server = http.createServer(async (req, res) => {
         }
       }
       if (route === "ha/states" && req.method === "GET") return json(res, 200, { states: await ha.states(), receivedAt: Date.now() });
+      if (route === "device-model" && req.method === "GET") return json(res, 200, { version: 1, devices: buildDeviceModel(p.preferences) });
       if (route === "ha/stream/start" && req.method === "POST") {
         const request = JSON.parse((await body(req)).toString());
         return json(res, 200, await streams.start(request.id, p.preferences, id));

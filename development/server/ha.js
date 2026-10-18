@@ -26,14 +26,14 @@ export class HomeAssistant {
   try{return await response.json()}catch{throw new Error('Некорректный ответ Home Assistant.')}
  }
  sanitize(e){
-  const keys=['friendly_name','device_class','unit_of_measurement','temperature_unit','brightness','rgb_color','supported_color_modes','current_position','current_temperature','temperature','hvac_action','supported_features','volume_level','media_title','media_artist'];
+  const keys=['friendly_name','device_class','unit_of_measurement','temperature_unit','brightness','rgb_color','supported_color_modes','current_position','battery_level','current_temperature','temperature','hvac_action','supported_features','volume_level','media_title','media_artist'];
   return {entity_id:e.entity_id,state:e.state,last_updated:e.last_updated,last_reported:e.last_reported,
    attributes:Object.fromEntries(keys.filter(k=>e.attributes?.[k]!==undefined).map(k=>[k,e.attributes[k]]))};
  }
  async states(){
   const all=await this.request('/api/states');
   if(!Array.isArray(all))throw new Error('Некорректный список сущностей.');
-  return all.filter(e=>/^(light|switch|sensor|binary_sensor|camera|cover|climate|media_player)\.[a-z0-9_]+$/.test(e.entity_id)).map(e=>this.sanitize(e));
+  return all.filter(e=>/^(light|switch|sensor|binary_sensor|camera|cover|climate|media_player|vacuum)\.[a-z0-9_]+$/.test(e.entity_id)).map(e=>this.sanitize(e));
  }
  cameraEntity(id,p){
   const d=p.devices.find(d=>d.id===id),b=p.bindings[id];

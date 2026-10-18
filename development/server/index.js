@@ -11,6 +11,7 @@ import {CameraStreams} from './stream.js';
 import {CameraRTC} from './rtc.js';
 import {deviceTypes,samePhysicalDevice} from '../src/catalog.js';
 import {migrateHouseProfile,activateHouseProfile,bindingProblem} from '../src/house-profile.js';
+import {seedDeviceModel,buildDeviceModel} from '../src/device-model.js';
 
 const port=Number(process.env.PORT||8080),preview=process.env.PANEL_PREVIEW==='1';
 const addon=process.env.PANEL_ADDON==='1';
@@ -20,6 +21,7 @@ await mkdir(data,{recursive:true});
 const db=new Database(resolve(data,'panel.sqlite'));
 db.pragma('journal_mode = WAL');
 db.exec('CREATE TABLE IF NOT EXISTS profiles (id TEXT PRIMARY KEY, preferences TEXT NOT NULL, photo BLOB);');
+db.exec('CREATE TABLE IF NOT EXISTS profile_backups (profile_id TEXT NOT NULL, reason TEXT NOT NULL, preferences TEXT NOT NULL, PRIMARY KEY(profile_id,reason));');
 const ha=new HomeAssistant({url:process.env.HA_URL,token:process.env.HA_TOKEN,preview});
 const streams=new CameraStreams(ha);
 const rtc=new CameraRTC(ha);
@@ -29,9 +31,14 @@ const proofs=new Map(),pendingScopes=new Map();
 const getProfile=id=>{
  let row=db.prepare('SELECT * FROM profiles WHERE id=?').get(id);
  if(!row){db.prepare('INSERT INTO profiles(id,preferences) VALUES(?,?)').run(id,JSON.stringify(defaultPreferences()));row=db.prepare('SELECT * FROM profiles WHERE id=?').get(id)}
- const stored=validatePreferences(JSON.parse(row.preferences));
- const preferences=migrateHouseProfile(stored);
- if(preferences!==stored)db.prepare('UPDATE profiles SET preferences=? WHERE id=?').run(JSON.stringify(preferences),id);
+ const raw=JSON.parse(row.preferences),stored=validatePreferences(raw);
+ let preferences=migrateHouseProfile(stored);
+ if(raw.deviceModel===undefined)preferences=validatePreferences({...preferences,deviceModel:seedDeviceModel(preferences.devices)});
+ const normalized=JSON.stringify(preferences);
+ if(normalized!==row.preferences)db.transaction(()=>{
+  if(raw.deviceModel===undefined)db.prepare('INSERT OR IGNORE INTO profile_backups(profile_id,reason,preferences) VALUES(?,?,?)').run(id,'before-device-model-v1',row.preferences);
+  db.prepare('UPDATE profiles SET preferences=? WHERE id=?').run(normalized,id);
+ })();
  return {preferences,photo:row.photo};
 };
 const json=(res,code,body)=>{res.writeHead(code,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(body))};
@@ -93,7 +100,16 @@ const server=http.createServer(async(req,res)=>{
    }
    if(route==='preferences'&&req.method==='PUT'){
     if(pendingScopes.has(id))throw new Error('Сначала дождись завершения команды.');
-    const next=validatePreferences(JSON.parse((await body(req)).toString()));
+    const input=JSON.parse((await body(req)).toString());
+    // A still-open older client does not know the additive layer. Its theme or
+    // binding save must not erase newer groups. Legacy channel deletion detaches
+    // that channel explicitly; malformed current-schema requests still reject.
+    if(input&&typeof input==='object'&&input.deviceModel===undefined&&Array.isArray(input.devices)){
+     const ids=new Set(input.devices.map(d=>d?.id));
+     input.deviceModel={...p.preferences.deviceModel,groups:p.preferences.deviceModel.groups
+      .map(g=>({...g,members:g.members.filter(id=>ids.has(id))})).filter(g=>g.members.length)};
+    }
+    const next=validatePreferences(input);
     for(const d of next.devices){
      const old=p.preferences.devices.find(old=>old.id===d.id);
      if(old&&old.type!==d.type)throw new Error('Тип существующего устройства нельзя менять.');
@@ -126,6 +142,7 @@ const server=http.createServer(async(req,res)=>{
     if(req.method==='DELETE'){db.prepare('UPDATE profiles SET photo=NULL WHERE id=?').run(id);return json(res,200,{saved:true})}
    }
    if(route==='ha/states'&&req.method==='GET')return json(res,200,{states:await ha.states(),receivedAt:Date.now()});
+   if(route==='device-model'&&req.method==='GET')return json(res,200,{version:1,devices:buildDeviceModel(p.preferences)});
    if(route==='ha/stream/start'&&req.method==='POST'){
     const request=JSON.parse((await body(req)).toString());
     return json(res,200,await streams.start(request.id,p.preferences,id));

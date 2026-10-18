@@ -1,25 +1,8 @@
 import house from '../config/house.json';
 import './compat.js';
+import {deviceTypes} from './device-types.js';
+export {deviceTypes} from './device-types.js';
 
-// Module capabilities are server-owned, never accepted from imported settings.
-export const deviceTypes={
- light:{label:'Линия света',icon:'lightbulb',module:'lights',domains:['light','switch'],controllable:true},
- rgb:{label:'RGB-лампа',icon:'lightbulb',module:'lights',domains:['light'],controllable:true},
- temperature:{label:'Температура',icon:'thermometer',module:'sensors',domains:['sensor'],unit:'°C'},
- humidity:{label:'Влажность',icon:'droplets',module:'sensors',domains:['sensor'],unit:'%'},
- illuminance:{label:'Освещённость',icon:'sun',module:'sensors',domains:['sensor'],unit:'lx'},
- door:{label:'Открытие',icon:'door-open',module:'sensors',domains:['binary_sensor'],classes:['door','opening','window','garage_door']},
- smoke:{label:'Дым',icon:'radio',module:'sensors',domains:['binary_sensor'],classes:['smoke']},
- motion:{label:'Движение',icon:'scan-eye',module:'sensors',domains:['binary_sensor','sensor'],classes:['motion','occupancy','enum']},
- battery:{label:'Батарейка',icon:'radio',module:'sensors',domains:['sensor'],unit:'%'},
- button_event:{label:'Мастер-кнопка · событие',icon:'power',module:'sensors',domains:['sensor'],classes:['enum']},
- station:{label:'Яндекс Дуо Макс',icon:'audio-lines',module:'media',domains:['media_player'],controllable:true},
- leak:{label:'Протечка',icon:'droplets',module:'sensors',domains:['binary_sensor'],classes:['moisture']},
- camera:{label:'Камера',icon:'camera',module:'cameras',domains:['camera']},
- gate:{label:'Откатные ворота',icon:'door-open',module:'engineering',domains:['cover'],locked:true},
- heating:{label:'Отопление / котёл',icon:'heater',module:'engineering',domains:['climate'],locked:true},
- pump:{label:'Питание насоса',icon:'heater',module:'engineering',domains:['switch'],locked:true}
-};
 export const areas=[
  ...house.rooms.map(r=>({id:r.id,name:r.name})),
  {id:'attic',name:'Чердак'},{id:'well',name:'Скважина'},{id:'yard',name:'Двор'}
@@ -69,7 +52,7 @@ export function validateDevices(input){
  if(!Array.isArray(input)||input.length>128)throw new Error('В каталоге может быть не более 128 устройств.');
  const defaults=defaultDevices(),used=new Set();
  return input.map(raw=>{
-  if(!raw||typeof raw!=='object'||!deviceTypes[raw.type]||!areas.some(a=>a.id===raw.room))throw new Error('Неизвестный тип или зона устройства.');
+  if(!raw||typeof raw!=='object'||!Object.prototype.hasOwnProperty.call(deviceTypes,raw.type)||!areas.some(a=>a.id===raw.room))throw new Error('Неизвестный тип или зона устройства.');
   if(typeof raw.id!=='string'||!/^[a-z][a-z0-9:_-]{1,63}$/.test(raw.id)||used.has(raw.id))throw new Error('ID устройства неверный или повторяется.');
   used.add(raw.id);
   const seed=defaults.find(d=>d.id===raw.id);
