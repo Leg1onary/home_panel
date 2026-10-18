@@ -17,7 +17,6 @@
       </a>
       <nav aria-label="Основная навигация">
         <button data-view="home" aria-label="Главная"><i data-lucide="house"></i><span>Главная</span></button>
-        <button data-view="model" aria-label="План дома"><i data-lucide="box"></i><span class="nav-label-long">План дома</span><span class="nav-label-short">План</span></button>
         <button data-view="rooms" aria-label="Свет"><i data-lucide="lightbulb"></i><span>Свет</span></button>
         <button data-view="watch" aria-label="Датчики"><i data-lucide="scan-eye"></i><span>Датчики</span></button>
         <button data-view="engineering" aria-label="Системы"><i data-lucide="heater"></i><span>Системы</span></button>
@@ -26,8 +25,9 @@
     </aside>
     <header>
       <div class="place-label"><span class="place-dot"></span>Новоживотинное<span class="place-detail">Панель дома</span></div>
+      <div class="header-clock" aria-label="Местное время дома"><div id="clock"></div><span id="date"></span></div>
       <div class="header-right">
-        <span class="demo-badge" id="connection-badge"><span></span>Подготовка панели</span>
+        <button class="demo-badge connection-status" id="connection-badge" data-action="house-review" aria-label="Состояние подключения"><span></span>Подготовка панели</button>
         <button class="icon-button" id="fullscreen" aria-label="Полный экран"><i data-lucide="maximize"></i></button>
         <button class="icon-button" id="standby" aria-label="Включить режим ожидания"><i data-lucide="moon-star"></i></button>
         <button class="icon-button" id="theme" aria-label="Переключить тему"><i data-lucide="sun"></i></button>

@@ -123,8 +123,7 @@ function quietDoor(){
 }
 function home(){
  return `<div class="view dashboard-view">
- <div class="dashboard-heading"><div class="home-intro"><h1>Мой дом</h1><p id="home-light-summary">${esc(homeLightSummary().label)}</p></div>
- <div class="dashboard-clock"><div id="clock">${clock()}</div><span id="date">${date()}</span></div></div>
+ <h1 class="visually-hidden">Мой дом</h1>
  <div class="dashboard-layout"><div class="house-column">${sceneStage()}
  <div class="house-status" id="home-status">${homeStatus()}</div></div>
  <aside class="home-context">
@@ -157,11 +156,9 @@ function homeLightSummary(){
  return homeSummary({live:isLive(),online:!noConnection(),total:channels.length,unknown:channels.filter(c=>!canControl(c.id)).length,on:countLights()});
 }
 function homeStatus(){
- const summary=homeLightSummary();
  return `<button class="status-chip" data-action="door">${I('door-closed')}${esc(binaryLabel('door','Дверь открыта','Дверь закрыта'))}</button>
  <button class="status-chip" data-view="watch">${I('thermometer')}Климат</button>
- <button class="status-chip well-chip" data-room="well">${I('droplets')}Скважина ${compactRoomClimate('well')}</button>
- ${summary.warning?`<button class="status-chip availability-chip" data-action="house-review" aria-label="Подробнее о недоступных линиях света" title="${esc(summary.detail)}">${I('wifi-off')}Связь</button>`:''}`;
+ <button class="status-chip well-chip" data-room="well">${I('droplets')}Скважина ${compactRoomClimate('well')}</button>`;
 }
 function homeQuick(){
  const camera=state.devices.find(d=>d.type==='camera'&&d.room==='yard'&&d.status==='installed');
@@ -355,7 +352,7 @@ function render(animate=true){
  document.documentElement.dataset.view=state.view;
  if(!animate&&$('#main .view'))$('#main .view').style.animation='none';
  document.querySelectorAll('nav button').forEach(b=>{
-  const active=b.dataset.view===state.view||(state.view==='room'&&b.dataset.view==='home');
+  const active=b.dataset.view===state.view||(['room','model'].includes(state.view)&&b.dataset.view==='home');
   b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');
  });
  $('#master').disabled=masterBlocked();updateHeader();storageStatus();icons();
@@ -390,7 +387,6 @@ function refresh(){
  if(['home','model','room'].includes(state.view)){
   updateDetail();modelAPI?.updateModel(rooms,state);
   if(state.view==='home'){
-   $('#home-light-summary').textContent=homeLightSummary().label;
    updateRegion('#home-favorites',favoriteRooms());updateRegion('#home-status',homeStatus());updateRegion('#home-quick',homeQuick());
   }
  }else render(false);
@@ -507,8 +503,11 @@ function commandLabel(id){
  const [r,i]=id.split(':');return (getRoom(r)?.short||r)+' · '+(getRoom(r)?.channels[Number(i)]?.name||'');
 }
 function updateHeader(){
- $('#connection-badge').innerHTML=`<span></span>${isLive()?(state.liveOnline?'Home Assistant':'HA · нет связи'):'Демонстрационный режим'}`;
- $('#connection-badge').title=isLive()?state.liveError||'Состояния обновляются раз в 5 секунд':'Реальные устройства не подключены';
+ const node=$('#connection-badge'),summary=homeLightSummary(),warning=isLive()&&summary.warning;
+ const label=warning?summary.label:isLive()?'Home Assistant':'Демонстрационный режим';
+ node.innerHTML=`<span></span>${esc(label)}`;node.dataset.warning=String(warning);
+ node.title=isLive()?[state.liveError||'Home Assistant',summary.detail].join(' · '):'Реальные устройства не подключены';
+ node.setAttribute('aria-label',`${label}. Открыть настройки подключения`);
  document.documentElement.dataset.mode=state.mode;
 }
 function catalogSettings(){
