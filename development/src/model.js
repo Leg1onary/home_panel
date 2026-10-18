@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
-import {RoundedBoxGeometry} from 'three/addons/geometries/RoundedBoxGeometry.js';
+import {buildInterior} from './interior.js';
 import {floorVisual} from './model-state.js';
 import {modelLevels} from './model-geometry.js';
 let current;
@@ -32,8 +32,8 @@ function box(scene,x,z,w,d,h,color,y=0,r=0){let m=new THREE.Mesh(new THREE.BoxGe
 function shapeFloor(scene,id,pts){
  const s=new THREE.Shape();pts.map(project).forEach(([x,z],i)=>i?s.lineTo(x,-z):s.moveTo(x,-z));s.closePath();
  const g=new THREE.ShapeGeometry(s);
- const mat=new THREE.MeshBasicMaterial({color:'#303a35',side:THREE.DoubleSide,toneMapped:false});
- const m=new THREE.Mesh(g,mat);m.rotation.x=-Math.PI/2;m.position.y=modelLevels.floor;m.userData.room=id;scene.add(m);return m;
+ const mat=new THREE.MeshStandardMaterial({color:'#303a35',side:THREE.DoubleSide,roughness:1});
+ const m=new THREE.Mesh(g,mat);m.rotation.x=-Math.PI/2;m.position.y=modelLevels.floor;m.receiveShadow=true;m.userData.room=id;scene.add(m);return m;
 }
 function wall(scene,a,b,height=.63){
  const axis=a[0]===b[0]?1:0,range=b[axis]-a[axis];
@@ -42,7 +42,7 @@ function wall(scene,a,b,height=.63){
  for(let i=1;i<sorted.length;i++){
   const u=a.map((v,k)=>v+(b[k]-v)*sorted[i-1]),v=a.map((n,k)=>n+(b[k]-n)*sorted[i]);
   const [x1,z1]=project(u),[x2,z2]=project(v),dx=x2-x1,dz=z2-z1;
-  const m=box(scene,(x1+x2)/2,(z1+z2)/2,Math.hypot(dx,dz),.13,height,'#77798b',.09,-Math.atan2(dz,dx));
+  const m=box(scene,(x1+x2)/2,(z1+z2)/2,Math.hypot(dx,dz),.13,height,'#a0a4b0',.09,-Math.atan2(dz,dx));
   const length=Math.hypot(v[0]-u[0],v[1]-u[1]),px=-(v[1]-u[1])/length*6,py=(v[0]-u[0])/length*6;
   m.userData.rooms=[roomAt((u[0]+v[0])/2+px,(u[1]+v[1])/2+py),roomAt((u[0]+v[0])/2-px,(u[1]+v[1])/2-py)].filter(Boolean);
  }
@@ -60,16 +60,17 @@ export function mountModel(canvas,rooms,state,onSelect){
   return;
  }
  const modest=(navigator.hardwareConcurrency||4)<=4;
- renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,modest?1:1.5));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.14;
+ renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,modest?1:1.5));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.02;
  const scene=new THREE.Scene();
  const camera=new THREE.OrthographicCamera(-10,10,9,-9,.1,100);camera.position.set(12,17,16);camera.zoom=1;
- const orbit=new OrbitControls(camera,canvas);orbit.target.set(0,0,0);orbit.enablePan=false;orbit.minZoom=.72;orbit.maxZoom=1.8;orbit.minPolarAngle=.3;orbit.maxPolarAngle=1.1;
+ const orbit=new OrbitControls(camera,canvas);orbit.target.set(0,0,0);orbit.enablePan=false;orbit.minZoom=.45;orbit.maxZoom=3;orbit.minPolarAngle=.3;orbit.maxPolarAngle=1.1;
  // Direct manipulation: no inertia tail that keeps a wall tablet rendering.
  orbit.enableDamping=false;orbit.rotateSpeed=.45;
  scene.add(new THREE.AmbientLight('#c5cce8',1.1));
  const hemisphere=new THREE.HemisphereLight('#d7dff4','#353349',2);scene.add(hemisphere);
  const sun=new THREE.DirectionalLight('#ffe3b9',3);sun.position.set(-6,18,-9);sun.castShadow=true;sun.shadow.mapSize.set(modest?512:1024,modest?512:1024);sun.shadow.camera.left=-12;sun.shadow.camera.right=12;sun.shadow.camera.top=12;sun.shadow.camera.bottom=-12;sun.shadow.normalBias=.025;sun.shadow.bias=-.00015;scene.add(sun);
- const ground=new THREE.Mesh(new THREE.PlaneGeometry(200,200),new THREE.ShadowMaterial({opacity:.24}));ground.rotation.x=-Math.PI/2;ground.position.y=modelLevels.ground;ground.receiveShadow=true;scene.add(ground);
+ const ground=new THREE.Mesh(new THREE.PlaneGeometry(200,200),new THREE.ShadowMaterial({opacity:.14}));ground.rotation.x=-Math.PI/2;ground.position.y=modelLevels.ground;ground.receiveShadow=true;scene.add(ground);
+ scene.add(sun.target);
  const base=box(scene,1,0,7.45,12,modelLevels.houseThickness,'#363b51',modelLevels.foundationTop-modelLevels.houseThickness);base.userData.foundation=true;
  const deck=box(scene,-3.85,-1.85,2.5,8.3,modelLevels.terraceThickness,'#42455c',modelLevels.foundationTop-modelLevels.terraceThickness);deck.userData.foundation=true;
  // Living room is covered by exactly two adjacent zone faces, not a third base.
@@ -100,23 +101,15 @@ export function mountModel(canvas,rooms,state,onSelect){
  [[548,302],[548,429]],[[548,492],[548,590]],[[548,645],[548,685]],[[548,750],[548,775]],
  [[548,560],[744,560]],[[548,657],[744,657]],[[478,775],[548,775]],[[478,775],[478,918]],[[220,918],[744,918]],
  [[0,0],[190,0]],[[0,0],[0,640]],[[0,640],[190,640]]
- ];segments.forEach(([a,b],i)=>wall(scene,a,b,i>=23?.24:.63));
- // Conditional, schematic furniture. No actual furniture layout is asserted.
- const f=(x,z,w,d,h,c,y=0)=>{const p=project([x,z]);const m=new THREE.Mesh(new RoundedBoxGeometry(w/78,h,d/78,3,Math.min(.06,h/3)),material(c));m.position.set(p[0],y+.12+h/2,p[1]);m.userData.room=roomAt(x,z);m.castShadow=true;m.receiveShadow=true;scene.add(m);return m};
- f(303,90,123,52,.3,'#d3cbbb');f(303,66,123,15,.54,'#c1b5a1');f(249,104,15,73,.49,'#c1b5a1');f(357,137,45,40,.23,'#6a5b47');
- f(290,92,40,43,.09,'#e0d7c4',.3);f(335,92,40,43,.09,'#e0d7c4',.3);
- f(648,55,150,34,.46,'#dedaca');f(705,113,35,88,.46,'#dedaca');f(636,154,69,55,.4,'#8b7357');
- f(651,359,122,50,.42,'#9a8569');f(641,431,38,41,.29,'#e0d6c5');f(321,825,123,156,.24,'#a99274');f(321,825,110,147,.28,'#d6d0bf',.18);f(321,757,107,28,.12,'#eeeadb',.48);
- f(635,820,123,156,.24,'#a99274');f(635,820,110,147,.28,'#d6d0bf',.18);f(635,752,107,28,.12,'#eeeadb',.48);
- f(253,568,40,76,.22,'#e7e4d7');f(253,568,31,64,.04,'#b6b9b0',.22);
- f(675,618,100,30,.47,'#a89372');f(291,472,38,30,.25,'#e2e4d9');f(371,472,39,35,.52,'#73766d');
- f(87,113,100,38,.25,'#b0a48c');f(73,172,38,30,.2,'#665b4a');
- // Schematic furnishings, not a claim about the owner's measured interior.
- f(338,160,160,75,.025,'#676274');f(382,156,28,28,.2,'#8d7762');
- f(641,346,45,3,.36,'#252c40',.43);f(641,347,3,12,.09,'#4c5364',.42);
- f(583,154,20,24,.26,'#79788d');f(687,154,20,24,.26,'#79788d');
- for(const x of [291,344]){f(x,768,42,28,.10,'#f2e8df',.49);f(x+314,764,42,28,.10,'#f2e8df',.49)}
- f(253,824,25,32,.36,'#8f7a69');f(696,822,25,32,.36,'#8f7a69');
+ ];segments.forEach(([a,b],i)=>{
+  if(i<25){wall(scene,a,b,i===1?.44:i===24?.26:.72);return}
+  const [x1,z1]=project(a),[x2,z2]=project(b),length=Math.hypot(x2-x1,z2-z1),rotation=-Math.atan2(z2-z1,x2-x1);
+  const rail=box(scene,(x1+x2)/2,(z1+z2)/2,length,.035,.035,'#363b49',.65,rotation);rail.userData.room='terrace';
+  const lower=box(scene,(x1+x2)/2,(z1+z2)/2,length,.025,.025,'#363b49',.36,rotation);lower.userData.room='terrace';
+  for(let j=0,n=Math.ceil(length/.8);j<=n;j++){const p=box(scene,x1+(x2-x1)*j/n,z1+(z2-z1)*j/n,.035,.035,.58,'#363b49',.09);p.userData.room='terrace'}
+ });
+ const interior=buildInterior(scene,{project,roomAt,floor:modelLevels.floor});
+ canvas.dataset.interiorBatches=String(interior.batches);
  // Room names are shown in the readable HTML inspector, not tiny 3D labels.
  const ray=new THREE.Raycaster(),pointer=new THREE.Vector2();let down;
  const select=e=>{if(!down||Math.hypot(e.clientX-down[0],e.clientY-down[1])>8)return;const r=canvas.getBoundingClientRect();pointer.set((e.clientX-r.left)/r.width*2-1,-((e.clientY-r.top)/r.height)*2+1);ray.setFromCamera(pointer,camera);const hit=ray.intersectObjects([...Object.values(floors),...zoneFloors])[0];if(hit)onSelect(hit.object.userData.room)};
@@ -140,16 +133,31 @@ export function mountModel(canvas,rooms,state,onSelect){
  function frame(focusRoom){
   const r=canvas.getBoundingClientRect();if(!r.width||!r.height)return;
   renderer.setSize(r.width,r.height,false);
-  const members=focusRoom==='living'?zoneFloors:[floors[focusRoom]].filter(Boolean);
+  const members=focusRoom==='living'?zoneFloors:focusRoom?[floors[focusRoom]].filter(Boolean):[...Object.values(floors),...zoneFloors];
   const bounds=new THREE.Box3();
   for(const m of members)bounds.union(new THREE.Box3().setFromObject(m));
   const center=members.length?bounds.getCenter(new THREE.Vector3()):new THREE.Vector3(0,0,0);
-  const size=members.length?bounds.getSize(new THREE.Vector3()):null;
-  const aspect=r.width/r.height,h=size?Math.max(size.x,size.z)*.56+.6:6.1;
+  const size=bounds.getSize(new THREE.Vector3()),shadowRadius=focusRoom?Math.max(size.x,size.z)*.75+1.5:12;
+  sun.position.copy(center).add(new THREE.Vector3(-6,18,-9));sun.target.position.copy(center);
+  Object.assign(sun.shadow.camera,{left:-shadowRadius,right:shadowRadius,top:shadowRadius,bottom:-shadowRadius});
+  sun.shadow.camera.updateProjectionMatrix();sun.shadow.needsUpdate=true;
+  const aspect=r.width/r.height,h=6.1;
   camera.left=-h*aspect;camera.right=h*aspect;camera.top=h;camera.bottom=-h;
-  camera.zoom=size?1:r.width<500?.77:1;
-  camera.position.copy(center).add(new THREE.Vector3(12,17,16));orbit.target.copy(center);
-  camera.updateProjectionMatrix();orbit.update();invalidate();
+  camera.zoom=1;
+  camera.position.copy(center).add(new THREE.Vector3(12,16,19));orbit.target.copy(center);
+  camera.updateProjectionMatrix();orbit.update();camera.updateMatrixWorld(true);
+  let extentX=0,extentY=0;
+  for(const m of members){
+   m.updateWorldMatrix(true,false);
+   const points=m.geometry.attributes.position;
+   for(let i=0;i<points.count;i++)for(const lift of [0,.9]){
+    const p=new THREE.Vector3().fromBufferAttribute(points,i).applyMatrix4(m.matrixWorld);p.y+=lift;p.project(camera);
+    extentX=Math.max(extentX,Math.abs(p.x));extentY=Math.max(extentY,Math.abs(p.y));
+   }
+  }
+  camera.zoom=Math.max(.45,Math.min(3,.93/(extentX||1),.90/(extentY||1)));
+  canvas.dataset.fitZoom=String(camera.zoom.toFixed(3));
+  camera.updateProjectionMatrix();invalidate();
  }
  const observer=new ResizeObserver(()=>frame(current?.focusRoom));observer.observe(canvas);
  current={
@@ -177,6 +185,10 @@ export function updateModel(rooms,state){
  for(const [id,outline]of Object.entries(outlines))outline.visible=state.selected===id;
  const focusRoom=state.view==='room'&&floorPoints[state.selected]?state.selected:undefined;
  current.scene.traverse(o=>{
+  if(o.userData.lightAccentRoom){
+   const status=floorVisual(rooms.find(r=>r.id===o.userData.lightAccentRoom)?.channels,state).status;
+   o.material.emissive.set(status==='on'||status==='partial'?'#e4a65c':'#000000');
+  }
   if(o.userData.focusOnly)o.visible=Boolean(focusRoom&&o.userData.focusOnly===focusRoom);
   else if(o.userData.foundation)o.visible=!focusRoom;
   else if(o.userData.rooms)o.visible=!focusRoom||o.userData.rooms.includes(focusRoom);

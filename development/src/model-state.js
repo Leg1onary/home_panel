@@ -1,5 +1,5 @@
 export const floorPalette={
- off:'#343b50',partial:'#827052',on:'#bd9566',unknown:'#526073',uncontrolled:'#33394b'
+ off:'#66666a',partial:'#968368',on:'#bca17a',unknown:'#586274',uncontrolled:'#63666b'
 };
 // Treat a missing state as unknown, never as a verified light-off state.
 export function floorVisual(channels,state){

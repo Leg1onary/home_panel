@@ -17,6 +17,7 @@ import {houseBindings} from './house-profile.js';
 import {stationSupports,stationStateLabel} from './station.js';
 import {buildDeviceModel,detachChannel} from './device-model.js';
 import {deviceStructure,equipmentFromForm} from './device-model-ui.js';
+import {homeSummary} from './home-summary.js';
 
 const $=s=>document.querySelector(s);
 const I=name=>`<i data-lucide="${name}"></i>`;
@@ -50,6 +51,7 @@ const binaryLabel=(id,on,off)=>{
 function storageStatus(){
  const node=$('#storage-status');if(node){node.textContent=state.storageMessage;node.className='storage-status '+state.storage}
  const footer=$('#footer-storage');if(footer){footer.textContent=state.storage==='saved'?'Настройки сохранены':state.storageMessage;footer.title=state.storageMessage}
+ const bar=$('.shell>footer');if(bar)bar.dataset.storage=state.storage;
 }
 function persist(){saveStorage(storageStatus);storageStatus()}
 function applyAppearance(){
@@ -121,14 +123,16 @@ function quietDoor(){
 }
 function home(){
  return `<div class="view dashboard-view">
- <div class="dashboard-heading"><div><div class="eyebrow">Твоё пространство</div><h1>Мой дом</h1><p id="home-light-summary">${lightCountLabel()}</p></div>
+ <div class="dashboard-heading"><div class="home-intro"><h1>Мой дом</h1><p id="home-light-summary">${esc(homeLightSummary().label)}</p></div>
  <div class="dashboard-clock"><div id="clock">${clock()}</div><span id="date">${date()}</span></div></div>
  <div class="dashboard-layout"><div class="house-column">${sceneStage()}
  <div class="house-status" id="home-status">${homeStatus()}</div></div>
- <aside class="home-context"><div class="context-heading"><h2>Комнаты</h2><button class="text-button" data-action="favorites" aria-label="Настроить избранные комнаты">${I('sliders-horizontal')}</button></div>
- <div class="favorite-rooms" id="home-favorites">${favoriteRooms()}</div>
- <div class="context-heading"><h2>Рядом</h2><button class="text-button" data-action="allrooms">Все зоны ${I('arrow-up-right')}</button></div>
+ <aside class="home-context">
+ <div class="context-heading quick-heading"><h2>Под рукой</h2></div>
  <div id="home-quick">${homeQuick()}</div>
+ <div class="context-heading rooms-heading"><h2>Комнаты</h2><button class="text-button" data-action="favorites" aria-label="Настроить избранные комнаты">${I('sliders-horizontal')}</button></div>
+ <div class="favorite-rooms" id="home-favorites">${favoriteRooms()}</div>
+ <button class="all-zones-link text-button" data-action="allrooms">Все комнаты и зоны ${I('arrow-up-right')}</button>
  ${!state.preview&&!state.houseProfileConfirmed&&state.devices.some(d=>houseBindings[d.id]===state.bindings[d.id]?.entityId)?'<div class="profile-invite"><div><strong>Профиль ждёт проверки</strong><p>Подтверди привязки перед управлением домом.</p></div><button class="secondary" data-action="house-review">Проверить профиль</button></div>':''}
  </aside></div></div>`;
 }
@@ -140,26 +144,39 @@ function favoriteRooms(){
  return state.favorites.length?state.favorites.map(id=>{
   const r=getRoom(id),cs=channelsFor(r),known=!isLive()||cs.every(c=>canControl(c.id)),on=cs.filter(c=>c.on).length;
   return `<button class="favorite-room ${on&&known&&!noConnection()?'is-lit':''}" data-room="${r.id}">
-  <span class="favorite-room-title">${I(r.icon)}${esc(r.short)}</span><span class="favorite-room-detail">${roomClimate(id)||(!cs.length?'Нет линий света':noConnection()?'Нет связи':!known?'Есть недоступные линии':`${on} / ${cs.length} · свет`)}</span></button>`;
+  <span class="favorite-room-title">${I(r.icon)}${esc(r.short)}</span><span class="favorite-room-detail">${compactRoomClimate(id)||(!cs.length?'Без света':noConnection()?'Нет связи':!known?'<span title="Свет временно недоступен">—</span>':on?`${on} из ${cs.length} · включён`:'Свет выключен')}</span></button>`;
  }).join(''):'<button class="empty-favorites" data-action="favorites">Добавить любимые комнаты</button>';
 }
+function compactRoomClimate(id){
+ return state.devices.filter(d=>d.room===id&&d.status==='installed'&&['temperature','humidity'].includes(d.type))
+  .map(d=>({d,value:deviceReading(d)})).filter(({value})=>/\d/.test(value)&&!value.includes('устарел'))
+  .map(({d,value})=>`<span class="compact-reading">${I(deviceTypes[d.type].icon)}${esc(value)}</span>`).join('');
+}
+function homeLightSummary(){
+ const channels=rooms.flatMap(r=>r.channels.filter(c=>!c.planned));
+ return homeSummary({live:isLive(),online:!noConnection(),total:channels.length,unknown:channels.filter(c=>!canControl(c.id)).length,on:countLights()});
+}
 function homeStatus(){
+ const summary=homeLightSummary();
  return `<button class="status-chip" data-action="door">${I('door-closed')}${esc(binaryLabel('door','Дверь открыта','Дверь закрыта'))}</button>
- <button class="status-chip" data-view="watch">${I('thermometer')}Датчики и климат</button>
- <span class="scene-caption">${isLive()?'Состояния Home Assistant':'Демонстрационный режим'}</span>`;
+ <button class="status-chip" data-view="watch">${I('thermometer')}Климат</button>
+ <button class="status-chip well-chip" data-room="well">${I('droplets')}Скважина ${compactRoomClimate('well')}</button>
+ ${summary.warning?`<button class="status-chip availability-chip" data-action="house-review" aria-label="Подробнее о недоступных линиях света" title="${esc(summary.detail)}">${I('wifi-off')}Связь</button>`:''}`;
 }
 function homeQuick(){
  const camera=state.devices.find(d=>d.type==='camera'&&d.room==='yard'&&d.status==='installed');
  const media=state.devices.find(d=>d.id==='station'&&d.status==='installed');
- return `<div class="quick-devices">${camera?`<button class="quick-device camera-shortcut" data-camera="${camera.id}"><span class="quick-device-icon">${I('camera')}</span><span><strong>Двор</strong><small>Прямой эфир по нажатию</small></span>${I('arrow-up-right')}</button>`:''}
- ${media?`<button class="quick-device media-shortcut" data-action="station"><span class="quick-device-icon">${I('audio-lines')}</span><span><strong>${esc(media.name)}</strong><small>${isLive()?esc(stationStateLabel(observed(media.id))):'Музыка и голос · демо'}</small></span>${I('arrow-up-right')}</button>`:''}
- <button class="quick-device" data-room="well"><span class="quick-device-icon">${I('droplets')}</span><span><strong>Скважина</strong><small>${roomClimate('well')||'Показания датчиков'}</small></span>${I('chevron-right')}</button></div>`;
+ return `<div class="quick-devices">
+ <button class="quick-device light-shortcut" data-action="master" ${disabled(masterBlocked())}><span class="quick-device-icon">${I('power')}</span><span><strong>Весь свет</strong><small>Выключить</small></span></button>
+ ${camera?`<button class="quick-device camera-shortcut" data-camera="${camera.id}" aria-label="Двор: открыть прямой эфир"><span class="quick-device-icon">${I('camera')}</span><span><strong>Двор</strong><small>Камера</small></span></button>`:''}
+ ${media?`<button class="quick-device media-shortcut" data-action="station" aria-label="${esc(media.name)}: открыть управление"><span class="quick-device-icon">${I('audio-lines')}</span><span><strong>Дуо Макс</strong><small>Музыка</small></span></button>`:''}
+ </div>`;
 }
 function sceneStage(){
  return `<section class="model-stage spatial-stage"><canvas id="canvas" aria-label="Интерактивная объёмная модель дома"></canvas>
  <div id="model-loading" class="model-loading">${I('loader-circle')}Загружаем план дома</div>
- <div class="model-top"><span id="model-name">${state.view==='room'?esc(getRoom(state.selected).short):'Первый этаж'}</span><button id="reset-model" aria-label="Сбросить ракурс">${I('rotate-ccw')}Ракурс</button></div>
- <div class="model-bottom"><p>${state.view==='room'?'Твоя комната в деталях':'Коснись комнаты, чтобы открыть управление'}</p><div class="legend"><span></span>Свет включён</div></div></section>`;
+ <div class="model-top"><span id="model-name">${state.view==='room'?esc(getRoom(state.selected).short):'Первый этаж'}</span><button id="reset-model" title="Вернуть исходный ракурс" aria-label="Сбросить ракурс">${I('rotate-ccw')}</button></div>
+ </section>`;
 }
 function phaseLine(id){
  const c=commandFor(id);if(!c)return '';
@@ -373,7 +390,7 @@ function refresh(){
  if(['home','model','room'].includes(state.view)){
   updateDetail();modelAPI?.updateModel(rooms,state);
   if(state.view==='home'){
-   $('#home-light-summary').textContent=lightCountLabel();
+   $('#home-light-summary').textContent=homeLightSummary().label;
    updateRegion('#home-favorites',favoriteRooms());updateRegion('#home-status',homeStatus());updateRegion('#home-quick',homeQuick());
   }
  }else render(false);
@@ -411,8 +428,8 @@ function command(id,value){
 }
 function master(){
  settingsOpen=false;$('#sheet-content').dataset.station='';
- modal(`<h2>Выключить весь свет?</h2><p class="description">${isLive()?'Выключатся только привязанные и проверенные линии света. Это реальные команды Home Assistant.':'Команды выполнятся только в демомакете.'} Каждая линия ждёт отдельного подтверждения.</p>
- <div class="inline-note">Выключатся только световые устройства, включённые в мастер-свет в каталоге. Насос, котёл, ворота и Xiaomi Hub 2 исключены. Сценарий кнопки Яндекса проверим отдельно.</div>
+ modal(`<h2>Выключить весь свет?</h2><p class="description">${isLive()?'Выключатся только привязанные и проверенные линии света. Это реальные команды Home Assistant.':'Команды выполнятся только в демомакете.'} Результат проверяется по состоянию каждой линии.</p>
+ <div class="inline-note">Только линии, включённые в мастер-свет в каталоге. Камера, музыка и датчики не затрагиваются.</div>
  <div class="sheet-actions"><button class="primary" data-action="confirm-master">Выключить</button><button class="secondary" data-action="cancel">Отмена</button></div>`);
 }
 async function masterConfirm(){
@@ -421,7 +438,7 @@ async function masterConfirm(){
  const jobs=rooms.flatMap(r=>r.channels).filter(c=>c.masterOff&&c.on&&!c.planned&&canControl(c.id));
  const results=await Promise.all(jobs.map(c=>command(c.id,false)));
  state.batchPending=false;refresh();
- toast(results.every(Boolean)?(isLive()?'Проверенные линии выключены по данным HA. Насос не затронут.':'Свет выключен и подтверждён в демо. Насос не затронут.'):'Не все линии подтвердили выключение. Проверь сообщения в комнатах.');
+ toast(results.every(Boolean)?(isLive()?'Проверенные линии выключены по данным HA.':'Свет выключен и подтверждён в демо.'):'Не все линии подтвердили выключение. Проверь сообщения в комнатах.');
 }
 function stationSheet(){
  const enabled=!isLive()&&state.stationMode==='demo'&&!state.demoOffline,offline=!isLive()&&(state.stationMode==='offline'||state.demoOffline);
@@ -713,6 +730,7 @@ document.addEventListener('click',e=>{
   const c=commandFor(b.dataset.retry);if(c)return command(c.id,c.value);return;
  }
  const a=b.dataset.action;
+ if(a==='master')return master();
  if(a==='new-equipment'){equipmentEdit='new';techMessage='';updateTechnical();return}
  if(a==='equipment-back'){equipmentEdit=null;techMessage='';updateTechnical();return}
  if(a==='save-equipment'){
