@@ -621,6 +621,7 @@ main{min-height:0}
 /* Interior-first composition, 1.2.1. The canvas is the room, not a widget. */
 :root,[data-theme=dark]{
  --radius-full:9999px;
+ --text-rail:.75rem;
  --bg:#13143b;--surface:rgba(24,24,57,.83);--surface-2:#292b51;
  --border:rgba(226,229,255,.14);--muted:#d0d1e4;--faint:#b8bad1;
  --ambient-blue:rgba(0,123,180,.57);--ambient-rose:rgba(159,32,118,.53);
@@ -637,11 +638,11 @@ main{min-height:0}
 body{background:radial-gradient(ellipse at 8% 18%,var(--ambient-blue),transparent 66%),radial-gradient(ellipse at 100% 30%,var(--ambient-rose),transparent 70%),var(--bg)}
 .shell{margin-left:92px;padding:0 var(--space-6)}
 .shell>header{height:60px}
-.app-rail{width:68px;left:var(--space-4);top:50%;bottom:auto;transform:translateY(-50%);border:0;border-radius:var(--radius-lg);padding:var(--space-1);box-shadow:var(--panel-shadow);background:#10142b}
+.app-rail{width:80px;left:var(--space-4);top:50%;bottom:auto;transform:translateY(-50%);border:0;border-radius:var(--radius-lg);padding:var(--space-1);box-shadow:var(--panel-shadow);background:#10142b}
 [data-theme=light] .app-rail{background:#f5f6fb}
 .app-rail .brand{display:none}
 .app-rail nav{padding:0}
-.app-rail nav button,.rail-settings{min-height:58px;gap:var(--space-1);padding:var(--space-2) 0}
+.app-rail nav button,.rail-settings{min-height:58px;gap:var(--space-1);padding:var(--space-2) 0;font-size:var(--text-rail)}
 .app-rail nav button.active{background:rgba(235,195,128,.19);color:#f4d08e}
 [data-theme=light] .app-rail nav button.active{background:#e3d4b9;color:#66451c}
 .app-rail nav .nav-label-long{display:none}.app-rail nav .nav-label-short{display:block}
@@ -727,7 +728,7 @@ html[data-view=home] .shell>footer[data-storage=saved]{display:none}
  .shell>header{height:56px}
  .app-rail{left:var(--space-2);right:var(--space-2);top:auto;bottom:var(--space-2);width:auto;height:72px;transform:none;border:1px solid var(--border);padding:var(--space-1)}
  .app-rail nav button,.app-rail .rail-settings{min-height:60px;padding:var(--space-2) 0}
- .app-rail .rail-settings{border:0;margin:0}
+ .app-rail .rail-settings{border:0;margin:0;width:76px}
  .dashboard-heading{min-height:86px;margin:0 0 var(--space-2);align-items:flex-end}
  .dashboard-heading h1{font-size:var(--text-base)}.dashboard-heading p{max-width:170px}
  .dashboard-clock{position:static;transform:none;text-align:right;align-self:flex-start;padding-top:var(--space-2)}
