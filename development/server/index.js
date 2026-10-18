@@ -37,6 +37,7 @@ const getProfile=id=>{
  const normalized=JSON.stringify(preferences);
  if(normalized!==row.preferences)db.transaction(()=>{
   if(raw.deviceModel===undefined)db.prepare('INSERT OR IGNORE INTO profile_backups(profile_id,reason,preferences) VALUES(?,?,?)').run(id,'before-device-model-v1',row.preferences);
+  if(raw.deviceModel!==undefined&&JSON.stringify(raw.devices)!==JSON.stringify(preferences.devices))db.prepare('INSERT OR IGNORE INTO profile_backups(profile_id,reason,preferences) VALUES(?,?,?)').run(id,'before-spatial-redesign',row.preferences);
   db.prepare('UPDATE profiles SET preferences=? WHERE id=?').run(normalized,id);
  })();
  return {preferences,photo:row.photo};

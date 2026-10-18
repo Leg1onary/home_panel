@@ -3,6 +3,7 @@
 // share physical rooms; the right hallway key powers the terrace.
 import {deviceTypes} from './catalog.js';
 import {validatePreferences} from './preferences.js';
+import {detachChannel} from './device-model.js';
 
 export const houseBindings={
  'living:0':'light.gostinaia_levyi_vykliuchatel',
@@ -50,8 +51,28 @@ export const houseExtras=[
   ['terrace','terrace','Батарейка · движение террасы'],['master','hall','Батарейка · мастер-кнопка']
  ].map(([id,room,name])=>extra('battery:'+id,'battery',room,name))
 ];
+// Promote only the untouched old placeholder. Never infer an HA entity or erase
+// a manually configured/grouped extra channel. A deleted channel stays deleted.
+export function migrateCorridor(input){
+ let p;
+ const copy=()=>p||(p=JSON.parse(JSON.stringify(input)));
+ const main=input.devices.find(d=>d.id==='corridor-main');
+ const other=input.devices.some(d=>d.room==='corridor'&&d.type==='light'&&d.status==='installed'&&d.id!=='corridor-main');
+ if(main?.type==='light'&&main.room==='corridor'&&main.status==='planned'&&main.name==='Будущий выключатель 1'&&!other){
+  const next=copy().devices.find(d=>d.id===main.id);next.status='installed';next.name='Основной свет';
+  next.note='Одна установленная линия · выбери сущность HA';
+  if(!input.bindings[main.id]?.entityId)next.masterOff=false;
+ }
+ const extra=input.devices.find(d=>d.id==='corridor-extra');
+ if(extra?.status==='planned'&&extra.room==='corridor'&&extra.type==='light'&&extra.name==='Будущий выключатель 2'&&
+  !input.bindings[extra.id]?.entityId&&!input.deviceModel?.groups.some(g=>g.members.includes(extra.id))){
+  const next=copy();next.devices=next.devices.filter(d=>d.id!==extra.id);delete next.bindings[extra.id];
+  if(next.deviceModel)next.deviceModel=detachChannel(next.deviceModel,extra.id);
+ }
+ return p?validatePreferences(p):input;
+}
 export function migrateHouseProfile(input){
- if(input.housePresetVersion===3)return input;
+ if(input.housePresetVersion===3)return migrateCorridor(input);
  const p=JSON.parse(JSON.stringify(input));
  const previousVersion=input.housePresetVersion||0;
  // Existing live installs have already confirmed bindings in 1.0.5/1.0.6.
@@ -93,7 +114,7 @@ export function migrateHouseProfile(input){
   camera.note='TP-Link · Live View · источник заменён по выбору владельца';
  }
  p.housePresetVersion=3;
- return validatePreferences(p);
+ return migrateCorridor(validatePreferences(p));
 }
 export function bindingProblem(d,e){
  const t=deviceTypes[d.type];

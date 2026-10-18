@@ -120,17 +120,46 @@ function quietDoor(){
  <div><h3>${label}</h3><p>${isLive()?'Xiaomi · '+(observed('door')?'Home Assistant':'не привязан'):'Состояние демонстрационное'}</p></div></div>${I('chevron-right')}</button>`;
 }
 function home(){
- const photo=state.heroURL?` style="--hero-image:url('${state.heroURL}')"`:'';
- return `<div class="view home-layout"><div><section class="welcome"${photo}>
- <div class="welcome-tag">${I('leaf')}Дом в своём ритме</div><div class="welcome-copy"><div class="eyebrow" id="date">${date()}</div>
- <div class="time" id="clock">${clock()}</div><h1>Хорошо быть дома.</h1><p>Всё важное — на расстоянии касания.</p></div>
- <span class="photo-note">${state.heroURL?(state.photoSaved?'Твоё фото · сохранено локально':'Твоё фото · ещё не сохранено'):'Интерьер · визуальный референс'}</span></section>
- ${!state.preview&&!state.houseProfileConfirmed&&state.devices.some(d=>houseBindings[d.id]===state.bindings[d.id]?.entityId)?'<div class="profile-invite"><div><strong>Дом готов к подключению</strong><p>Привязки из твоей выгрузки уже заполнены. Проверь профиль перед включением управления.</p></div><button class="secondary" data-action="house-review">Проверить профиль</button></div>':''}
- <div class="section-heading"><div><h2>Твой быстрый доступ</h2><p>${lightCountLabel()+(isLive()?' · Home Assistant':' · демоданные')}</p></div>
- <button class="text-button" data-action="favorites">${I('star')}Настроить</button></div>
- <div class="room-grid">${state.favorites.length?state.favorites.map(id=>roomCard(getRoom(id))).join(''):`<button class="empty-favorites" data-action="favorites">${I('star')}<span>Выбери комнаты для быстрого доступа</span><small>Настроить главную</small></button>`}</div>
- <div class="wide-hint"><button data-action="allrooms">Все комнаты ${I('arrow-right')}</button><button data-action="model">Посмотреть дом ${I('arrow-up-right')}</button></div>
- </div><aside class="side-stack">${climate()}${station()}${quietDoor()}</aside></div>`;
+ return `<div class="view dashboard-view">
+ <div class="dashboard-heading"><div><div class="eyebrow">Твоё пространство</div><h1>Мой дом</h1><p id="home-light-summary">${lightCountLabel()}</p></div>
+ <div class="dashboard-clock"><div id="clock">${clock()}</div><span id="date">${date()}</span></div></div>
+ <div class="dashboard-layout"><div class="house-column">${sceneStage()}
+ <div class="house-status" id="home-status">${homeStatus()}</div></div>
+ <aside class="home-context"><div class="context-heading"><h2>Комнаты</h2><button class="text-button" data-action="favorites" aria-label="Настроить избранные комнаты">${I('sliders-horizontal')}</button></div>
+ <div class="favorite-rooms" id="home-favorites">${favoriteRooms()}</div>
+ <div class="context-heading"><h2>Рядом</h2><button class="text-button" data-action="allrooms">Все зоны ${I('arrow-up-right')}</button></div>
+ <div id="home-quick">${homeQuick()}</div>
+ ${!state.preview&&!state.houseProfileConfirmed&&state.devices.some(d=>houseBindings[d.id]===state.bindings[d.id]?.entityId)?'<div class="profile-invite"><div><strong>Профиль ждёт проверки</strong><p>Подтверди привязки перед управлением домом.</p></div><button class="secondary" data-action="house-review">Проверить профиль</button></div>':''}
+ </aside></div></div>`;
+}
+function roomClimate(id){
+ return state.devices.filter(d=>d.room===id&&d.status==='installed'&&['temperature','humidity'].includes(d.type))
+  .map(d=>`<span class="climate-pill">${I(deviceTypes[d.type].icon)}${esc(deviceReading(d))}</span>`).join('');
+}
+function favoriteRooms(){
+ return state.favorites.length?state.favorites.map(id=>{
+  const r=getRoom(id),cs=channelsFor(r),known=!isLive()||cs.every(c=>canControl(c.id)),on=cs.filter(c=>c.on).length;
+  return `<button class="favorite-room ${on&&known&&!noConnection()?'is-lit':''}" data-room="${r.id}">
+  <span class="favorite-room-title">${I(r.icon)}${esc(r.short)}</span><span class="favorite-room-detail">${roomClimate(id)||(!cs.length?'Нет линий света':noConnection()?'Нет связи':!known?'Есть недоступные линии':`${on} / ${cs.length} · свет`)}</span></button>`;
+ }).join(''):'<button class="empty-favorites" data-action="favorites">Добавить любимые комнаты</button>';
+}
+function homeStatus(){
+ return `<button class="status-chip" data-action="door">${I('door-closed')}${esc(binaryLabel('door','Дверь открыта','Дверь закрыта'))}</button>
+ <button class="status-chip" data-view="watch">${I('thermometer')}Датчики и климат</button>
+ <span class="scene-caption">${isLive()?'Состояния Home Assistant':'Демонстрационный режим'}</span>`;
+}
+function homeQuick(){
+ const camera=state.devices.find(d=>d.type==='camera'&&d.room==='yard'&&d.status==='installed');
+ const media=state.devices.find(d=>d.id==='station'&&d.status==='installed');
+ return `<div class="quick-devices">${camera?`<button class="quick-device camera-shortcut" data-camera="${camera.id}"><span class="quick-device-icon">${I('camera')}</span><span><strong>Двор</strong><small>Прямой эфир по нажатию</small></span>${I('arrow-up-right')}</button>`:''}
+ ${media?`<button class="quick-device media-shortcut" data-action="station"><span class="quick-device-icon">${I('audio-lines')}</span><span><strong>${esc(media.name)}</strong><small>${isLive()?esc(stationStateLabel(observed(media.id))):'Музыка и голос · демо'}</small></span>${I('arrow-up-right')}</button>`:''}
+ <button class="quick-device" data-room="well"><span class="quick-device-icon">${I('droplets')}</span><span><strong>Скважина</strong><small>${roomClimate('well')||'Показания датчиков'}</small></span>${I('chevron-right')}</button></div>`;
+}
+function sceneStage(){
+ return `<section class="model-stage spatial-stage"><canvas id="canvas" aria-label="Интерактивная объёмная модель дома"></canvas>
+ <div id="model-loading" class="model-loading">${I('loader-circle')}Загружаем план дома</div>
+ <div class="model-top"><span id="model-name">${state.view==='room'?esc(getRoom(state.selected).short):'Первый этаж'}</span><button id="reset-model" aria-label="Сбросить ракурс">${I('rotate-ccw')}Ракурс</button></div>
+ <div class="model-bottom"><p>${state.view==='room'?'Твоя комната в деталях':'Коснись комнаты, чтобы открыть управление'}</p><div class="legend"><span></span>Свет включён</div></div></section>`;
 }
 function phaseLine(id){
  const c=commandFor(id);if(!c)return '';
@@ -150,14 +179,9 @@ function controls(r){
  return `<div class="control-group"><div class="control-row"><div><h3>${esc(c.name)}</h3><p>${esc(note||'Планируется')}</p></div>
  ${toggle(id,c.name,c.on,c.planned,`data-device="${id}"`)}</div>${phaseLine(id)}</div>`;
  }).join('')}${state.devices.some(d=>d.id==='rgb'&&d.room===r.id)?rgbControls():''}
- ${r.climate?`<div class="status-line">${I('thermometer')}${noConnection()||sensors.living.quality==='unavailable'?'Температура: нет данных':sensorStatus('living')==='Данные устарели'?'Температура: данные устарели':reading(sensors.living.value)+' °C · '+sensorStatus('living')}</div>
- <div class="status-line">${I('radio')}Xiaomi Hub 2 · инфраструктура, не светильник</div>
- <div class="status-line">${I('circle-check')}Дым · ${binaryLabel('smoke','Тревога','Нет тревоги')}</div>`:''}
- ${r.pump?'<div class="inline-note">Насос тёплого пола — отдельно от света. Привязку канала Yeelight проверим на месте.</div><button class="text-button" data-action="pump">Питание насоса '+I('arrow-right')+'</button>':''}
- ${r.id==='corridor'?'<div class="inline-note">Новые линии добавляются в техническом разделе. Планируемые выключатели не управляют оборудованием.</div>':''}
- ${r.terrace?'<div class="status-line">'+I('sun')+'Датчик движения и освещённости</div><div class="inline-note">Сценарий включает свет, когда темно. Настройки проверим при подключении.</div>':''}
- ${r.id==='hall'?'<div class="status-line">'+I('door-closed')+binaryLabel('door','Открыта','Закрыта')+'</div><button class="text-button" data-room="terrace">Правая клавиша · свет террасы '+I('arrow-right')+'</button>':''}
- ${state.devices.filter(d=>d.room===r.id&&['curtain','vacuum'].includes(d.type)).map(sensorCard).join('')}`;
+ ${!r.channels.length?'<p class="empty-room-note">Здесь нет линий света. Другие устройства доступны ниже.</p>':''}
+ ${r.id==='corridor'&&r.channels.some(c=>!state.bindings[c.id]?.entityId)?'<button class="text-button" data-action="corridor-binding">Выбрать сущность света коридора '+I('arrow-right')+'</button>':''}
+ ${r.id==='hall'?'<button class="text-button" data-room="terrace">Свет террасы · отдельная зона '+I('arrow-right')+'</button>':''}`;
 }
 function rgbControls(){
  const d=state.devices.find(d=>d.id==='rgb'),powered=d?.status==='installed'&&hallPowered();
@@ -170,38 +194,47 @@ function rgbControls(){
 }
 function selectedRoom(){
  const r=getRoom(state.selected);
- return `<section class="selected-room"><div class="eyebrow">Выбранная комната</div><h2>${r.name}</h2><p class="description">${r.description||'Управляй каждой линией отдельно'}</p>${controls(r)}</section>`;
+ return `<section class="selected-room"><div class="eyebrow">${esc(r.short)}</div><h2>Свет</h2><p class="description">${r.channels.length?'Каждая линия независима':'Устройства этой зоны'}</p>${controls(r)}</section>`;
 }
 function model(){
- return `<div class="view"><div class="view-title"><div><h1>Дом, который отвечает</h1><p>Свет отражается на плане. Выбери комнату касанием.</p></div>
- <button class="text-button" data-action="allrooms">Список комнат ${I('arrow-right')}</button></div><div class="model-layout">
- <section class="model-stage"><canvas id="canvas" aria-label="Интерактивная объёмная модель дома"></canvas><div id="model-loading" class="model-loading">${I('loader-circle')}Загружаем модель только сейчас</div>
- <div class="model-top"><span id="model-name">Первый этаж · ${getRoom(state.selected).name}</span><button id="reset-model">${I('rotate-ccw')}Ракурс</button></div>
- <div class="model-bottom"><p>Перетаскивай для поворота · нажми на комнату</p><div class="legend"><span></span>${isLive()?'Тёплый — свет · серый — нет данных':'Демонстрационная подсветка'}</div></div></section>
- <aside class="side-stack"><div id="selected-room">${selectedRoom()}</div><p class="model-note">Мебель и размеры условные.</p></aside></div></div>`;
+ return `<div class="view"><div class="view-title"><div><div class="eyebrow">Пространство</div><h1>План дома</h1><p>Выбери комнату на плане или в списке.</p></div>
+ <button class="secondary" data-action="allrooms">Все комнаты ${I('arrow-right')}</button></div><div class="model-layout">
+ ${sceneStage()}<aside class="side-stack"><div id="selected-room">${selectedRoom()}</div><button class="secondary" data-room="${state.selected}">Открыть комнату ${I('arrow-up-right')}</button><p class="model-note">Мебель и размеры показаны схематично.</p></aside></div></div>`;
+}
+function roomPage(){
+ const r=getRoom(state.selected),external=['attic','well','yard'].includes(r.id);
+ return `<div class="view room-view"><div class="room-heading"><div><button class="room-back text-button" data-view="home">${I('house')}Мой дом ${I('chevron-right')}</button><h1>${esc(r.name)}</h1></div><div class="room-climate" id="room-climate">${roomClimate(r.id)}</div></div>
+ <div class="room-layout"><div class="room-visual-column">${external?`<section class="zone-stage">${I(r.icon)}<h2>${esc(r.short)}</h2><p>Показания и доступность устройств</p><div class="room-climate">${roomClimate(r.id)}</div></section>`:sceneStage()}
+ <div class="room-equipment" id="room-equipment">${roomEquipment(r)}</div></div><aside class="room-control-column"><div id="selected-room">${selectedRoom()}</div><details class="room-other-zones"><summary>Другие комнаты</summary>${rooms.filter(x=>x.id!==r.id&&x.id!=='yard').map(x=>`<button data-room="${x.id}">${I(x.icon)}${esc(x.short)}${I('chevron-right')}</button>`).join('')}</details></aside></div></div>`;
+}
+function roomEquipment(r){
+ const cards=logicalSensorCards(r.id);
+ return `${state.devices.some(d=>d.id==='station'&&d.room===r.id&&d.status==='installed')?station():''}
+ ${cards}${state.devices.filter(d=>d.room===r.id&&['curtain','vacuum'].includes(d.type)).map(sensorCard).join('')}`;
 }
 function lights(){
- return `<div class="view"><div class="view-title"><div><h1>Свет, как тебе удобно</h1><p>Независимые линии. Нажми комнату для управления.</p></div>
+ return `<div class="view"><div class="view-title"><div><div class="eyebrow">Управление</div><h1>Свет в доме</h1><p>Выбери комнату. Все линии доступны независимо.</p></div>
  <span class="demo-badge">${state.demoOffline?'Нет связи · демо':lightCountLabel()}</span></div>
- <div class="room-list">${rooms.map(roomCard).join('')}</div><div class="wide-hint"><span>Каждая линия света управляется отдельно.</span><button data-action="pump">${I('heater')}Насос отдельно от мастер-света</button></div></div>`;
+ <div class="room-list">${rooms.map(roomCard).join('')}</div><div class="wide-hint"><span>Инженерное оборудование не входит в мастер-свет.</span><button data-action="catalog">Каталог устройств ${I('arrow-right')}</button></div></div>`;
 }
 function watch(){
- return `<div class="view"><div class="view-title"><div><h1>Спокойствие в деталях</h1><p>Двор и датчики. Установленные устройства и планы расширения.</p></div></div>
+ const motion=state.devices.find(d=>d.id==='terrace-motion'&&d.status==='installed');
+ return `<div class="view"><div class="view-title"><div><div class="eyebrow">Наблюдение</div><h1>Климат и датчики</h1><p>Всё, что сообщает твой дом.</p></div></div>
  <div class="watch-grid"><section class="camera-empty">${I('camera')}<h2>Двор под присмотром</h2>
  <p>Нажми на камеру для прямого эфира. Видео работает только в открытом окне просмотра.</p>
- <div class="module-list">${state.devices.filter(d=>d.type==='camera').map(d=>`<button class="quiet-card" data-camera="${d.id}"><div class="quiet-info">${I('camera')}<div><h3>${esc(d.name)}</h3><p>${d.status==='planned'?'Планируется':isLive()&&observed(d.id)?'Подключена · прямой эфир':'Установлена · подключение не проверено'}</p></div></div>${I('chevron-right')}</button>`).join('')||'<p>Камеры добавляются через каталог.</p>'}</div></section>
+ <div class="module-list">${state.devices.filter(d=>d.type==='camera'&&d.status==='installed').map(d=>`<button class="quiet-card" data-camera="${d.id}"><div class="quiet-info">${I('camera')}<div><h3>${esc(d.name)}</h3><p>${isLive()&&observed(d.id)?'Подключена · прямой эфир':'Установлена · подключение не проверено'}</p></div></div>${I('chevron-right')}</button>`).join('')||'<p>Камеры добавляются через каталог.</p>'}</div></section>
  <aside class="side-stack"><section class="overview-status">
  <div class="status-line"><span>${I('door-closed')}Входная дверь</span><strong>${binaryLabel('door','Открыта','Закрыта')}</strong></div>
- <div class="status-line"><span>${I('radio')}Датчик дыма</span><strong>${binaryLabel('smoke','Тревога','Нет тревоги')}</strong></div>
- <div class="status-line"><span>${I('trees')}Терраса</span><strong>Сценарий света</strong></div>
+ ${state.devices.some(d=>d.id==='smoke'&&d.status==='installed')?`<div class="status-line"><span>${I('radio')}Дым</span><strong>${binaryLabel('smoke','Тревога','Нет тревоги')}</strong></div>`:''}
+ ${motion?`<div class="status-line"><span>${I('trees')}Терраса</span><strong>${esc(deviceReading(motion))}</strong></div>`:''}
  ${state.devices.some(d=>d.id==='rgb')?`<div class="status-line"><span>${I('lightbulb')}RGB прихожей</span><strong>${noConnection()?'Нет связи':isLive()&&!observed('hall:0')?'Нет данных':hallPowered()?'Есть питание':'Без питания'}</strong></div>`:''}</section>
  ${climate()}</aside></div>${deviceHealth()}<section class="sensor-catalog"><div class="section-heading"><div><h2>Датчики дома</h2><p>Логические устройства: показания и батарейка вместе</p></div></div><div class="module-grid">${logicalSensorCards()||'<p>Датчики пока не добавлены.</p>'}</div></section>
  ${state.devices.some(d=>['curtain','vacuum'].includes(d.type))?`<section class="sensor-catalog"><div class="section-heading"><div><h2>Новые категории</h2><p>Карнизы и пылесосы: пока только наблюдение, без команд</p></div></div><div class="module-grid">${state.devices.filter(d=>['curtain','vacuum'].includes(d.type)).map(sensorCard).join('')}</div></section>`:''}</div>`;
 }
-function logicalSensorCards(){
+function logicalSensorCards(roomId){
  const byId=new Map(state.devices.map(d=>[d.id,d]));
  return buildDeviceModel(preferences(),state.entityStates,isLive()&&state.liveOnline)
-  .map(g=>({...g,components:g.components.filter(c=>sensorTypes.includes(c.type))}))
+  .map(g=>({...g,components:g.components.filter(c=>sensorTypes.includes(c.type)&&c.installed&&(!roomId||c.room===roomId))}))
   .filter(g=>g.components.some(c=>c.type!=='battery'))
   .map(g=>`<article class="module-card"><div class="title-line"><span>${esc(areaName(g.room))}</span>${I(g.icon)}</div><h3>${esc(g.name)}</h3>
    ${g.components.map(c=>`<div class="status-line"><span>${esc(deviceTypes[c.type].label)}</span><strong>${esc(deviceReading(byId.get(c.id)))}</strong></div>`).join('')}
@@ -301,29 +334,49 @@ async function cameraFrame(id,button){
 }
 function render(animate=true){
  const revision=++viewRevision;modelAPI?.disposeModel();
- $('#main').innerHTML=state.view==='home'?home():state.view==='model'?model():state.view==='rooms'?lights():state.view==='engineering'?engineering():watch();
+ $('#main').innerHTML=state.view==='home'?home():state.view==='room'?roomPage():state.view==='model'?model():state.view==='rooms'?lights():state.view==='engineering'?engineering():watch();
+ document.documentElement.dataset.view=state.view;
  if(!animate&&$('#main .view'))$('#main .view').style.animation='none';
- document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===state.view));
+ document.querySelectorAll('nav button').forEach(b=>{
+  const active=b.dataset.view===state.view||(state.view==='room'&&b.dataset.view==='home');
+  b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');
+ });
  $('#master').disabled=masterBlocked();updateHeader();storageStatus();icons();
- if(state.view==='model'){
+ if($('#canvas')){
   modelPromise ||= import('./model.js');
   modelPromise.then(api=>{
-   if(revision!==viewRevision||state.view!=='model')return;
+   if(revision!==viewRevision||!$('#canvas'))return;
    modelAPI=api;$('#model-loading').hidden=true;
-   api.mountModel($('#canvas'),rooms,state,id=>{state.selected=id;updateDetail();api.updateModel(rooms,state)});
-  }).catch(()=>{if(revision===viewRevision)$('#model-loading').innerHTML='Модель не загрузилась. Открой вкладку «Свет».'});
+   api.mountModel($('#canvas'),rooms,state,id=>{
+    if(state.view==='model'){state.selected=id;updateDetail();api.updateModel(rooms,state)}else openRoom(id);
+   });
+  }).catch(()=>{if(revision===viewRevision&&$('#model-loading'))$('#model-loading').innerHTML='План недоступен в этом браузере. Все комнаты доступны в разделе «Свет».'});
  }
 }
+function updateRegion(selector,markup){
+ const node=$(selector);if(!node||node.dataset.rendered===markup)return;
+ node.innerHTML=markup;node.dataset.rendered=markup;
+}
 function updateDetail(){
- if($('#selected-room'))$('#selected-room').innerHTML=selectedRoom();
- if($('#model-name'))$('#model-name').textContent='Первый этаж · '+getRoom(state.selected).name;
+ const editingRange=document.activeElement?.matches('input[type="range"]');
+ if($('#selected-room')&&!editingRange)updateRegion('#selected-room',selectedRoom());
+ if($('#model-name'))$('#model-name').textContent=state.view==='room'?getRoom(state.selected).short:'Первый этаж';
+ if($('#room-climate'))$('#room-climate').innerHTML=roomClimate(state.selected);
+ updateRegion('.zone-stage .room-climate',roomClimate(state.selected));
+ if($('#room-equipment')&&!editingRange)updateRegion('#room-equipment',roomEquipment(getRoom(state.selected)));
  const id=$('#sheet-content').dataset.room;
  if(!$('#overlay').hidden&&id)$('#sheet-content').innerHTML=roomSheet(getRoom(id));
  icons();
 }
 function refresh(){
  const focus=document.activeElement?.getAttribute('aria-label');
- if(state.view==='model'){updateDetail();modelAPI?.updateModel(rooms,state)}else render(false);
+ if(['home','model','room'].includes(state.view)){
+  updateDetail();modelAPI?.updateModel(rooms,state);
+  if(state.view==='home'){
+   $('#home-light-summary').textContent=lightCountLabel();
+   updateRegion('#home-favorites',favoriteRooms());updateRegion('#home-status',homeStatus());updateRegion('#home-quick',homeQuick());
+  }
+ }else render(false);
  if(!$('#overlay').hidden){
   if(state.techOpen&&techTab==='diagnostics')$('#sheet-content').innerHTML=technical();
   else if(settingsOpen){/* HA polling must not replace an open form or its focus. */}
@@ -338,8 +391,9 @@ function roomSheet(r){
 }
 function openRoom(id){
  if(id==='yard')return openYardCamera();
+ if(!getRoom(id))return;
  state.selected=id;settingsOpen=false;$('#sheet-content').dataset.station='';
- if(state.view==='model'){updateDetail();modelAPI?.updateModel(rooms,state)}else modal(roomSheet(getRoom(id)),id);
+ navigate('room');
 }
 function navigate(v){
  closeModal();$('#sheet-content').dataset.room='';$('#sheet-content').dataset.station='';
@@ -407,7 +461,7 @@ function panelSettings(){
  </section><section class="settings-section"><h3>Оформление и обслуживание</h3><label class="setting-field">Постоянный экран<select id="kiosk-setting"><option value="off" ${!state.kiosk?'selected':''}>Обычная панель</option><option value="on" ${state.kiosk?'selected':''}>Компактный режим для экрана</option></select></label>
  <button class="secondary full-width" data-action="fullscreen">${I('maximize')}Полный экран</button>
  <p class="setting-help">Полный экран включается по нажатию; Esc возвращает обычный режим. Настройки не скрываются и не блокируются паролем.</p>
- <label class="setting-field">Фото гостиной<input id="hero-upload" type="file" accept="image/jpeg,image/png,image/webp"/></label>
+ <label class="setting-field">Фото для экрана ожидания<input id="hero-upload" type="file" accept="image/jpeg,image/png,image/webp"/></label>
  <p class="setting-help">${state.preview?'В превью фото остаётся во вкладке. Постоянное сохранение доступно только при локальном запуске.':'Фото сначала остаётся во вкладке. По отдельной кнопке сохраняется в локальную базу на этом компьютере.'} До 10 МБ; сохраняем уменьшенный JPEG.</p>
  ${state.heroURL&&photoBlob&&!state.preview?'<button class="secondary full-width" data-action="save-photo">Сохранить фото на этом компьютере</button>':''}
  ${state.heroURL?'<button class="text-button" data-action="reset-photo">Вернуть интерьерный референс</button>':''}
@@ -668,6 +722,7 @@ document.addEventListener('click',e=>{
   return saveEquipmentModel(next);
  }
  if(a==='house-review')return openTechnical('connection');
+ if(a==='corridor-binding'){bindingRoom='corridor';return openTechnical('bindings')}
  if(a==='house-activate'){
   if(state.profileBusy||hasPending())return;
   state.profileBusy=true;techMessage='Проверяем сущности профиля…';updateTechnical();
@@ -807,6 +862,6 @@ document.addEventListener('keydown',e=>{
 for(const event of ['pointerdown','keydown','wheel','input','change'])document.addEventListener(event,()=>{if(!state.idle)armIdle()},{passive:true});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){clearTimeout(idleTimer);if(cameraPlayer)cameraStop()}else armIdle()});
 window.addEventListener('pagehide',clearCamera);
-setInterval(()=>{updateClocks();applyNight();if(state.view==='home'&&!state.idle&&!hasPending())render(false)},10000);
+setInterval(()=>{updateClocks();applyNight();if(state.view==='home'&&!state.idle&&!hasPending())refresh()},10000);
 $('#main').innerHTML='<div class="boot-state" role="status">Подготавливаем твою панель…</div>';
 loadStorage().then(()=>{applyAppearance();startLive(refresh);render();updateClocks();armIdle();window.__homePanelReady=true});

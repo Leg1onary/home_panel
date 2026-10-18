@@ -21,7 +21,7 @@ var house_default = {
     { id: "bath", name: "\u0412\u0430\u043D\u043D\u0430\u044F", short: "\u0412\u0430\u043D\u043D\u0430\u044F", icon: "bath", channels: [{ name: "\u041E\u0441\u043D\u043E\u0432\u043D\u043E\u0439 \u0441\u0432\u0435\u0442", note: "\u041B\u0435\u0432\u0430\u044F \u043A\u043B\u0430\u0432\u0438\u0448\u0430 \xB7 \u0441\u043F\u043E\u0442\u044B", demoOn: false }, { name: "\u041F\u043E\u0442\u043E\u043B\u043E\u0447\u043D\u0430\u044F \u043B\u0435\u043D\u0442\u0430", note: "\u041F\u0440\u0430\u0432\u0430\u044F \u043A\u043B\u0430\u0432\u0438\u0448\u0430 \xB7 \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u0430", demoOn: false }] },
     { id: "utility", name: "\u0422\u0443\u0430\u043B\u0435\u0442 / \u043A\u043E\u0442\u0435\u043B\u044C\u043D\u0430\u044F", short: "\u041A\u043E\u0442\u0435\u043B\u044C\u043D\u0430\u044F", icon: "heater", description: "\u041E\u0434\u043D\u043E \u043F\u043E\u043C\u0435\u0449\u0435\u043D\u0438\u0435, \u0434\u0432\u0435 \u0444\u0443\u043D\u043A\u0446\u0438\u043E\u043D\u0430\u043B\u044C\u043D\u044B\u0435 \u0437\u043E\u043D\u044B", channels: [{ name: "\u0421\u0432\u0435\u0442 \u0442\u0443\u0430\u043B\u0435\u0442\u0430", demoOn: false }], pump: true },
     { id: "pantry", name: "\u041A\u043B\u0430\u0434\u043E\u0432\u0430\u044F", short: "\u041A\u043B\u0430\u0434\u043E\u0432\u0430\u044F", icon: "archive", channels: [{ name: "\u041E\u0441\u043D\u043E\u0432\u043D\u043E\u0439 \u0441\u0432\u0435\u0442", demoOn: false }] },
-    { id: "corridor", name: "\u041A\u043E\u0440\u0438\u0434\u043E\u0440", short: "\u041A\u043E\u0440\u0438\u0434\u043E\u0440", icon: "move-up-right", description: "\u0423\u043C\u043D\u044B\u0445 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432 \u043F\u043E\u043A\u0430 \u043D\u0435\u0442", channels: [] },
+    { id: "corridor", name: "\u041A\u043E\u0440\u0438\u0434\u043E\u0440", short: "\u041A\u043E\u0440\u0438\u0434\u043E\u0440", icon: "move-up-right", description: "\u041E\u0434\u043D\u0430 \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u043D\u0430\u044F \u043B\u0438\u043D\u0438\u044F \u0441\u0432\u0435\u0442\u0430", channels: [] },
     { id: "terrace", name: "\u0422\u0435\u0440\u0440\u0430\u0441\u0430", short: "\u0422\u0435\u0440\u0440\u0430\u0441\u0430", icon: "trees", description: "\u0421\u0432\u0435\u0442 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0451\u043D \u043A \u043F\u0440\u0430\u0432\u043E\u0439 \u043A\u043B\u0430\u0432\u0438\u0448\u0435 \u0432 \u043F\u0440\u0438\u0445\u043E\u0436\u0435\u0439", channels: [], terrace: true }
   ]
 };
@@ -111,8 +111,7 @@ function defaultDevices() {
     make("terrace-motion", "motion", "terrace", "\u0414\u0432\u0438\u0436\u0435\u043D\u0438\u0435 \u043D\u0430 \u0442\u0435\u0440\u0440\u0430\u0441\u0435", { note: "lumi.motion.agl02 \xB7 Zigbee; \u0441\u0446\u0435\u043D\u0430\u0440\u0438\u0439 \u043F\u043E\u043A\u0430 \u043E\u0441\u0442\u0430\u0451\u0442\u0441\u044F \u0432 \u0410\u043B\u0438\u0441\u0435" }),
     make("terrace-lux", "illuminance", "terrace", "\u041E\u0441\u0432\u0435\u0449\u0451\u043D\u043D\u043E\u0441\u0442\u044C \u0442\u0435\u0440\u0440\u0430\u0441\u044B", { note: "lumi.motion.agl02 \xB7 Zigbee; \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435 \u043A HA \u0435\u0449\u0451 \u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u043E" }),
     make("camera-yard", "camera", "yard", "\u0414\u0432\u043E\u0440 \xB7 Tapo C320WS", { note: "\u0423\u0447\u0451\u0442\u043D\u0430\u044F \u0437\u0430\u043F\u0438\u0441\u044C \u043A\u0430\u043C\u0435\u0440\u044B \u0441\u043E\u0437\u0434\u0430\u043D\u0430; ONVIF \u0432 HA \u0435\u0449\u0451 \u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D" }),
-    make("corridor-main", "light", "corridor", "\u0411\u0443\u0434\u0443\u0449\u0438\u0439 \u0432\u044B\u043A\u043B\u044E\u0447\u0430\u0442\u0435\u043B\u044C 1", { status: "planned", note: "\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E \u043A\u043B\u0430\u0432\u0438\u0448 \u0438 \u043B\u0438\u043D\u0438\u0438 \u0443\u0442\u043E\u0447\u043D\u0438\u043C" }),
-    make("corridor-extra", "light", "corridor", "\u0411\u0443\u0434\u0443\u0449\u0438\u0439 \u0432\u044B\u043A\u043B\u044E\u0447\u0430\u0442\u0435\u043B\u044C 2", { status: "planned", note: "\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E \u043A\u043B\u0430\u0432\u0438\u0448 \u0438 \u043B\u0438\u043D\u0438\u0438 \u0443\u0442\u043E\u0447\u043D\u0438\u043C" }),
+    make("corridor-main", "light", "corridor", "\u041E\u0441\u043D\u043E\u0432\u043D\u043E\u0439 \u0441\u0432\u0435\u0442", { masterOff: false, note: "\u041E\u0434\u043D\u0430 \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u043D\u0430\u044F \u043B\u0438\u043D\u0438\u044F \xB7 \u0432\u044B\u0431\u0435\u0440\u0438 \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u044C HA" }),
     make("camera-extra-1", "camera", "yard", "\u041A\u0430\u043C\u0435\u0440\u0430 2 \xB7 \u043F\u043B\u0430\u043D\u0438\u0440\u0443\u0435\u0442\u0441\u044F", { status: "planned", note: "\u041C\u0435\u0441\u0442\u043E \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043A\u0438 \u0435\u0449\u0451 \u043D\u0435 \u0432\u044B\u0431\u0440\u0430\u043D\u043E" }),
     make("camera-extra-2", "camera", "yard", "\u041A\u0430\u043C\u0435\u0440\u0430 3 \xB7 \u0440\u0435\u0437\u0435\u0440\u0432", { status: "planned", note: "\u041D\u0435 \u043A\u0443\u043F\u043B\u0435\u043D\u0430; \u043D\u0435\u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u043E\u0435 \u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u0435" }),
     make("sliding-gate", "gate", "yard", "\u041E\u0442\u043A\u0430\u0442\u043D\u044B\u0435 \u0432\u043E\u0440\u043E\u0442\u0430", { status: "planned", note: "\u041C\u043E\u0434\u0435\u043B\u044C \u043F\u0440\u0438\u0432\u043E\u0434\u0430, \u0438\u043D\u0442\u0435\u0440\u0444\u0435\u0439\u0441 \u0438 \u0434\u0430\u0442\u0447\u0438\u043A\u0438 \u043F\u043E\u043B\u043E\u0436\u0435\u043D\u0438\u044F \u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u044B" }),
@@ -222,6 +221,9 @@ function validateDeviceModel(input, devices, areas2) {
     return { id: g.id, name: g.name.trim(), room: g.room, members, visual: { mode } };
   });
   return { version: DEVICE_MODEL_VERSION, groups };
+}
+function detachChannel(model, id) {
+  return { ...model, groups: model.groups.map((g) => ({ ...g, members: g.members.filter((m) => m !== id) })).filter((g) => g.members.length) };
 }
 function roleFor(type) {
   return { light: "power", rgb: "power", station: "media", camera: "camera", button_event: "event" }[type] || type;
@@ -875,8 +877,29 @@ var houseExtras = [
     ["master", "hall", "\u0411\u0430\u0442\u0430\u0440\u0435\u0439\u043A\u0430 \xB7 \u043C\u0430\u0441\u0442\u0435\u0440-\u043A\u043D\u043E\u043F\u043A\u0430"]
   ].map(([id, room, name]) => extra("battery:" + id, "battery", room, name))
 ];
+function migrateCorridor(input) {
+  let p;
+  const copy = () => p || (p = JSON.parse(JSON.stringify(input)));
+  const main = input.devices.find((d) => d.id === "corridor-main");
+  const other = input.devices.some((d) => d.room === "corridor" && d.type === "light" && d.status === "installed" && d.id !== "corridor-main");
+  if (main?.type === "light" && main.room === "corridor" && main.status === "planned" && main.name === "\u0411\u0443\u0434\u0443\u0449\u0438\u0439 \u0432\u044B\u043A\u043B\u044E\u0447\u0430\u0442\u0435\u043B\u044C 1" && !other) {
+    const next = copy().devices.find((d) => d.id === main.id);
+    next.status = "installed";
+    next.name = "\u041E\u0441\u043D\u043E\u0432\u043D\u043E\u0439 \u0441\u0432\u0435\u0442";
+    next.note = "\u041E\u0434\u043D\u0430 \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u043D\u0430\u044F \u043B\u0438\u043D\u0438\u044F \xB7 \u0432\u044B\u0431\u0435\u0440\u0438 \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u044C HA";
+    if (!input.bindings[main.id]?.entityId) next.masterOff = false;
+  }
+  const extra2 = input.devices.find((d) => d.id === "corridor-extra");
+  if (extra2?.status === "planned" && extra2.room === "corridor" && extra2.type === "light" && extra2.name === "\u0411\u0443\u0434\u0443\u0449\u0438\u0439 \u0432\u044B\u043A\u043B\u044E\u0447\u0430\u0442\u0435\u043B\u044C 2" && !input.bindings[extra2.id]?.entityId && !input.deviceModel?.groups.some((g) => g.members.includes(extra2.id))) {
+    const next = copy();
+    next.devices = next.devices.filter((d) => d.id !== extra2.id);
+    delete next.bindings[extra2.id];
+    if (next.deviceModel) next.deviceModel = detachChannel(next.deviceModel, extra2.id);
+  }
+  return p ? validatePreferences(p) : input;
+}
 function migrateHouseProfile(input) {
-  if (input.housePresetVersion === 3) return input;
+  if (input.housePresetVersion === 3) return migrateCorridor(input);
   const p = JSON.parse(JSON.stringify(input));
   const previousVersion = input.housePresetVersion || 0;
   p.houseProfileConfirmed = input.houseProfileConfirmed === true || previousVersion < 2 && input.mode === "live" && Object.values(input.bindings || {}).some((b) => b.verified);
@@ -917,7 +940,7 @@ function migrateHouseProfile(input) {
     camera.note = "TP-Link \xB7 Live View \xB7 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A \u0437\u0430\u043C\u0435\u043D\u0451\u043D \u043F\u043E \u0432\u044B\u0431\u043E\u0440\u0443 \u0432\u043B\u0430\u0434\u0435\u043B\u044C\u0446\u0430";
   }
   p.housePresetVersion = 3;
-  return validatePreferences(p);
+  return migrateCorridor(validatePreferences(p));
 }
 function bindingProblem(d, e) {
   const t = deviceTypes[d.type];
@@ -977,6 +1000,7 @@ var getProfile = (id) => {
   const normalized = JSON.stringify(preferences);
   if (normalized !== row.preferences) db.transaction(() => {
     if (raw.deviceModel === void 0) db.prepare("INSERT OR IGNORE INTO profile_backups(profile_id,reason,preferences) VALUES(?,?,?)").run(id, "before-device-model-v1", row.preferences);
+    if (raw.deviceModel !== void 0 && JSON.stringify(raw.devices) !== JSON.stringify(preferences.devices)) db.prepare("INSERT OR IGNORE INTO profile_backups(profile_id,reason,preferences) VALUES(?,?,?)").run(id, "before-spatial-redesign", row.preferences);
     db.prepare("UPDATE profiles SET preferences=? WHERE id=?").run(normalized, id);
   })();
   return { preferences, photo: row.photo };

@@ -17,6 +17,16 @@ const floorPoints={
  terrace:[[0,0],[190,0],[190,640],[0,640]]
 };
 const project=([x,y])=>[(x-390)/78,(y-470)/78];
+function roomAt(x,y){
+ for(const [id,points]of Object.entries(floorPoints)){
+  let inside=false;
+  for(let i=0,j=points.length-1;i<points.length;j=i++){
+   const [xi,yi]=points[i],[xj,yj]=points[j];
+   if((yi>y)!==(yj>y)&&x<(xj-xi)*(y-yi)/(yj-yi)+xi)inside=!inside;
+  }
+  if(inside)return id;
+ }
+}
 function material(color,roughness=.85){return new THREE.MeshStandardMaterial({color,roughness})}
 function box(scene,x,z,w,d,h,color,y=0,r=0){let m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material(color));m.position.set(x,y+h/2,z);m.rotation.y=r;m.castShadow=true;m.receiveShadow=true;scene.add(m);return m}
 function shapeFloor(scene,id,pts){
@@ -26,8 +36,16 @@ function shapeFloor(scene,id,pts){
  const m=new THREE.Mesh(g,mat);m.rotation.x=-Math.PI/2;m.position.y=modelLevels.floor;m.userData.room=id;scene.add(m);return m;
 }
 function wall(scene,a,b,height=.63){
- const [x1,z1]=project(a),[x2,z2]=project(b),dx=x2-x1,dz=z2-z1;
- return box(scene,(x1+x2)/2,(z1+z2)/2,Math.hypot(dx,dz),.13,height,'#dfdccf',.09,-Math.atan2(dz,dx));
+ const axis=a[0]===b[0]?1:0,range=b[axis]-a[axis];
+ const cuts=[0,1,...Object.values(floorPoints).flat().map(p=>(p[axis]-a[axis])/range).filter(t=>t>0&&t<1)];
+ const sorted=[...new Set(cuts)].sort((x,y)=>x-y);
+ for(let i=1;i<sorted.length;i++){
+  const u=a.map((v,k)=>v+(b[k]-v)*sorted[i-1]),v=a.map((n,k)=>n+(b[k]-n)*sorted[i]);
+  const [x1,z1]=project(u),[x2,z2]=project(v),dx=x2-x1,dz=z2-z1;
+  const m=box(scene,(x1+x2)/2,(z1+z2)/2,Math.hypot(dx,dz),.13,height,'#77798b',.09,-Math.atan2(dz,dx));
+  const length=Math.hypot(v[0]-u[0],v[1]-u[1]),px=-(v[1]-u[1])/length*6,py=(v[0]-u[0])/length*6;
+  m.userData.rooms=[roomAt((u[0]+v[0])/2+px,(u[1]+v[1])/2+py),roomAt((u[0]+v[0])/2-px,(u[1]+v[1])/2-py)].filter(Boolean);
+ }
 }
 function floorLabel(scene,x,z,label,w=1.35){
  const c=document.createElement('canvas');c.width=512;c.height=100;const ctx=c.getContext('2d');ctx.font='600 54px Manrope, sans-serif';ctx.fillStyle='#292d23';ctx.textAlign='center';ctx.fillText(label,256,65);
@@ -36,19 +54,24 @@ function floorLabel(scene,x,z,label,w=1.35){
 export function mountModel(canvas,rooms,state,onSelect){
  disposeModel();
  let renderer;
- try{renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true})}catch(e){canvas.insertAdjacentHTML('afterend','<p class="inline-note">Объёмный режим недоступен в этом браузере. Все комнаты доступны во вкладке «Свет».</p>');return}
- renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.22;
+ try{renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true})}catch(e){
+  canvas.hidden=true;
+  canvas.insertAdjacentHTML('afterend','<div class="model-fallback" role="status"><strong>План недоступен в этом браузере</strong><p>Комнатами и устройствами можно управлять без 3D.</p><button class="secondary" data-view="rooms">Открыть список комнат</button></div>');
+  return;
+ }
+ const modest=(navigator.hardwareConcurrency||4)<=4;
+ renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,modest?1:1.5));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.14;
  const scene=new THREE.Scene();
- const camera=new THREE.OrthographicCamera(-10,10,9,-9,.1,100);camera.position.set(10,16,16);camera.zoom=1.3;
+ const camera=new THREE.OrthographicCamera(-10,10,9,-9,.1,100);camera.position.set(12,17,16);camera.zoom=1;
  const orbit=new OrbitControls(camera,canvas);orbit.target.set(0,0,0);orbit.enablePan=false;orbit.minZoom=.72;orbit.maxZoom=1.8;orbit.minPolarAngle=.3;orbit.maxPolarAngle=1.1;
  // Direct manipulation: no inertia tail that keeps a wall tablet rendering.
  orbit.enableDamping=false;orbit.rotateSpeed=.45;
- scene.add(new THREE.AmbientLight('#e9dfca',1.2));
- const hemisphere=new THREE.HemisphereLight('#f3f0e9','#625d50',2);scene.add(hemisphere);
- const sun=new THREE.DirectionalLight('#ffedcf',3);sun.position.set(-6,18,-9);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-12;sun.shadow.camera.right=12;sun.shadow.camera.top=12;sun.shadow.camera.bottom=-12;sun.shadow.normalBias=.025;sun.shadow.bias=-.00015;scene.add(sun);
+ scene.add(new THREE.AmbientLight('#c5cce8',1.1));
+ const hemisphere=new THREE.HemisphereLight('#d7dff4','#353349',2);scene.add(hemisphere);
+ const sun=new THREE.DirectionalLight('#ffe3b9',3);sun.position.set(-6,18,-9);sun.castShadow=true;sun.shadow.mapSize.set(modest?512:1024,modest?512:1024);sun.shadow.camera.left=-12;sun.shadow.camera.right=12;sun.shadow.camera.top=12;sun.shadow.camera.bottom=-12;sun.shadow.normalBias=.025;sun.shadow.bias=-.00015;scene.add(sun);
  const ground=new THREE.Mesh(new THREE.PlaneGeometry(200,200),new THREE.ShadowMaterial({opacity:.24}));ground.rotation.x=-Math.PI/2;ground.position.y=modelLevels.ground;ground.receiveShadow=true;scene.add(ground);
- box(scene,1,0,7.45,12,modelLevels.houseThickness,'#9c998b',modelLevels.foundationTop-modelLevels.houseThickness);
- box(scene,-3.85,-1.85,2.5,8.3,modelLevels.terraceThickness,'#6c6e60',modelLevels.foundationTop-modelLevels.terraceThickness);
+ const base=box(scene,1,0,7.45,12,modelLevels.houseThickness,'#363b51',modelLevels.foundationTop-modelLevels.houseThickness);base.userData.foundation=true;
+ const deck=box(scene,-3.85,-1.85,2.5,8.3,modelLevels.terraceThickness,'#42455c',modelLevels.foundationTop-modelLevels.terraceThickness);deck.userData.foundation=true;
  // Living room is covered by exactly two adjacent zone faces, not a third base.
  const floors={};for(const [id,pts]of Object.entries(floorPoints))if(id!=='living')floors[id]=shapeFloor(scene,id,pts);
  // Independent living and kitchen zones, sharing one physical room.
@@ -56,6 +79,13 @@ export function mountModel(canvas,rooms,state,onSelect){
  shapeFloor(scene,'living',[[220,27],[486,27],[486,291],[220,291]]),
  shapeFloor(scene,'living',[[486,27],[744,27],[744,291],[486,291]])
  ];
+ // Cutaways have solid edges, with no second visible top face.
+ for(const floor of [...Object.values(floors),...zoneFloors]){
+  const invisible=new THREE.MeshBasicMaterial();invisible.visible=false;
+  const skirt=new THREE.Mesh(new THREE.ExtrudeGeometry(floor.geometry.parameters.shapes,{depth:.16,bevelEnabled:false}),[invisible,material('#30374c')]);
+  skirt.geometry.rotateX(-Math.PI/2);skirt.position.y=modelLevels.floor-.16;
+  skirt.userData.focusOnly=floor.userData.room;skirt.visible=false;skirt.castShadow=true;scene.add(skirt);
+ }
  const outlines={};
  for(const [id,pts]of Object.entries(floorPoints)){
   const geometry=new THREE.BufferGeometry().setFromPoints(pts.map(project).map(([x,z])=>new THREE.Vector3(x,modelLevels.outline,z)));
@@ -72,7 +102,7 @@ export function mountModel(canvas,rooms,state,onSelect){
  [[0,0],[190,0]],[[0,0],[0,640]],[[0,640],[190,640]]
  ];segments.forEach(([a,b],i)=>wall(scene,a,b,i>=23?.24:.63));
  // Conditional, schematic furniture. No actual furniture layout is asserted.
- const f=(x,z,w,d,h,c,y=0)=>{const p=project([x,z]);const m=new THREE.Mesh(new RoundedBoxGeometry(w/78,h,d/78,3,Math.min(.06,h/3)),material(c));m.position.set(p[0],y+.12+h/2,p[1]);m.castShadow=true;m.receiveShadow=true;scene.add(m);return m};
+ const f=(x,z,w,d,h,c,y=0)=>{const p=project([x,z]);const m=new THREE.Mesh(new RoundedBoxGeometry(w/78,h,d/78,3,Math.min(.06,h/3)),material(c));m.position.set(p[0],y+.12+h/2,p[1]);m.userData.room=roomAt(x,z);m.castShadow=true;m.receiveShadow=true;scene.add(m);return m};
  f(303,90,123,52,.3,'#d3cbbb');f(303,66,123,15,.54,'#c1b5a1');f(249,104,15,73,.49,'#c1b5a1');f(357,137,45,40,.23,'#6a5b47');
  f(290,92,40,43,.09,'#e0d7c4',.3);f(335,92,40,43,.09,'#e0d7c4',.3);
  f(648,55,150,34,.46,'#dedaca');f(705,113,35,88,.46,'#dedaca');f(636,154,69,55,.4,'#8b7357');
@@ -81,6 +111,12 @@ export function mountModel(canvas,rooms,state,onSelect){
  f(253,568,40,76,.22,'#e7e4d7');f(253,568,31,64,.04,'#b6b9b0',.22);
  f(675,618,100,30,.47,'#a89372');f(291,472,38,30,.25,'#e2e4d9');f(371,472,39,35,.52,'#73766d');
  f(87,113,100,38,.25,'#b0a48c');f(73,172,38,30,.2,'#665b4a');
+ // Schematic furnishings, not a claim about the owner's measured interior.
+ f(338,160,160,75,.025,'#676274');f(382,156,28,28,.2,'#8d7762');
+ f(641,346,45,3,.36,'#252c40',.43);f(641,347,3,12,.09,'#4c5364',.42);
+ f(583,154,20,24,.26,'#79788d');f(687,154,20,24,.26,'#79788d');
+ for(const x of [291,344]){f(x,768,42,28,.10,'#f2e8df',.49);f(x+314,764,42,28,.10,'#f2e8df',.49)}
+ f(253,824,25,32,.36,'#8f7a69');f(696,822,25,32,.36,'#8f7a69');
  // Room names are shown in the readable HTML inspector, not tiny 3D labels.
  const ray=new THREE.Raycaster(),pointer=new THREE.Vector2();let down;
  const select=e=>{if(!down||Math.hypot(e.clientX-down[0],e.clientY-down[1])>8)return;const r=canvas.getBoundingClientRect();pointer.set((e.clientX-r.left)/r.width*2-1,-((e.clientY-r.top)/r.height)*2+1);ray.setFromCamera(pointer,camera);const hit=ray.intersectObjects([...Object.values(floors),...zoneFloors])[0];if(hit)onSelect(hit.object.userData.room)};
@@ -101,14 +137,23 @@ export function mountModel(canvas,rooms,state,onSelect){
  };
  orbit.addEventListener('change',invalidate);
  document.addEventListener('visibilitychange',visibility);
- const observer=new ResizeObserver(()=>{
-  const r=canvas.getBoundingClientRect();renderer.setSize(r.width,r.height,false);
-  const aspect=r.width/r.height,h=7.3;
+ function frame(focusRoom){
+  const r=canvas.getBoundingClientRect();if(!r.width||!r.height)return;
+  renderer.setSize(r.width,r.height,false);
+  const members=focusRoom==='living'?zoneFloors:[floors[focusRoom]].filter(Boolean);
+  const bounds=new THREE.Box3();
+  for(const m of members)bounds.union(new THREE.Box3().setFromObject(m));
+  const center=members.length?bounds.getCenter(new THREE.Vector3()):new THREE.Vector3(0,0,0);
+  const size=members.length?bounds.getSize(new THREE.Vector3()):null;
+  const aspect=r.width/r.height,h=size?Math.max(size.x,size.z)*.56+.6:6.1;
   camera.left=-h*aspect;camera.right=h*aspect;camera.top=h;camera.bottom=-h;
-  camera.zoom=r.width<600?.78:1.3;camera.updateProjectionMatrix();invalidate();
- });observer.observe(canvas);
+  camera.zoom=size?1:r.width<500?.77:1;
+  camera.position.copy(center).add(new THREE.Vector3(12,17,16));orbit.target.copy(center);
+  camera.updateProjectionMatrix();orbit.update();invalidate();
+ }
+ const observer=new ResizeObserver(()=>frame(current?.focusRoom));observer.observe(canvas);
  current={
-  renderer,scene,camera,orbit,floors,zoneFloors,outlines,observer,invalidate,
+  renderer,scene,camera,orbit,floors,zoneFloors,outlines,observer,invalidate,frame,focusRoom:undefined,framed:false,
   setPaused:value=>{paused=value;if(value){cancelAnimationFrame(raf);raf=0}else invalidate()},
   cancel:()=>{
    dead=true;cancelAnimationFrame(raf);orbit.removeEventListener('change',invalidate);
@@ -130,9 +175,17 @@ export function updateModel(rooms,state){
   m.material.color.set(floorVisual(c?[c]:[],state).color);
  });
  for(const [id,outline]of Object.entries(outlines))outline.visible=state.selected===id;
+ const focusRoom=state.view==='room'&&floorPoints[state.selected]?state.selected:undefined;
+ current.scene.traverse(o=>{
+  if(o.userData.focusOnly)o.visible=Boolean(focusRoom&&o.userData.focusOnly===focusRoom);
+  else if(o.userData.foundation)o.visible=!focusRoom;
+  else if(o.userData.rooms)o.visible=!focusRoom||o.userData.rooms.includes(focusRoom);
+  else if(o.userData.room)o.visible=(!focusRoom||o.userData.room===focusRoom);
+ });
+ if(!current.framed||focusRoom!==current.focusRoom){current.focusRoom=focusRoom;current.framed=true;current.frame(focusRoom)}
  current.invalidate();
 }
-export function resetModel(){if(current){current.camera.position.set(10,16,16);current.camera.zoom=current.renderer.domElement.clientWidth<600?.78:1.3;current.orbit.target.set(0,0,0);current.camera.updateProjectionMatrix();current.orbit.update();current.invalidate()}}
+export function resetModel(){current?.frame(current.focusRoom)}
 export function setModelPaused(paused){current?.setPaused(paused)}
 export function disposeModel(){
  if(!current)return;

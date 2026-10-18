@@ -3,34 +3,38 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <meta name="theme-color" content="#171816"/>
-  <title>Дом — пространство под контролем</title>
+  <meta name="theme-color" content="#101323"/>
+  <title>Дом · пространство под контролем</title>
   <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
   <div class="shell">
-    <header>
+    <a class="skip-link" href="#main">К управлению домом</a>
+    <aside class="app-rail" aria-label="Навигация панели">
       <a class="brand" href="#home" aria-label="На главную">
         <svg viewBox="0 0 36 36" aria-label="Знак дома" fill="none"><path d="M7 29V14L18 5l11 9v15H7Z" stroke="currentColor" stroke-width="2"/><path d="M14 29V18h8v11M3 15l15-12 15 12" stroke="currentColor" stroke-width="2"/><circle cx="26" cy="7" r="3" fill="currentColor"/></svg>
-        <div>дом<span>НОВОЖИВОТИННОЕ</span></div>
+        <div>дом</div>
       </a>
+      <nav aria-label="Основная навигация">
+        <button data-view="home" aria-label="Главная"><i data-lucide="house"></i><span>Главная</span></button>
+        <button data-view="model" aria-label="План дома"><i data-lucide="box"></i><span class="nav-label-long">План дома</span><span class="nav-label-short">План</span></button>
+        <button data-view="rooms" aria-label="Свет"><i data-lucide="lightbulb"></i><span>Свет</span></button>
+        <button data-view="watch" aria-label="Датчики"><i data-lucide="scan-eye"></i><span>Датчики</span></button>
+        <button data-view="engineering" aria-label="Системы"><i data-lucide="heater"></i><span>Системы</span></button>
+      </nav>
+      <button class="rail-settings" id="info" aria-label="Настройки панели"><i data-lucide="sliders-horizontal"></i><span>Настройки</span></button>
+    </aside>
+    <header>
+      <div class="place-label"><span class="place-dot"></span>Новоживотинное<span class="place-detail">Панель дома</span></div>
       <div class="header-right">
         <span class="demo-badge" id="connection-badge"><span></span>Подготовка панели</span>
         <button class="icon-button" id="fullscreen" aria-label="Полный экран"><i data-lucide="maximize"></i></button>
         <button class="icon-button" id="standby" aria-label="Включить режим ожидания"><i data-lucide="moon-star"></i></button>
         <button class="icon-button" id="theme" aria-label="Переключить тему"><i data-lucide="sun"></i></button>
-        <button class="icon-button" id="info" aria-label="Настройки панели"><i data-lucide="sliders-horizontal"></i></button>
       </div>
     </header>
     <main id="main"></main>
     <footer>
-      <nav aria-label="Основная навигация">
-        <button data-view="home" aria-label="Главная"><i data-lucide="house"></i><span>Главная</span></button>
-        <button data-view="model" aria-label="Мой дом"><i data-lucide="box"></i><span>Мой дом</span></button>
-        <button data-view="rooms" aria-label="Свет"><i data-lucide="lightbulb"></i><span>Свет</span></button>
-        <button data-view="watch" aria-label="Обзор"><i data-lucide="scan-eye"></i><span>Обзор</span></button>
-        <button data-view="engineering" aria-label="Инженерия"><i data-lucide="heater"></i><span>Инженерия</span></button>
-      </nav>
       <span class="footer-note" id="footer-storage" role="status">Подготовка панели</span>
       <button id="master" class="master-button" aria-label="Выключить весь свет"><i data-lucide="power"></i><span class="master-label">Выключить свет</span><span class="master-label-short">Погасить</span></button>
     </footer>

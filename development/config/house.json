@@ -11,7 +11,7 @@
     {"id":"bath","name":"Ванная","short":"Ванная","icon":"bath","channels":[{"name":"Основной свет","note":"Левая клавиша · споты","demoOn":false},{"name":"Потолочная лента","note":"Правая клавиша · установлена","demoOn":false}]},
     {"id":"utility","name":"Туалет / котельная","short":"Котельная","icon":"heater","description":"Одно помещение, две функциональные зоны","channels":[{"name":"Свет туалета","demoOn":false}],"pump":true},
     {"id":"pantry","name":"Кладовая","short":"Кладовая","icon":"archive","channels":[{"name":"Основной свет","demoOn":false}]},
-    {"id":"corridor","name":"Коридор","short":"Коридор","icon":"move-up-right","description":"Умных устройств пока нет","channels":[]},
+    {"id":"corridor","name":"Коридор","short":"Коридор","icon":"move-up-right","description":"Одна установленная линия света","channels":[]},
     {"id":"terrace","name":"Терраса","short":"Терраса","icon":"trees","description":"Свет подключён к правой клавише в прихожей","channels":[],"terrace":true}
   ]
 }

@@ -1,0 +1,76 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {spawn} from 'node:child_process';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import Database from 'better-sqlite3';
+import {defaultPreferences,validatePreferences} from '../src/preferences.js';
+import {migrateHouseProfile,migrateCorridor} from '../src/house-profile.js';
+const base=migrateHouseProfile(defaultPreferences());
+const legacy=structuredClone(base);
+legacy.mode='live';legacy.theme='light';
+legacy.bindings['living:0']={entityId:'light.owner_verified',verified:true};
+Object.assign(legacy.devices.find(d=>d.id==='corridor-main'),{status:'planned',name:'Будущий выключатель 1',note:'Количество клавиш и линии уточним'});
+legacy.devices.push({id:'corridor-extra',type:'light',room:'corridor',name:'Будущий выключатель 2',status:'planned',note:'Количество клавиш и линии уточним',masterOff:true});
+legacy.bindings['corridor-extra']={entityId:'',verified:false};
+const snapshot=JSON.stringify(legacy),migrated=migrateCorridor(legacy);
+assert.equal(JSON.stringify(legacy),snapshot,'Migration is immutable');
+assert.equal(migrated.mode,'live');assert.equal(migrated.theme,'light');
+assert.deepEqual(migrated.bindings['living:0'],legacy.bindings['living:0']);
+assert.equal(migrated.devices.filter(d=>d.room==='corridor').length,1);
+assert.equal(migrated.devices.find(d=>d.id==='corridor-main').status,'installed');
+assert.deepEqual(migrated.bindings['corridor-main'],{entityId:'',verified:false});
+assert.equal(migrateCorridor(migrated),migrated);
+const manual=structuredClone(legacy);
+manual.bindings['corridor-main']={entityId:'light.owner_corridor',verified:false};
+manual.bindings['corridor-extra']={entityId:'light.owner_extra',verified:false};
+assert.equal(migrateCorridor(manual).bindings['corridor-main'].entityId,'light.owner_corridor');
+assert.equal(migrateCorridor(manual).bindings['corridor-extra'].entityId,'light.owner_extra');
+const grouped=structuredClone(legacy);
+grouped.deviceModel.groups.push({id:'unit-owner-extra',name:'Мой прибор',room:'corridor',members:['corridor-extra'],visual:{mode:'none'}});
+assert.ok(migrateCorridor(validatePreferences(grouped)).devices.some(d=>d.id==='corridor-extra'));
+const deleted=structuredClone(base);deleted.devices=deleted.devices.filter(d=>d.id!=='corridor-main');delete deleted.bindings['corridor-main'];
+assert.equal(migrateCorridor(deleted).devices.some(d=>d.id==='corridor-main'),false);
+const custom=structuredClone(legacy);
+custom.devices.push({id:'owner-corridor',type:'light',room:'corridor',name:'Мой свет',status:'installed',masterOff:false,note:''});
+custom.bindings['owner-corridor']={entityId:'light.my_corridor',verified:true};
+assert.equal(migrateCorridor(custom).devices.filter(d=>d.room==='corridor'&&d.status==='installed').length,1,'Never install a duplicate when an owner channel exists');
+const app=await readFile('src/app.js','utf8');
+assert.match(app,/if\(\['home','model','room'\]\.includes\(state\.view\)\)/,'Spatial views refresh without disposing the scene');
+assert.match(app,/setInterval\(\(\)=>\{updateClocks\(\);applyNight\(\);.*refresh\(\)/,'Clock updates must not rebuild home');
+assert.match(app,/state\.view==='room'\?roomPage\(\)/);
+const html=await readFile('index.html','utf8');
+assert.equal((html.match(/id="info"/g)||[]).length,1);
+assert.equal((html.match(/aria-label="Основная навигация"/g)||[]).length,1);
+const dir=await mkdtemp(join(tmpdir(),'panel-spatial-migration-'));
+const db=new Database(join(dir,'panel.sqlite'));
+db.exec('CREATE TABLE profiles (id TEXT PRIMARY KEY, preferences TEXT NOT NULL, photo BLOB)');
+db.prepare('INSERT INTO profiles VALUES (?,?,?)').run('local',snapshot,Buffer.from('owner-photo'));
+db.close();
+let child;
+async function start(){
+ child=spawn(process.execPath,['release/server.mjs'],{env:{...process.env,PORT:'3187',PANEL_DATA:dir,PANEL_PREVIEW:'0',HA_URL:'',HA_TOKEN:''},stdio:['ignore','pipe','inherit']});
+ await new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>reject(new Error('Spatial migration server timeout')),10000);
+  child.stdout.on('data',data=>{if(String(data).includes('Panel ready')){clearTimeout(timer);resolve()}});
+  child.once('exit',()=>{clearTimeout(timer);reject(new Error('Spatial migration server exited'))});
+ });
+}
+async function stop(){if(child&&child.exitCode===null){const stopped=new Promise(resolve=>child.once('exit',resolve));child.kill();await stopped}}
+try{
+ await start();
+ const bootstrap=await(await fetch('http://127.0.0.1:3187/api/panel/bootstrap')).json();
+ assert.equal(bootstrap.preferences.devices.filter(d=>d.room==='corridor').length,1);
+ assert.deepEqual(bootstrap.preferences.bindings['living:0'],legacy.bindings['living:0']);
+ assert.equal(bootstrap.preferences.theme,'light');assert.equal(bootstrap.preferences.mode,'live');
+ assert.equal(bootstrap.photo,true);
+ await stop();await start();
+ await fetch('http://127.0.0.1:3187/api/panel/bootstrap');
+ const check=new Database(join(dir,'panel.sqlite'),{readonly:true});
+ assert.equal(check.prepare('SELECT preferences FROM profile_backups WHERE reason=?').get('before-spatial-redesign').preferences,snapshot);
+ assert.equal(check.prepare('SELECT count(*) AS n FROM profile_backups WHERE reason=?').get('before-spatial-redesign').n,1);
+ assert.equal(check.prepare('SELECT photo FROM profiles WHERE id=?').get('local').photo.toString(),'owner-photo');
+ check.close();
+}finally{await stop();await rm(dir,{recursive:true,force:true})}
+console.log('PASS: one installed corridor line, immutable/idempotent migration, verified/custom/grouped mappings preserved, no guessed entity, persistent spatial view contracts.');
