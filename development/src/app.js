@@ -3,7 +3,7 @@ import {
  createIcons,House,Box,Lightbulb,Power,ScanEye,SlidersHorizontal,Sun,Moon,X,ArrowRight,ArrowUpRight,
  AudioLines,Camera,ChevronRight,CircleCheck,DoorClosed,Droplets,Heater,Leaf,Radio,RotateCcw,Thermometer,
  Trees,Archive,Armchair,Bath,BedDouble,Blocks,DoorOpen,MoveUpRight,Sofa,MoonStar,Star,ChevronUp,
- ChevronDown,Check,LoaderCircle,TriangleAlert,WifiOff,Play,Pause,SkipBack,SkipForward,Volume2,ImagePlus,Settings2,Info,Maximize,Minimize,Download,Upload
+ ChevronDown,Check,LoaderCircle,TriangleAlert,WifiOff,Play,Pause,SkipBack,SkipForward,ChartNoAxesCombined,Volume2,ImagePlus,Settings2,Info,Maximize,Minimize,Download,Upload
 } from 'lucide';
 import {rooms,state,getRoom,countLights,channelsFor,sensors} from './schema.js';
 import {sendCommand,commandFor,hasPending} from './commands.js';
@@ -19,13 +19,15 @@ import {buildDeviceModel,detachChannel} from './device-model.js';
 import {deviceStructure,equipmentFromForm} from './device-model-ui.js';
 import {homeSummary} from './home-summary.js';
 import {binaryValue,leakIssues} from './sensor-state.js';
+import {motionObservation,elapsedLabel} from './motion.js';
+import {historyState,statisticsView,inspectHistoryChart} from './history-ui.js';
 
 const $=s=>document.querySelector(s);
 const I=name=>`<i data-lucide="${name}"></i>`;
 const iconSet={House,Box,Lightbulb,Power,ScanEye,SlidersHorizontal,Sun,Moon,X,ArrowRight,ArrowUpRight,
  AudioLines,Camera,ChevronRight,CircleCheck,DoorClosed,Droplets,Heater,Leaf,Radio,RotateCcw,Thermometer,
  Trees,Archive,Armchair,Bath,BedDouble,Blocks,DoorOpen,MoveUpRight,Sofa,MoonStar,Star,ChevronUp,
- ChevronDown,Check,LoaderCircle,TriangleAlert,WifiOff,Play,Pause,SkipBack,SkipForward,Volume2,ImagePlus,Settings2,Info,Maximize,Minimize,Download,Upload};
+ ChevronDown,Check,LoaderCircle,TriangleAlert,WifiOff,Play,Pause,SkipBack,SkipForward,ChartNoAxesCombined,Volume2,ImagePlus,Settings2,Info,Maximize,Minimize,Download,Upload};
 const icons=()=>{
  createIcons({icons:iconSet,attrs:{'stroke-width':1.6}});
  const title=$('.sheet h2');if(title)title.id='sheet-title';
@@ -147,7 +149,7 @@ function favoriteRooms(){
  return state.favorites.length?state.favorites.map(id=>{
   const r=getRoom(id),cs=channelsFor(r),known=!isLive()||cs.every(c=>canControl(c.id)),on=cs.filter(c=>c.on).length;
   return `<button class="favorite-room ${on&&known&&!noConnection()?'is-lit':''}" data-room="${r.id}">
-  <span class="favorite-room-title">${I(r.icon)}${esc(r.short)}</span><span class="favorite-room-detail">${compactRoomClimate(id)||(!cs.length?'Без света':noConnection()?'Нет связи':!known?'<span title="Свет временно недоступен">—</span>':on?`${on} из ${cs.length} · включён`:'Свет выключен')}</span></button>`;
+  <span class="favorite-room-title">${I(r.icon)}${esc(r.short)}</span><span class="favorite-room-detail">${compactRoomClimate(id)||(!cs.length?'Без света':noConnection()?'Нет связи':!known?'<span title="Свет временно недоступен">—</span>':on?`${on} из ${cs.length} · вкл.`:'Выключен')}</span></button>`;
  }).join(''):'<button class="empty-favorites" data-action="favorites">Добавить любимые комнаты</button>';
 }
 function compactRoomClimate(id){
@@ -264,7 +266,7 @@ function watch(){
  ${terraceDoor?`<div class="status-line"><span>${I('door-open')}Дверь на террасу</span><strong>${binaryLabel('terrace-door','Открыта','Закрыта')}</strong></div>`:''}
  ${leaks.map(d=>`<div class="status-line"><span>${I('droplets')}${esc(d.name)}</span><strong>${binaryLabel(d.id,'Тревога','Сухо')}</strong></div>`).join('')}
  ${state.devices.some(d=>d.id==='smoke'&&d.status==='installed')?`<div class="status-line"><span>${I('radio')}Дым</span><strong>${binaryLabel('smoke','Тревога','Нет тревоги')}</strong></div>`:''}
- ${motion?`<div class="status-line"><span>${I('trees')}Терраса</span><strong>${esc(deviceReading(motion))}</strong></div>`:''}
+ ${motion?`<button class="status-line motion-detail" data-action="motion" data-motion-id="${esc(motion.id)}"><span>${I('trees')}Терраса</span><strong>${esc(deviceReading(motion))}</strong></button>`:''}
  ${state.devices.some(d=>d.id==='rgb')?`<div class="status-line"><span>${I('lightbulb')}RGB прихожей</span><strong>${noConnection()?'Нет связи':isLive()&&!observed('hall:0')?'Нет данных':hallPowered()?'Есть питание':'Без питания'}</strong></div>`:''}</section>
  ${climate()}</aside></div>${deviceHealth()}<section class="sensor-catalog"><div class="section-heading"><div><h2>Датчики дома</h2><p>Логические устройства: показания и батарейка вместе</p></div></div><div class="module-grid">${logicalSensorCards()||'<p>Датчики пока не добавлены.</p>'}</div></section>
  ${state.devices.some(d=>['curtain','vacuum'].includes(d.type))?`<section class="sensor-catalog"><div class="section-heading"><div><h2>Новые категории</h2><p>Карнизы и пылесосы: пока только наблюдение, без команд</p></div></div><div class="module-grid">${state.devices.filter(d=>['curtain','vacuum'].includes(d.type)).map(sensorCard).join('')}</div></section>`:''}</div>`;
@@ -300,9 +302,7 @@ function deviceReading(d){
  }
  if(type.unit)return Number.isFinite(Number(value))?`${reading(Number(value))} ${type.unit}`:'Нет данных';
  if(d.type==='button_event')return String(value);
- if(d.type==='motion'&&e?.entity_id.startsWith('sensor.')){
-  return ({on:'Есть движение',off:'Нет движения',detected:'Есть движение',not_detected:'Нет движения',motion:'Есть движение',no_motion:'Нет движения',true:'Есть движение',false:'Нет движения'})[String(value).toLowerCase()]||`Состояние HA: ${value}`;
- }
+ if(d.type==='motion'&&isLive())return motionObservation(e).text;
  const labels={door:['Открыта','Закрыта'],smoke:['Тревога','Нет тревоги'],motion:['Есть движение','Нет движения'],leak:['Протечка','Сухо'],pump:['Питание включено','Питание выключено']};
  if(labels[d.type]){const v=binaryValue(d.type,value);return v===true?labels[d.type][0]:v===false?labels[d.type][1]:'Нет данных'}
  if(d.type==='gate')return ({open:'Открыты',closed:'Закрыты',opening:'Открываются',closing:'Закрываются'})[value]||'Положение неизвестно';
@@ -372,7 +372,7 @@ async function cameraFrame(id,button){
 }
 function render(animate=true){
  const revision=++viewRevision;modelAPI?.disposeModel();
- $('#main').innerHTML=state.view==='home'?home():state.view==='room'?roomPage():state.view==='model'?model():state.view==='rooms'?lights():state.view==='engineering'?engineering():watch();
+ $('#main').innerHTML=state.view==='home'?home():state.view==='room'?roomPage():state.view==='model'?model():state.view==='rooms'?lights():state.view==='engineering'?engineering():state.view==='statistics'?statisticsView():watch();
  document.documentElement.dataset.view=state.view;
  if(!animate&&$('#main .view'))$('#main .view').style.animation='none';
  document.querySelectorAll('nav button').forEach(b=>{
@@ -380,6 +380,7 @@ function render(animate=true){
   b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');
  });
  $('#master').disabled=masterBlocked();updateHeader();storageStatus();icons();
+ if(state.view==='statistics')loadStatistics();
  if($('#canvas')){
   modelPromise ||= import('./model.js');
   modelPromise.then(api=>{
@@ -413,7 +414,7 @@ function refresh(){
   if(state.view==='home'){
    updateRegion('#home-favorites',favoriteRooms());updateRegion('#home-status',homeStatus());updateRegion('#home-quick',homeQuick());
   }
- }else render(false);
+ }else if(state.view!=='statistics')render(false);
  if(!$('#overlay').hidden){
   if(state.techOpen&&techTab==='diagnostics')$('#sheet-content').innerHTML=technical();
   else if(settingsOpen){/* HA polling must not replace an open form or its focus. */}
@@ -424,7 +425,35 @@ function refresh(){
  updateRegion('#house-alerts',houseAlerts());$('#house-alerts').hidden=!$('#house-alerts').innerHTML;
  document.documentElement.dataset.leakAlert=String(!$('#house-alerts').hidden);
  icons();
+ const motionSheet=$('[data-motion-sheet]');
+ if(motionSheet)motionSheet.innerHTML=motionSheetMarkup(motionSheet.dataset.motionSheet);
  if(focus){const target=[...document.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')===focus&&!b.disabled);target?.focus({preventScroll:true})}
+}
+function paintStatistics(){
+ if(state.view!=='statistics')return;
+ $('#main').innerHTML=statisticsView();icons();
+}
+async function loadStatistics(force=false){
+ if(historyState.loading)return;
+ if(!isLive()){
+  historyState.data=null;historyState.error='История доступна после подключения Home Assistant. В демопревью графики не подделываем.';paintStatistics();return;
+ }
+ if(historyState.data&&!force)return;
+ const request=++historyState.request,hours=historyState.hours;
+ historyState.loading=true;historyState.error='';paintStatistics();
+ try{
+  const data=await api('ha/history?hours='+hours);
+  if(request!==historyState.request||!isLive())return;
+  historyState.data=data;
+ }catch(error){if(request===historyState.request)historyState.error=error.message}
+ finally{if(request===historyState.request){historyState.loading=false;paintStatistics()}}
+}
+function motionSheetMarkup(id){
+ const d=state.devices.find(d=>d.id===id),e=isLive()?observed(id):null,m=motionObservation(e);
+ return `<h2>${esc(d?.name||'Движение')}</h2><p class="description">${isLive()?esc(m.text):'Демонстрационный режим'}</p>
+ <div class="inline-note">Для датчика террасы активное окно — 5 минут. «Нет новых движений» означает истечение этого окна, а не новое показание датчика.</div>
+ <div class="motion-timestamp"><span>Последнее обновление события</span><strong>${m.at?new Date(m.at).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'}):'Неизвестно'}</strong><small>${m.at?esc(elapsedLabel(m.at)):''}</small></div>
+ <p class="description">${m.kind==='unknown'?'Без достоверного состояния или времени не считаем, что движения нет.':'Сущность HA не изменяется. Расчётный статус применяется только в панели.'}</p>`;
 }
 function roomSheet(r){
  return `<div class="eyebrow">${r.short}</div><h2 style="margin-top:12px">${r.name}</h2><p class="description">${r.description||'Каждая линия управляется отдельно.'}</p>${controls(r)}`;
@@ -769,6 +798,8 @@ function simpleSheet(content){settingsOpen=false;$('#sheet-content').dataset.sta
 document.addEventListener('click',e=>{
  const b=e.target.closest('button');if(!b)return;
  if(b.dataset.view)return navigate(b.dataset.view);
+ if(b.dataset.historyHours){historyState.hours=Number(b.dataset.historyHours);historyState.data=null;loadStatistics(true);return}
+ if(b.dataset.historyMetric){historyState.metric=b.dataset.historyMetric;paintStatistics();return}
  if(b.dataset.room)return openRoom(b.dataset.room);
  if(b.dataset.sensor)return simpleSheet(sensorSheet(b.dataset.sensor));
  if(b.dataset.camera)return cameraSheet(b.dataset.camera);
@@ -821,6 +852,11 @@ document.addEventListener('click',e=>{
   const c=commandFor(b.dataset.retry);if(c)return command(c.id,c.value);return;
  }
  const a=b.dataset.action;
+ if(a==='history-reload')return loadStatistics(true);
+ if(a==='motion'){
+  const id=b.dataset.motionId||'terrace-motion';
+  simpleSheet(`<div data-motion-sheet="${esc(id)}">${motionSheetMarkup(id)}</div>`);return;
+ }
  if(a==='master')return master();
  if(a==='new-equipment'){equipmentEdit='new';techMessage='';updateTechnical();return}
  if(a==='equipment-back'){equipmentEdit=null;techMessage='';updateTechnical();return}
@@ -900,6 +936,8 @@ document.addEventListener('click',e=>{
  if(b.id==='reset-model')return modelAPI?.resetModel();
 });
 document.addEventListener('change',async e=>{
+ if(e.target.id==='history-room'){historyState.room=e.target.value;paintStatistics();return}
+ if(e.target.id==='history-event-type'){historyState.eventType=e.target.value;paintStatistics();return}
  const id=e.target.id;
  if(id==='brightness')return command('rgb:brightness',+e.target.value);
  if(id==='station-volume'){stationAdjusting=false;return command('station:volume',+e.target.value)}
@@ -955,11 +993,16 @@ document.addEventListener('input',e=>{
  if(e.target.id==='station-volume'){stationAdjusting=true;$('#station-volume-label').textContent=e.target.value+' % · ещё не отправлено'}
 });
 $('.brand').onclick=e=>{e.preventDefault();navigate('home')};
+document.addEventListener('pointermove',e=>{if(state.view==='statistics')inspectHistoryChart(e)});
+document.addEventListener('keydown',e=>{if(state.view==='statistics')inspectHistoryChart(e)});
+let historyResizeTimer;
+window.addEventListener('resize',()=>{clearTimeout(historyResizeTimer);if(state.view==='statistics')historyResizeTimer=setTimeout(paintStatistics,150)});
 $('#master').onclick=master;$('#info').onclick=()=>openSettings();
 $('#standby').onclick=enterIdle;$('#idle-screen').onclick=e=>{e.preventDefault();e.stopPropagation();wake()};
 $('#theme').onclick=()=>{
  state.theme=state.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=state.theme;
  $('#theme').innerHTML=I(state.theme==='dark'?'sun':'moon');icons();persist();
+ if(state.view==='statistics')paintStatistics();
 };
 $('#fullscreen').onclick=fullscreen;
 document.addEventListener('fullscreenchange',()=>{

@@ -3,6 +3,7 @@ import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {buildInterior} from './interior.js';
 import {floorVisual} from './model-state.js';
 import {modelLevels} from './model-geometry.js';
+import {scenePins,pinMarkup} from './scene-pins.js';
 let current;
 const floorPoints={
  living:[[220,27],[744,27],[744,291],[220,291]],
@@ -62,6 +63,9 @@ export function mountModel(canvas,rooms,state,onSelect){
  const modest=(navigator.hardwareConcurrency||4)<=4;
  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,modest?1:1.5));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.02;
  const scene=new THREE.Scene();
+ const pinLayer=document.createElement('div');pinLayer.className='scene-pins';canvas.insertAdjacentElement('afterend',pinLayer);
+ const tweens=new Map(),reduceMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+ let pinData=[],pinSignature='';
  const camera=new THREE.OrthographicCamera(-10,10,9,-9,.1,100);camera.position.set(12,17,16);camera.zoom=1;
  const orbit=new OrbitControls(camera,canvas);orbit.target.set(0,0,0);orbit.enablePan=false;orbit.minZoom=.45;orbit.maxZoom=3;orbit.minPolarAngle=.3;orbit.maxPolarAngle=1.1;
  // Direct manipulation: no inertia tail that keeps a wall tablet rendering.
@@ -119,11 +123,26 @@ export function mountModel(canvas,rooms,state,onSelect){
  function invalidate(){
   if(!raf&&!dead&&!paused&&!document.hidden)raf=requestAnimationFrame(draw);
  }
- function draw(){
+ function draw(time){
   raf=0;if(dead||paused||document.hidden)return;
   const moving=orbit.update();
+  for(const [m,t]of tweens){
+   const progress=Math.min(1,(time-t.at)/420),ease=1-Math.pow(1-progress,3);
+   m.material.color.lerpColors(t.from,t.to,ease);m.material.emissiveIntensity=t.emissiveFrom+(t.emissiveTo-t.emissiveFrom)*ease;
+   if(progress===1)tweens.delete(m);
+  }
   renderer.render(scene,camera);canvas.dataset.renderFrames=String(++frames);
-  if(moving)invalidate();
+  const used=[];
+  for(const p of pinData){
+   const el=pinLayer.querySelector(`[data-pin="${p.id}"]`);if(!el)continue;
+   const [wx,wz]=project([p.x,p.z]),v=new THREE.Vector3(wx,.85,wz).project(camera);
+   if(Math.abs(v.x)>1.05||Math.abs(v.y)>1.05||Math.abs(v.z)>1){el.hidden=true;continue}
+   el.hidden=false;el.style.left=((v.x+1)/2*100)+'%';el.style.top=((-v.y+1)/2*100)+'%';
+   const b=el.querySelector('.pin-label').getBoundingClientRect(),host=pinLayer.getBoundingClientRect();
+   if(b.left<host.left+2||b.right>host.right-2||b.top<host.top||used.some(r=>b.left<r.right+5&&b.right>r.left-5&&b.top<r.bottom+5&&b.bottom>r.top-5)){el.hidden=true;continue}
+   used.push(b);
+  }
+  if(moving||tweens.size)invalidate();
  }
  const visibility=()=>{
   if(document.hidden){cancelAnimationFrame(raf);raf=0}else invalidate();
@@ -162,11 +181,24 @@ export function mountModel(canvas,rooms,state,onSelect){
  const observer=new ResizeObserver(()=>frame(current?.focusRoom));observer.observe(canvas);
  current={
   renderer,scene,camera,orbit,floors,zoneFloors,outlines,observer,invalidate,frame,focusRoom:undefined,framed:false,
+  setPins:state=>{
+   pinData=scenePins(state);const signature=JSON.stringify(pinData);
+   if(signature!==pinSignature){pinLayer.innerHTML=pinData.map(pinMarkup).join('');pinSignature=signature}
+  },
+  paintFloor:(m,visual)=>{
+   if(m.userData.paintTarget===visual.color)return;
+   const first=!m.userData.paintTarget;m.userData.paintTarget=visual.color;
+   const emissiveTo=visual.status==='on'?.22:visual.status==='partial'?.1:0;
+   m.material.emissive.set('#f3b569');
+   if(first||reduceMotion){m.material.color.set(visual.color);m.material.emissiveIntensity=emissiveTo;return}
+   tweens.set(m,{from:m.material.color.clone(),to:new THREE.Color(visual.color),at:performance.now(),emissiveFrom:m.material.emissiveIntensity,emissiveTo});
+  },
   setPaused:value=>{paused=value;if(value){cancelAnimationFrame(raf);raf=0}else invalidate()},
   cancel:()=>{
    dead=true;cancelAnimationFrame(raf);orbit.removeEventListener('change',invalidate);
    document.removeEventListener('visibilitychange',visibility);
    canvas.removeEventListener('pointerdown',pointerDown);canvas.removeEventListener('pointerup',select);
+   pinLayer.remove();tweens.clear();
   }
  };
  updateModel(rooms,state);
@@ -174,13 +206,14 @@ export function mountModel(canvas,rooms,state,onSelect){
 export function updateModel(rooms,state){
  if(!current)return;
  const {floors,zoneFloors,outlines}=current;
+ current.setPins(state);
  for(const [id,m]of Object.entries(floors)){
    const visual=floorVisual(rooms.find(x=>x.id===id)?.channels,state);
-   m.material.color.set(visual.color);
+   current.paintFloor(m,visual);
  }
  zoneFloors.forEach((m,i)=>{
   const c=rooms.find(x=>x.id==='living')?.channels.find(c=>c.id===`living:${i}`);
-  m.material.color.set(floorVisual(c?[c]:[],state).color);
+  current.paintFloor(m,floorVisual(c?[c]:[],state));
  });
  for(const [id,outline]of Object.entries(outlines))outline.visible=state.selected===id;
  const focusRoom=state.view==='room'&&floorPoints[state.selected]?state.selected:undefined;

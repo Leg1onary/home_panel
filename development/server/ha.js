@@ -27,7 +27,7 @@ export class HomeAssistant {
  }
  sanitize(e){
   const keys=['friendly_name','device_class','unit_of_measurement','temperature_unit','brightness','rgb_color','supported_color_modes','current_position','battery_level','current_temperature','temperature','hvac_action','supported_features','volume_level','media_title','media_artist'];
-  return {entity_id:e.entity_id,state:e.state,last_updated:e.last_updated,last_reported:e.last_reported,
+  return {entity_id:e.entity_id,state:e.state,last_changed:e.last_changed,last_updated:e.last_updated,last_reported:e.last_reported,
    attributes:Object.fromEntries(keys.filter(k=>e.attributes?.[k]!==undefined).map(k=>[k,e.attributes[k]]))};
  }
  async states(){

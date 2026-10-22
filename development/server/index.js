@@ -12,6 +12,7 @@ import {CameraRTC} from './rtc.js';
 import {deviceTypes,samePhysicalDevice} from '../src/catalog.js';
 import {migrateHouseProfile,activateHouseProfile,bindingProblem} from '../src/house-profile.js';
 import {seedDeviceModel,buildDeviceModel} from '../src/device-model.js';
+import {loadHistory} from './history.js';
 
 const port=Number(process.env.PORT||8080),preview=process.env.PANEL_PREVIEW==='1';
 const addon=process.env.PANEL_ADDON==='1';
@@ -92,6 +93,10 @@ const server=http.createServer(async(req,res)=>{
     return json(res,200,{preferences:p.preferences,photo:!!p.photo,proof:proofs.get(id),preview,addon,haConfigured:ha.enabled});
    }
    if(req.method!=='GET')authorize(req,id);
+   if(route==='ha/history'&&req.method==='GET'){
+    if(url.searchParams.has('entity_id')||url.searchParams.has('filter_entity_id'))throw new Error('Сущности истории определяются только проверенными привязками профиля.');
+    return json(res,200,await loadHistory(ha,p.preferences,url.searchParams.get('hours')));
+   }
    if(route==='house-profile'&&req.method==='POST'){
     if(preview)throw new Error('Профиль дома применяется только на локальной панели.');
     if(pendingScopes.has(id))throw new Error('Сначала дождись завершения команды.');
@@ -196,7 +201,7 @@ const server=http.createServer(async(req,res)=>{
   if(req.method!=='GET'&&req.method!=='HEAD')return json(res,405,{error:'Метод запрещён.'});
   const relative=path==='/'?'index.html':path.slice(1);
   // Explicit allowlist: no SQLite database, secrets, server code or arbitrary file access.
-  if(!/^(index\.html|style\.css|app\.js|model-[A-Za-z0-9_-]+\.js|assets\/[A-Za-z0-9_./-]+\.(webp|woff2|ttf|txt|js))$/.test(relative)||relative.includes('..'))return json(res,404,{error:'Файл не найден.'});
+  if(!/^(index\.html|style\.css|app\.js|(?:model|chunk)-[A-Za-z0-9_-]+\.js|assets\/[A-Za-z0-9_./-]+\.(webp|woff2|ttf|txt|js))$/.test(relative)||relative.includes('..'))return json(res,404,{error:'Файл не найден.'});
   const file=resolve(root,relative);
   await stat(file);
   const type={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.webp':'image/webp','.woff2':'font/woff2','.ttf':'font/ttf','.txt':'text/plain; charset=utf-8'}[extname(file)];

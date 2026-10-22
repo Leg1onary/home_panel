@@ -1,0 +1,52 @@
+import assert from 'node:assert/strict';
+import {motionObservation,MOTION_WINDOW} from '../src/motion.js';
+import {historyScope,summarizeHistory,loadHistory} from '../server/history.js';
+import {statisticsView} from '../src/history-ui.js';
+import {scenePins} from '../src/scene-pins.js';
+import {migrateHouseProfile} from '../src/house-profile.js';
+import {defaultPreferences} from '../src/preferences.js';
+const now=Date.now(),iso=t=>new Date(t).toISOString();
+const e={entity_id:'sensor.motion',state:'detected',last_updated:iso(now-MOTION_WINDOW+1),last_reported:iso(now)};
+assert.equal(motionObservation(e,now).kind,'active');
+assert.equal(motionObservation({...e,last_updated:iso(now-MOTION_WINDOW)},now).kind,'expired');
+assert.equal(motionObservation({...e,last_updated:iso(now-3600000),last_reported:iso(now)},now).text,'Нет новых движений');
+assert.equal(motionObservation({...e,last_updated:iso(now)},now).kind,'active');
+assert.equal(motionObservation({...e,last_updated:undefined,last_changed:undefined},now).kind,'unknown');
+assert.equal(motionObservation({...e,last_updated:iso(now+120000)},now).kind,'unknown');
+assert.equal(motionObservation({...e,state:'unavailable'},now).kind,'unknown');
+assert.equal(motionObservation({...e,state:'not_detected'},now).kind,'idle');
+assert.equal(motionObservation({...e,entity_id:'binary_sensor.motion',state:'on',last_updated:iso(now-3600000)},now).kind,'active');
+const p=migrateHouseProfile(defaultPreferences());p.mode='live';p.view='home';p.liveOnline=true;
+for(const b of Object.values(p.bindings))if(b.entityId)b.verified=true;
+const scope=historyScope(p);assert.equal(scope.length,26);
+assert.equal(scope.some(d=>d.type==='battery'||d.type==='station'||d.type==='camera'),false);
+const t=p.bindings['temperature:living'].entityId,l=p.bindings['living:0'].entityId;
+const start=now-3600000,end=now;
+const data=summarizeHistory([
+ [{entity_id:t,state:'20',last_changed:iso(start-1000)},{state:'21',last_changed:iso(start+600000)},{state:'unavailable',last_changed:iso(start+1200000)},{state:'22',last_changed:iso(start+1800000)}],
+ [{entity_id:l,state:'off',last_changed:iso(start-1000)},{state:'on',last_changed:iso(start+900000)},{state:'unavailable',last_changed:iso(start+1800000)},{state:'off',last_changed:iso(start+2700000)}],
+ [{entity_id:'sensor.secret',state:'777',last_changed:iso(now)}]
+],scope,start,end);
+assert.equal(data.series.length,6);assert.equal(data.series[0].min,20);assert.equal(data.series[0].max,22);
+assert.equal(data.series[0].points.some(p=>p.value===null),true);
+assert.equal(data.lights[0].onMs,900000);assert.equal(data.lights[0].coverage,.75);
+assert.equal(data.lights.length,15);assert.equal(data.lights.filter(e=>e.coverage===0).length,14);
+assert.equal(data.recordedCount,2);
+assert.equal(data.events.length,3);assert.equal(data.eventCount,3);
+assert.equal(JSON.stringify(data).includes('sensor.secret'),false);
+const html=statisticsView({hours:24,metric:'temperature',room:'all',eventType:'all',data,loading:false,error:''});
+assert.match(html,/history-svg/);assert.match(html,/линия·ч/);
+assert.doesNotMatch(html,/sensor.secret/);
+let requests=0,lastPath='';
+const ha={enabled:true,url:'http://qa-history-'+now,request:async path=>{requests++;lastPath=path;return []}};
+await loadHistory(ha,p,24);await loadHistory(ha,p,24);assert.equal(requests,1,'Cache is reused');
+assert.match(lastPath,/filter_entity_id=/);assert.match(lastPath,/minimal_response/);
+assert.match(lastPath,/significant_changes_only=0/);
+assert.ok(!lastPath.includes('media_player'));
+p.bindings['living:0']={entityId:'light.changed_binding',verified:true};
+await loadHistory(ha,p,24);assert.equal(requests,2,'Binding changes invalidate history scope/cache');
+await assert.rejects(()=>loadHistory(ha,p,999));await assert.rejects(()=>loadHistory({...ha,enabled:false},p,24));
+p.entityStates={};
+const alarm=scenePins(p,now);assert.ok(alarm.some(p=>p.kind==='sensor-offline'));
+assert.equal(alarm.some(p=>p.kind==='climate'),false,'No fabricated climate pins');
+console.log('PASS: motion expiry/event timestamps, no polling renewal, native binary semantics, HA-only scoped history, unavailable gaps, line-hours/coverage, cache and binding changes, honest scene pins.');

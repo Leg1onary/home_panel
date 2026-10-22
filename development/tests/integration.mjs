@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import http from 'node:http';
-import {mkdtemp,rm,readFile} from 'node:fs/promises';
+import {mkdtemp,rm,readFile,readdir} from 'node:fs/promises';
 import Database from 'better-sqlite3';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
@@ -49,6 +49,12 @@ async function call(path,{method='GET',data,header={}}={}){
 }
 try{
  await launch();
+ for(const asset of (await readdir('release/dist')).filter(name=>name.endsWith('.js'))){
+  assert.equal((await fetch('http://127.0.0.1:3021/'+asset)).status,200,'Every built JS chunk is served: '+asset);
+ }
+ assert.equal((await fetch('http://127.0.0.1:3021/server.mjs')).status,404);
+ assert.equal((await call('ha/history?hours=24&entity_id=sensor.secret')).status,400,'Cannot request arbitrary history entities');
+ assert.equal((await call('ha/history?hours=24')).status,400,'No demo data passed off as real history');
  let b=await call('bootstrap');assert.equal(b.status,200);proof=b.body.proof;let p=b.body.preferences;
  assert.equal(p.mode,'demo');assert.equal(Object.values(p.bindings).some(b=>b.verified),false);
  assert.equal(p.version,3);assert.equal(b.body.photo,false);

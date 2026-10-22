@@ -392,6 +392,7 @@ var HomeAssistant = class {
     return {
       entity_id: e.entity_id,
       state: e.state,
+      last_changed: e.last_changed,
       last_updated: e.last_updated,
       last_reported: e.last_reported,
       attributes: Object.fromEntries(keys.filter((k) => e.attributes?.[k] !== void 0).map((k) => [k, e.attributes[k]]))
@@ -1057,6 +1058,113 @@ function activateHouseProfile(input, states) {
   return { preferences: validatePreferences(p), report };
 }
 
+// server/history.js
+var types2 = /* @__PURE__ */ new Set(["temperature", "humidity", "door", "motion", "leak", "light"]);
+var cache = /* @__PURE__ */ new Map();
+function historyScope(p) {
+  return p.devices.filter((d) => d.status === "installed" && types2.has(d.type) && p.bindings[d.id]?.verified && p.bindings[d.id]?.entityId).map((d) => ({ id: d.id, name: d.name, room: d.room, type: d.type, entityId: p.bindings[d.id].entityId }));
+}
+function chartPoints(rows, limit = 420) {
+  if (rows.length <= limit) return rows;
+  const result = [], step = Math.ceil(rows.length / (limit / 5));
+  for (let i = 0; i < rows.length; i += step) {
+    const bucket = rows.slice(i, i + step), valid = bucket.filter((p) => p.value !== null);
+    const chosen = [bucket[0], bucket[bucket.length - 1]];
+    if (bucket.some((p) => p.value === null)) chosen.push(bucket.find((p) => p.value === null));
+    if (valid.length) {
+      chosen.push(valid.reduce((a, b) => a.value < b.value ? a : b));
+      chosen.push(valid.reduce((a, b) => a.value > b.value ? a : b));
+    }
+    for (const p of [...new Set(chosen)].sort((a, b) => a.at - b.at)) result.push(p);
+  }
+  return result;
+}
+function summarizeHistory(raw, scope, start, end) {
+  if (!Array.isArray(raw)) throw new Error("HA \u0432\u0435\u0440\u043D\u0443\u043B \u043D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u0443\u044E \u0438\u0441\u0442\u043E\u0440\u0438\u044E.");
+  const allowed = new Map(scope.map((d) => [d.entityId, d])), series = [], events = [], lights = [], recorded = /* @__PURE__ */ new Set();
+  for (const group of raw) {
+    if (!Array.isArray(group) || !group.length) continue;
+    const d = allowed.get(group[0]?.entity_id);
+    if (!d) continue;
+    const rows = group.map((r) => ({ at: Date.parse(r.last_changed || r.last_updated), state: String(r.state ?? "") })).filter((r) => Number.isFinite(r.at) && r.at <= end).sort((a, b) => a.at - b.at);
+    if (rows.length) recorded.add(d.id);
+    if (["temperature", "humidity"].includes(d.type)) {
+      const points = rows.map((r) => ({ at: Math.max(start, r.at), value: !["unknown", "unavailable", ""].includes(r.state) && Number.isFinite(Number(r.state)) ? Number(r.state) : null }));
+      const valid = points.filter((p) => p.value !== null);
+      series.push({ ...d, points: chartPoints(points), count: valid.length, min: valid.length ? valid.reduce((n, p) => Math.min(n, p.value), Infinity) : null, max: valid.length ? valid.reduce((n, p) => Math.max(n, p.value), -Infinity) : null, last: points.at(-1)?.value ?? null });
+    } else {
+      let last;
+      for (const r of rows) {
+        if (r.at > start && r.state !== last) events.push({ ...d, at: r.at, state: r.state });
+        last = r.state;
+      }
+      if (d.type === "light") {
+        let onMs = 0, knownMs = 0;
+        rows.forEach((r, i) => {
+          const from = Math.max(start, r.at), to = Math.min(end, rows[i + 1]?.at ?? end), ms = Math.max(0, to - from);
+          if (["on", "off"].includes(r.state)) {
+            knownMs += ms;
+            if (r.state === "on") onMs += ms;
+          }
+        });
+        lights.push({ ...d, onMs, knownMs, coverage: Math.min(1, knownMs / (end - start)) });
+      }
+    }
+  }
+  for (const d of scope) {
+    if (d.type === "light" && !lights.some((e) => e.id === d.id)) lights.push({ ...d, onMs: 0, knownMs: 0, coverage: 0 });
+    if (["temperature", "humidity"].includes(d.type) && !series.some((e) => e.id === d.id)) series.push({ ...d, points: [], count: 0, min: null, max: null, last: null });
+  }
+  const count = events.length;
+  events.sort((a, b) => b.at - a.at);
+  const perType = {};
+  const retained = events.filter((e) => {
+    perType[e.type] = (perType[e.type] || 0) + 1;
+    return perType[e.type] <= 200;
+  });
+  return {
+    source: "Home Assistant History",
+    start,
+    end,
+    series,
+    events: retained,
+    eventCount: count,
+    lights,
+    scopeCount: scope.length,
+    recordedCount: recorded.size,
+    truncated: count > 200
+  };
+}
+async function loadHistory(ha2, p, hoursText) {
+  const hours = Number(hoursText || 24);
+  if (![6, 24, 168].includes(hours)) throw new Error("\u041F\u0435\u0440\u0438\u043E\u0434 \u0438\u0441\u0442\u043E\u0440\u0438\u0438: 6, 24 \u0438\u043B\u0438 168 \u0447\u0430\u0441\u043E\u0432.");
+  if (p.mode !== "live" || !ha2.enabled) throw new Error("\u0418\u0441\u0442\u043E\u0440\u0438\u044F \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430 \u0432 \u0440\u0430\u0431\u043E\u0447\u0435\u043C \u0440\u0435\u0436\u0438\u043C\u0435 \u0441 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0451\u043D\u043D\u044B\u043C Home Assistant. \u0414\u0435\u043C\u043E\u0438\u0441\u0442\u043E\u0440\u0438\u044E \u043D\u0435 \u0440\u0438\u0441\u0443\u0435\u043C.");
+  const scope = historyScope(p);
+  const key = JSON.stringify([ha2.url, hours, scope.map((d) => [d.id, d.entityId, d.room, d.name])]);
+  const saved = cache.get(key);
+  if (saved && Date.now() - saved.at < 3e4) return saved.promise;
+  const promise = (async () => {
+    const end = Date.now(), start = end - hours * 36e5;
+    if (!scope.length) return summarizeHistory([], scope, start, end);
+    const query = new URLSearchParams({ filter_entity_id: scope.map((d) => d.entityId).join(","), end_time: new Date(end).toISOString(), minimal_response: "", no_attributes: "", significant_changes_only: "0" });
+    let raw;
+    try {
+      raw = await ha2.request("/api/history/period/" + encodeURIComponent(new Date(start).toISOString()) + "?" + query);
+    } catch (error) {
+      throw new Error("\u0418\u0441\u0442\u043E\u0440\u0438\u044F HA \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430. \u041F\u0440\u043E\u0432\u0435\u0440\u044C History/Recorder \u0438 \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0438\u0435 \u043D\u0443\u0436\u043D\u044B\u0445 \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u0435\u0439. " + error.message);
+    }
+    return summarizeHistory(raw, scope, start, end);
+  })();
+  if (cache.size >= 12) cache.delete(cache.keys().next().value);
+  cache.set(key, { at: Date.now(), promise });
+  try {
+    return await promise;
+  } catch (error) {
+    cache.delete(key);
+    throw error;
+  }
+}
+
 // server/index.js
 var port = Number(process.env.PORT || 8080);
 var preview = process.env.PANEL_PREVIEW === "1";
@@ -1150,6 +1258,10 @@ var server = http.createServer(async (req, res) => {
         return json(res, 200, { preferences: p.preferences, photo: !!p.photo, proof: proofs.get(id), preview, addon, haConfigured: ha.enabled });
       }
       if (req.method !== "GET") authorize(req, id);
+      if (route === "ha/history" && req.method === "GET") {
+        if (url.searchParams.has("entity_id") || url.searchParams.has("filter_entity_id")) throw new Error("\u0421\u0443\u0449\u043D\u043E\u0441\u0442\u0438 \u0438\u0441\u0442\u043E\u0440\u0438\u0438 \u043E\u043F\u0440\u0435\u0434\u0435\u043B\u044F\u044E\u0442\u0441\u044F \u0442\u043E\u043B\u044C\u043A\u043E \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u043D\u044B\u043C\u0438 \u043F\u0440\u0438\u0432\u044F\u0437\u043A\u0430\u043C\u0438 \u043F\u0440\u043E\u0444\u0438\u043B\u044F.");
+        return json(res, 200, await loadHistory(ha, p.preferences, url.searchParams.get("hours")));
+      }
       if (route === "house-profile" && req.method === "POST") {
         if (preview) throw new Error("\u041F\u0440\u043E\u0444\u0438\u043B\u044C \u0434\u043E\u043C\u0430 \u043F\u0440\u0438\u043C\u0435\u043D\u044F\u0435\u0442\u0441\u044F \u0442\u043E\u043B\u044C\u043A\u043E \u043D\u0430 \u043B\u043E\u043A\u0430\u043B\u044C\u043D\u043E\u0439 \u043F\u0430\u043D\u0435\u043B\u0438.");
         if (pendingScopes.has(id)) throw new Error("\u0421\u043D\u0430\u0447\u0430\u043B\u0430 \u0434\u043E\u0436\u0434\u0438\u0441\u044C \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u044F \u043A\u043E\u043C\u0430\u043D\u0434\u044B.");
@@ -1277,7 +1389,7 @@ var server = http.createServer(async (req, res) => {
     }
     if (req.method !== "GET" && req.method !== "HEAD") return json(res, 405, { error: "\u041C\u0435\u0442\u043E\u0434 \u0437\u0430\u043F\u0440\u0435\u0449\u0451\u043D." });
     const relative = path === "/" ? "index.html" : path.slice(1);
-    if (!/^(index\.html|style\.css|app\.js|model-[A-Za-z0-9_-]+\.js|assets\/[A-Za-z0-9_./-]+\.(webp|woff2|ttf|txt|js))$/.test(relative) || relative.includes("..")) return json(res, 404, { error: "\u0424\u0430\u0439\u043B \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D." });
+    if (!/^(index\.html|style\.css|app\.js|(?:model|chunk)-[A-Za-z0-9_-]+\.js|assets\/[A-Za-z0-9_./-]+\.(webp|woff2|ttf|txt|js))$/.test(relative) || relative.includes("..")) return json(res, 404, { error: "\u0424\u0430\u0439\u043B \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D." });
     const file = resolve(root, relative);
     await stat(file);
     const type = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".webp": "image/webp", ".woff2": "font/woff2", ".ttf": "font/ttf", ".txt": "text/plain; charset=utf-8" }[extname(file)];
