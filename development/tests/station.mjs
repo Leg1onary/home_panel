@@ -19,6 +19,8 @@ ha.request=async(path,body)=>{
  if(path.endsWith('/media_pause'))e.state='paused';
  else if(path.endsWith('/media_play'))e.state='playing';
  else if(path.endsWith('/volume_set'))e.attributes.volume_level=body.volume_level;
+ else if(path.endsWith('/media_next_track'))e.attributes.media_title='Next track';
+ else if(path.endsWith('/media_previous_track'))e.attributes.media_title='Previous track';
  else throw new Error('Unexpected service');
  return [];
 };
@@ -32,6 +34,11 @@ await ha.command({id:'station:volume',value:58},p);assert.equal(e.attributes.vol
 const services=()=>calls.filter(c=>c.path.startsWith('/api/services/'));
 assert.equal(services().length,3);
 await ha.command({id:'station:volume',value:58},p);assert.equal(services().length,3);
+e.attributes.supported_features|=mediaFeatures.NEXT_TRACK|mediaFeatures.PREVIOUS_TRACK;
+await ha.command({id:'station:next',value:true},p);assert.equal(e.attributes.media_title,'Next track');
+await ha.command({id:'station:previous',value:true},p);assert.equal(e.attributes.media_title,'Previous track');
+assert.equal(services().length,5);
+await assert.rejects(()=>ha.command({id:'station:next',value:false},p));
 for(const request of [{id:'station:volume',value:101},{id:'station:volume',value:0.5},{id:'station:playing',value:'true'},{id:'station:tts',value:'hello'}]){
  await assert.rejects(()=>ha.command(request,p));
 }
@@ -44,5 +51,5 @@ p.bindings.station.verified=false;
 await assert.rejects(()=>ha.command({id:'station:playing',value:true},p),/не проверена/);
 p.mode='demo';
 await assert.rejects(()=>ha.command({id:'station:playing',value:true},p),/рабочем режиме/);
-assert.equal(services().length,3);
+assert.equal(services().length,5);
 console.log('PASS: media discovery/secret filtering, pause/play/volume readback, unchanged target no-op, features/offline/unverified locks, strict action/value allowlist, demo isolation.');

@@ -3,7 +3,7 @@ import {
  createIcons,House,Box,Lightbulb,Power,ScanEye,SlidersHorizontal,Sun,Moon,X,ArrowRight,ArrowUpRight,
  AudioLines,Camera,ChevronRight,CircleCheck,DoorClosed,Droplets,Heater,Leaf,Radio,RotateCcw,Thermometer,
  Trees,Archive,Armchair,Bath,BedDouble,Blocks,DoorOpen,MoveUpRight,Sofa,MoonStar,Star,ChevronUp,
- ChevronDown,Check,LoaderCircle,TriangleAlert,WifiOff,Play,Pause,Volume2,ImagePlus,Settings2,Info,Maximize,Minimize,Download,Upload
+ ChevronDown,Check,LoaderCircle,TriangleAlert,WifiOff,Play,Pause,SkipBack,SkipForward,Volume2,ImagePlus,Settings2,Info,Maximize,Minimize,Download,Upload
 } from 'lucide';
 import {rooms,state,getRoom,countLights,channelsFor,sensors} from './schema.js';
 import {sendCommand,commandFor,hasPending} from './commands.js';
@@ -18,13 +18,14 @@ import {stationSupports,stationStateLabel} from './station.js';
 import {buildDeviceModel,detachChannel} from './device-model.js';
 import {deviceStructure,equipmentFromForm} from './device-model-ui.js';
 import {homeSummary} from './home-summary.js';
+import {binaryValue,leakIssues} from './sensor-state.js';
 
 const $=s=>document.querySelector(s);
 const I=name=>`<i data-lucide="${name}"></i>`;
 const iconSet={House,Box,Lightbulb,Power,ScanEye,SlidersHorizontal,Sun,Moon,X,ArrowRight,ArrowUpRight,
  AudioLines,Camera,ChevronRight,CircleCheck,DoorClosed,Droplets,Heater,Leaf,Radio,RotateCcw,Thermometer,
  Trees,Archive,Armchair,Bath,BedDouble,Blocks,DoorOpen,MoveUpRight,Sofa,MoonStar,Star,ChevronUp,
- ChevronDown,Check,LoaderCircle,TriangleAlert,WifiOff,Play,Pause,Volume2,ImagePlus,Settings2,Info,Maximize,Minimize,Download,Upload};
+ ChevronDown,Check,LoaderCircle,TriangleAlert,WifiOff,Play,Pause,SkipBack,SkipForward,Volume2,ImagePlus,Settings2,Info,Maximize,Minimize,Download,Upload};
 const icons=()=>{
  createIcons({icons:iconSet,attrs:{'stroke-width':1.6}});
  const title=$('.sheet h2');if(title)title.id='sheet-title';
@@ -48,7 +49,8 @@ const noConnection=()=>isLive()?!state.liveOnline:state.demoOffline;
 const masterBlocked=()=>hasPending()||noConnection()||!rooms.some(r=>r.channels.some(c=>c.masterOff&&canControl(c.id)));
 const binaryLabel=(id,on,off)=>{
  if(!isLive())return state.demoOffline?'Нет связи':state.devices.some(d=>d.id===id&&d.status==='installed')?`${off} · демо`:'Нет данных';
- const e=observed(id);return e?.state==='on'?on:e?.state==='off'?off:'Нет данных';
+ const e=observed(id),type=state.devices.find(d=>d.id===id)?.type;
+ const value=binaryValue(type,e?.state);return value===true?on:value===false?off:'Нет данных';
 };
 function storageStatus(){
  const node=$('#storage-status');if(node){node.textContent=state.storageMessage;node.className='storage-status '+state.storage}
@@ -106,7 +108,7 @@ function station(){
  const demo=!isLive()&&state.stationMode==='demo',offline=!isLive()&&(state.stationMode==='offline'||state.demoOffline);
  const e=isLive()?observed('station'):null;
  return `<section class="station-card"><div class="station-top"><span class="eyebrow">Голос дома</span>${I('audio-lines')}</div>
- <h2>Дуо Макс</h2><p>${esc(e?.attributes.media_title|| (isLive()?'Станция в гостиной · через Home Assistant':demo?'Тестовая карточка станции.':'Голос и музыка в гостиной.'))}</p>
+ <h2>Станция · ${esc(stationRoom())}</h2><p>${esc(e?.attributes.media_title|| (isLive()?'Музыка и голос · через Home Assistant':demo?'Тестовая карточка станции.':'Голос и музыка.'))}</p>
  <button class="text-button" data-action="station">${isLive()?'Открыть управление':demo?'Открыть демоуправление':'Статус и подключение'} ${I('arrow-up-right')}</button>
  <div class="station-bottom"><span></span>${isLive()?(!state.liveOnline?'Нет связи с HA':esc(stationStateLabel(e))):offline?'Нет связи · демо':demo?(state.stationPlaying?'Воспроизведение · демо':'Пауза · демо'):'Демонстрационный режим'}</div></section>`;
 }
@@ -159,13 +161,21 @@ function homeLightSummary(){
 }
 function homeStatus(){
  const terraceDoor=state.devices.find(d=>d.id==='terrace-door'&&d.status==='installed');
- const leaks=state.devices.filter(d=>d.type==='leak'&&d.status==='installed');
- const leakChip=d=>{const on=isLive()&&state.liveOnline&&observed(d.id)?.state==='on';const place=d.id==='leak:bath'?'ванная':'котельная';return `<button class="status-chip leak-chip ${on?'leak-alert':''}" data-action="leak" data-leak-id="${d.id}">${I('droplets')}${esc(on?`Протечка · ${place}!`:`Протечка · ${place} · сухо`)}</button>`};
- return `<button class="status-chip" data-action="door">${I('door-closed')}${esc(binaryLabel('door','Дверь открыта','Дверь закрыта'))}</button>
- ${terraceDoor?`<button class="status-chip" data-action="terrace-door">${I('door-open')}${esc(binaryLabel('terrace-door','Дверь на террасу открыта','Дверь на террасу закрыта'))}</button>`:''}
- ${leaks.map(leakChip).join('')}
+ return `<button class="status-chip" data-action="door" aria-label="Входная дверь: ${esc(binaryLabel('door','открыта','закрыта'))}">${I('door-closed')}${esc(binaryLabel('door','Вход открыт','Вход закрыт'))}</button>
+ ${terraceDoor?`<button class="status-chip" data-action="terrace-door" aria-label="Дверь на террасу: ${esc(binaryLabel('terrace-door','открыта','закрыта'))}">${I('door-open')}${esc(binaryLabel('terrace-door','Терраса открыта','Терраса закрыта'))}</button>`:''}
  <button class="status-chip" data-view="watch">${I('thermometer')}Климат</button>
  <button class="status-chip well-chip" data-room="well">${I('droplets')}Скважина ${compactRoomClimate('well')}</button>`;
+}
+function houseAlerts(){
+ return leakIssues(state.devices,{live:isLive(),online:state.liveOnline,read:observed})
+  .sort((a,b)=>Number(b.alarm)-Number(a.alarm))
+  .map(d=>`<button class="house-alert ${d.alarm?'is-alarm':'is-unavailable'}" data-action="leak" data-leak-id="${esc(d.id)}" ${d.alarm?'role="alert"':''}>${I(d.alarm?'triangle-alert':'wifi-off')}<span><strong>${esc(d.alarm?d.name+'!':'Нет данных · '+d.name)}</strong><small>${d.alarm?'Проверь воду и источник протечки':'Датчик недоступен или его состояние неизвестно'}</small></span>${I('chevron-right')}</button>`).join('');
+}
+function stationRoom(){return areaName(state.devices.find(d=>d.id==='station')?.room||'corridor')}
+function stationSkipButtons(){
+ const e=isLive()?observed('station'):null;
+ return `<div class="station-skip"><button class="icon-button" data-action="station-previous" aria-label="Предыдущий трек" ${disabled(!isLive()||!stationSupports(e,'previous',true)||hasPending())}>${I('skip-back')}</button>
+ <button class="icon-button" data-action="station-next" aria-label="Следующий трек" ${disabled(!isLive()||!stationSupports(e,'next',true)||hasPending())}>${I('skip-forward')}</button></div>`;
 }
 function homeQuick(){
  const camera=state.devices.find(d=>d.type==='camera'&&d.room==='yard'&&d.status==='installed');
@@ -173,7 +183,10 @@ function homeQuick(){
  return `<div class="quick-devices">
  <button class="quick-device light-shortcut" data-action="master" ${disabled(masterBlocked())}><span class="quick-device-icon">${I('power')}</span><span><strong>Весь свет</strong><small>Выключить</small></span></button>
  ${camera?`<button class="quick-device camera-shortcut" data-camera="${camera.id}" aria-label="Двор: открыть прямой эфир"><span class="quick-device-icon">${I('camera')}</span><span><strong>Двор</strong><small>Камера</small></span></button>`:''}
- ${media?`<button class="quick-device media-shortcut" data-action="station" aria-label="${esc(media.name)}: открыть управление"><span class="quick-device-icon">${I('audio-lines')}</span><span><strong>Дуо Макс</strong><small>Музыка</small></span></button>`:''}
+ ${media?`<div class="quick-device media-shortcut">
+ <button class="quick-device-icon" data-action="station-play" aria-label="${state.stationPlaying?'Пауза на станции':'Продолжить на станции'}" ${disabled(!canControl('station:playing')||hasPending())}>${I(state.stationPlaying?'pause':'play')}</button>
+ <button class="media-details" data-action="station" aria-label="Станция · ${esc(stationRoom())}: открыть управление"><strong>Музыка</strong><small title="${esc(observed('station')?.attributes?.media_title||stationRoom())}">${esc(observed('station')?.attributes?.media_title||stationRoom())}</small></button>
+ ${stationSkipButtons()}</div>`:''}
  </div>`;
 }
 function sceneStage(){
@@ -291,7 +304,7 @@ function deviceReading(d){
   return ({on:'Есть движение',off:'Нет движения',detected:'Есть движение',not_detected:'Нет движения',motion:'Есть движение',no_motion:'Нет движения',true:'Есть движение',false:'Нет движения'})[String(value).toLowerCase()]||`Состояние HA: ${value}`;
  }
  const labels={door:['Открыта','Закрыта'],smoke:['Тревога','Нет тревоги'],motion:['Есть движение','Нет движения'],leak:['Протечка','Сухо'],pump:['Питание включено','Питание выключено']};
- if(labels[d.type])return value==='on'?labels[d.type][0]:value==='off'?labels[d.type][1]:'Нет данных';
+ if(labels[d.type]){const v=binaryValue(d.type,value);return v===true?labels[d.type][0]:v===false?labels[d.type][1]:'Нет данных'}
  if(d.type==='gate')return ({open:'Открыты',closed:'Закрыты',opening:'Открываются',closing:'Закрываются'})[value]||'Положение неизвестно';
  if(d.type==='curtain')return (({open:'Открыты',closed:'Закрыты',opening:'Открываются',closing:'Закрываются',stopped:'Остановлены'})[value]||String(value))+(Number.isFinite(e?.attributes.current_position)?` · ${e.attributes.current_position} %`:'');
  if(d.type==='vacuum')return (({cleaning:'Убирает',docked:'На базе',returning:'Возвращается',idle:'Ожидание',paused:'Пауза',error:'Ошибка'})[value]||String(value))+(Number.isFinite(e?.attributes.battery_level)?` · заряд ${e.attributes.battery_level} %`:'');
@@ -407,7 +420,10 @@ function refresh(){
   else if($('#sheet-content').dataset.station==='true'&&!stationAdjusting)$('#sheet-content').innerHTML=stationSheet();
   else updateDetail();
  }
- $('#master').disabled=masterBlocked();updateHeader();icons();
+ $('#master').disabled=masterBlocked();updateHeader();
+ updateRegion('#house-alerts',houseAlerts());$('#house-alerts').hidden=!$('#house-alerts').innerHTML;
+ document.documentElement.dataset.leakAlert=String(!$('#house-alerts').hidden);
+ icons();
  if(focus){const target=[...document.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')===focus&&!b.disabled);target?.focus({preventScroll:true})}
 }
 function roomSheet(r){
@@ -430,6 +446,7 @@ function command(id,value){
  else if(id==='rgb:color')apply=v=>state.rgbColor=v;
  else if(id==='station:volume')apply=v=>state.stationVolume=v;
  else if(id==='station:playing')apply=v=>state.stationPlaying=v;
+ else if(['station:next','station:previous'].includes(id)){if(!canControl(id))return Promise.resolve(false);apply=()=>{}}
  else{const c=channel(id);if(!c||!canControl(id))return Promise.resolve(false);apply=v=>c.on=v}
  return sendCommand(id,value,apply,refresh);
 }
@@ -450,12 +467,13 @@ async function masterConfirm(){
 function stationSheet(){
  const enabled=!isLive()&&state.stationMode==='demo'&&!state.demoOffline,offline=!isLive()&&(state.stationMode==='offline'||state.demoOffline);
  const e=isLive()?observed('station'):null;
- if(isLive())return `<h2>Дуо Макс · гостиная</h2><p class="description">${esc(!state.liveOnline?'Нет связи с Home Assistant':stationStateLabel(e))}</p>
+ if(isLive())return `<h2>Станция · ${esc(stationRoom())}</h2><p class="description">${esc(!state.liveOnline?'Нет связи с Home Assistant':stationStateLabel(e))}</p>
  <div class="inline-note">${esc(e?.attributes.media_title||'Название трека не передано')}${e?.attributes.media_artist?' · '+esc(e.attributes.media_artist):''}</div>
  <div class="control-group"><div class="control-row"><div><h3>Воспроизведение</h3><p>Команды только через media_player в HA</p></div><button class="icon-button" data-action="station-play" aria-label="${state.stationPlaying?'Пауза':'Воспроизвести'}" ${disabled(!stationSupports(e,'playing',!state.stationPlaying)||hasPending())}>${I(state.stationPlaying?'pause':'play')}</button></div>${phaseLine('station:playing')}</div>
  <div class="rgb-control"><label for="station-volume">Громкость <span id="station-volume-label">${Number.isFinite(e?.attributes.volume_level)?state.stationVolume+' %':'Недоступна'}</span></label><input id="station-volume" type="range" min="0" max="100" value="${state.stationVolume}" ${disabled(!stationSupports(e,'volume')||hasPending())}/>${phaseLine('station:volume')}</div>
- <p class="description">Пауза, продолжение и громкость доступны только при поддержке интеграцией. Запуск нового трека и голосовые команды здесь не отправляются. После отключения станции кнопки заблокируются.</p>`;
- return `<h2>Дуо Макс · гостиная</h2><p class="description">Голос и музыка. Это демонстрационное управление, не настоящая станция.</p>
+ ${stationSkipButtons()}${phaseLine('station:previous')}${phaseLine('station:next')}
+ <p class="description">Переключение треков, пауза и громкость доступны при поддержке интеграцией. Команды выполняются станцией в коридоре, не браузером. При потере связи управление блокируется.</p>`;
+ return `<h2>Станция · ${esc(stationRoom())}</h2><p class="description">Голос и музыка. Это демонстрационное управление, не настоящая станция.</p>
  <div class="inline-note">${offline?'Нет связи · демонстрация':enabled?'Демоуправление включено для проверки интерфейса. Это не связь с реальной станцией.':'Не подключена к панели. Реальный статус и возможности пока неизвестны.'}</div>
  <div class="control-group"><div class="control-row"><div><h3>Воспроизведение</h3><p>${enabled?(state.stationPlaying?'Играет · демо, без аудиопотока':'Пауза · демо'):'Доступность уточним после интеграции'}</p></div>
  <button class="icon-button" data-action="station-play" aria-label="${state.stationPlaying?'Пауза':'Воспроизвести'}" ${disabled(!enabled||hasPending())}>${I(state.stationPlaying?'pause':'play')}</button></div>${phaseLine('station:playing')}</div>
@@ -863,6 +881,10 @@ document.addEventListener('click',e=>{
  }
  if(a==='station'){settingsOpen=false;modal(stationSheet());$('#sheet-content').dataset.station='true';return}
  if(a==='station-play'&&!hasPending())return command('station:playing',!state.stationPlaying);
+ if(['station-next','station-previous'].includes(a)&&!hasPending()){
+  const id=a==='station-next'?'station:next':'station:previous';
+  return command(id,true).then(ok=>{if(!ok)toast(commandFor(id)?.message||'Переключение недоступно')});
+ }
  if(a==='pump')return simpleSheet(`<h2>Насос тёплого пола</h2><p class="description">Yeelight подаёт или отключает питание. Две карточки в Алисе не означают два насоса.</p>
  <div class="inline-note">Привязка канала не проверена. Управление заблокировано; подача питания не подтверждает работу насоса.</div>
  <div class="control-row"><h3>После проверки на месте</h3><button class="toggle" disabled aria-label="Насос недоступен"><span class="toggle-track"></span></button></div>`);

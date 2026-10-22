@@ -103,16 +103,21 @@ export class HomeAssistant {
   if(d?.type!=='station'||d.status!=='installed'||!b?.verified||!/^media_player\.[a-z0-9_]+$/.test(b.entityId))throw new Error('Станция не подключена или не проверена.');
   if(action==='volume'){
    if(!Number.isInteger(request.value)||request.value<0||request.value>100)throw new Error('Громкость должна быть от 0 до 100.');
-  }else if(action!=='playing'||typeof request.value!=='boolean')throw new Error('Команда станции запрещена.');
+  }else if(!['playing','next','previous'].includes(action)||typeof request.value!=='boolean'||(['next','previous'].includes(action)&&request.value!==true))throw new Error('Команда станции запрещена.');
   const entity=b.entityId;
   if(this.pending.has(entity))throw new Error('Станция занята предыдущей командой.');
   this.pending.add(entity);
   try{
    const before=await this.request('/api/states/'+entity);
    if(!stationSupports(before,action,request.value))throw new Error('Функция станции недоступна или не поддерживается интеграцией.');
-   const target=action==='volume'?e=>Number.isFinite(e.attributes?.volume_level)&&Math.abs(e.attributes.volume_level-request.value/100)<=0.015:e=>e.state===(request.value?'playing':'paused');
-   if(target(before))return {id:request.id,value:request.value,confirmedAt:Date.now()};
-   const service=action==='volume'?'volume_set':request.value?'media_play':'media_pause';
+   const skip=['next','previous'].includes(action);
+   const target=skip?e=>!!(
+    (e.attributes?.media_title&&e.attributes.media_title!==before.attributes?.media_title)||
+    (e.attributes?.media_artist&&e.attributes.media_artist!==before.attributes?.media_artist)||
+    (Number.isFinite(e.attributes?.media_position)&&Number.isFinite(before.attributes?.media_position)&&e.attributes.media_position<before.attributes.media_position-2)
+   ):action==='volume'?e=>Number.isFinite(e.attributes?.volume_level)&&Math.abs(e.attributes.volume_level-request.value/100)<=0.015:e=>e.state===(request.value?'playing':'paused');
+   if(!skip&&target(before))return {id:request.id,value:request.value,confirmedAt:Date.now()};
+   const service=skip?(action==='next'?'media_next_track':'media_previous_track'):action==='volume'?'volume_set':request.value?'media_play':'media_pause';
    await this.request('/api/services/media_player/'+service,{entity_id:entity,...(action==='volume'?{volume_level:request.value/100}:{})});
    const deadline=Date.now()+10000;
    do{

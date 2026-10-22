@@ -60,13 +60,13 @@ var types = {
   temperature: { label: "\u0422\u0435\u043C\u043F\u0435\u0440\u0430\u0442\u0443\u0440\u0430", icon: "thermometer", module: "sensors", domains: ["sensor"], unit: "\xB0C" },
   humidity: { label: "\u0412\u043B\u0430\u0436\u043D\u043E\u0441\u0442\u044C", icon: "droplets", module: "sensors", domains: ["sensor"], unit: "%" },
   illuminance: { label: "\u041E\u0441\u0432\u0435\u0449\u0451\u043D\u043D\u043E\u0441\u0442\u044C", icon: "sun", module: "sensors", domains: ["sensor"], unit: "lx" },
-  door: { label: "\u041E\u0442\u043A\u0440\u044B\u0442\u0438\u0435", icon: "door-open", module: "sensors", domains: ["binary_sensor"], classes: ["door", "opening", "window", "garage_door"] },
+  door: { label: "\u041E\u0442\u043A\u0440\u044B\u0442\u0438\u0435", icon: "door-open", module: "sensors", domains: ["binary_sensor", "sensor"], classes: ["door", "opening", "window", "garage_door", "enum"] },
   smoke: { label: "\u0414\u044B\u043C", icon: "radio", module: "sensors", domains: ["binary_sensor"], classes: ["smoke"] },
   motion: { label: "\u0414\u0432\u0438\u0436\u0435\u043D\u0438\u0435", icon: "scan-eye", module: "sensors", domains: ["binary_sensor", "sensor"], classes: ["motion", "occupancy", "enum"] },
   battery: { label: "\u0411\u0430\u0442\u0430\u0440\u0435\u0439\u043A\u0430", icon: "radio", module: "sensors", domains: ["sensor"], unit: "%" },
   button_event: { label: "\u041C\u0430\u0441\u0442\u0435\u0440-\u043A\u043D\u043E\u043F\u043A\u0430 \xB7 \u0441\u043E\u0431\u044B\u0442\u0438\u0435", icon: "power", module: "sensors", domains: ["sensor"], classes: ["enum"] },
   station: { label: "\u041C\u0435\u0434\u0438\u0430\u043F\u043B\u0435\u0435\u0440 / \u0441\u0442\u0430\u043D\u0446\u0438\u044F", icon: "audio-lines", module: "media", domains: ["media_player"], controllable: true, capabilities: ["play", "pause", "volume"] },
-  leak: { label: "\u041F\u0440\u043E\u0442\u0435\u0447\u043A\u0430", icon: "droplets", module: "sensors", domains: ["binary_sensor"], classes: ["moisture", "safety", "problem"] },
+  leak: { label: "\u041F\u0440\u043E\u0442\u0435\u0447\u043A\u0430", icon: "droplets", module: "sensors", domains: ["binary_sensor", "sensor"], classes: ["moisture", "safety", "problem", "enum"] },
   camera: { label: "\u041A\u0430\u043C\u0435\u0440\u0430", icon: "camera", module: "cameras", domains: ["camera"], capabilities: ["snapshot", "live"] },
   curtain: { label: "\u0428\u0442\u043E\u0440\u044B / \u043A\u0430\u0440\u043D\u0438\u0437 \xB7 \u043D\u0430\u0431\u043B\u044E\u0434\u0435\u043D\u0438\u0435", icon: "door-open", module: "covers", domains: ["cover"], locked: true, capabilities: ["state", "position"] },
   vacuum: { label: "\u0420\u043E\u0431\u043E\u0442-\u043F\u044B\u043B\u0435\u0441\u043E\u0441 \xB7 \u043D\u0430\u0431\u043B\u044E\u0434\u0435\u043D\u0438\u0435", icon: "radio", module: "cleaning", domains: ["vacuum"], locked: true, capabilities: ["state", "battery"] },
@@ -107,7 +107,7 @@ function defaultDevices() {
       make(`humidity:${id}`, "humidity", id, `\u0412\u043B\u0430\u0436\u043D\u043E\u0441\u0442\u044C \xB7 ${areaName(id)}`, { note: "miaomiaoce.sensor_ht.t2 \xB7 BLE; \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435 \u043A HA \u0435\u0449\u0451 \u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u043E", demoValue: h, demoStale: id === "attic" })
     ]),
     make("door", "door", "hall", "\u0412\u0445\u043E\u0434\u043D\u0430\u044F \u0434\u0432\u0435\u0440\u044C", { note: "isa.magnet.dw2hl \xB7 BLE; \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435 \u043A HA \u0435\u0449\u0451 \u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u043E", demoValue: "off" }),
-    make("terrace-door", "door", "terrace", "\u0414\u0432\u0435\u0440\u044C \u043D\u0430 \u0442\u0435\u0440\u0440\u0430\u0441\u0443", { note: "\u042F\u043D\u0434\u0435\u043A\u0441 \xB7 Zigbee \u0447\u0435\u0440\u0435\u0437 \u0441\u0442\u0430\u043D\u0446\u0438\u044E; \u043F\u0440\u0438\u0432\u044F\u0436\u0438 \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u044C HA", demoValue: "off" }),
+    make("terrace-door", "door", "living", "\u0414\u0432\u0435\u0440\u044C \u043D\u0430 \u0442\u0435\u0440\u0440\u0430\u0441\u0443", { note: "\u042F\u043D\u0434\u0435\u043A\u0441 \xB7 Zigbee \u0447\u0435\u0440\u0435\u0437 \u0441\u0442\u0430\u043D\u0446\u0438\u044E; \u0434\u0432\u0435\u0440\u044C \u0433\u043E\u0441\u0442\u0438\u043D\u0430\u044F\u2013\u0442\u0435\u0440\u0440\u0430\u0441\u0430", demoValue: "off" }),
     make("leak:utility", "leak", "utility", "\u041F\u0440\u043E\u0442\u0435\u0447\u043A\u0430 \u0432 \u043A\u043E\u0442\u0435\u043B\u044C\u043D\u043E\u0439", { note: "\u042F\u043D\u0434\u0435\u043A\u0441 \xB7 Zigbee \u0447\u0435\u0440\u0435\u0437 \u0441\u0442\u0430\u043D\u0446\u0438\u044E; \u043F\u0440\u0438\u0432\u044F\u0436\u0438 \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u044C HA", demoValue: "off" }),
     make("leak:bath", "leak", "bath", "\u041F\u0440\u043E\u0442\u0435\u0447\u043A\u0430 \u0432 \u0432\u0430\u043D\u043D\u043E\u0439", { note: "\u042F\u043D\u0434\u0435\u043A\u0441 \xB7 Zigbee \u0447\u0435\u0440\u0435\u0437 \u0441\u0442\u0430\u043D\u0446\u0438\u044E; \u043F\u0440\u0438\u0432\u044F\u0436\u0438 \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u044C HA", demoValue: "off" }),
     make("smoke", "smoke", "living", "\u0414\u0430\u0442\u0447\u0438\u043A \u0434\u044B\u043C\u0430 \u043D\u0430\u0434 \u043A\u0443\u0445\u043D\u0435\u0439", { note: "DIGMA SmartLife \xB7 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435 \u043E\u0442\u043B\u043E\u0436\u0435\u043D\u043E", demoValue: "off" }),
@@ -169,7 +169,7 @@ function samePhysicalDevice(a, b) {
 }
 
 // src/station.js
-var mediaFeatures = { PAUSE: 1, VOLUME_SET: 4, PLAY: 16384 };
+var mediaFeatures = { PAUSE: 1, VOLUME_SET: 4, PREVIOUS_TRACK: 16, NEXT_TRACK: 32, PLAY: 16384 };
 function stationAvailable(e) {
   return !!e && ["playing", "paused", "idle", "on", "buffering"].includes(e.state);
 }
@@ -178,6 +178,8 @@ function stationSupports(e, action, value) {
   const mask = Number(e.attributes?.supported_features) || 0;
   if (action === "volume") return !!(mask & mediaFeatures.VOLUME_SET) && Number.isFinite(e.attributes?.volume_level);
   if (action === "playing") return typeof value === "boolean" && !!(mask & (value ? mediaFeatures.PLAY : mediaFeatures.PAUSE));
+  if (action === "next") return value === true && !!(mask & mediaFeatures.NEXT_TRACK);
+  if (action === "previous") return value === true && !!(mask & mediaFeatures.PREVIOUS_TRACK);
   return false;
 }
 
@@ -200,6 +202,9 @@ function seedDeviceModel(devices) {
   add("terrace-motion", "\u0414\u0430\u0442\u0447\u0438\u043A \u0434\u0432\u0438\u0436\u0435\u043D\u0438\u044F \xB7 \u0442\u0435\u0440\u0440\u0430\u0441\u0430", ["terrace-motion", "terrace-lux", "battery:terrace"]);
   add("master-button", "\u041C\u0430\u0441\u0442\u0435\u0440-\u043A\u043D\u043E\u043F\u043A\u0430", ["master-event", "battery:master"]);
   add("yard-camera", "\u041A\u0430\u043C\u0435\u0440\u0430 \u0434\u0432\u043E\u0440\u0430", ["camera-yard", "yard-motion"]);
+  add("terrace-door", "\u0414\u0432\u0435\u0440\u044C \u043D\u0430 \u0442\u0435\u0440\u0440\u0430\u0441\u0443", ["terrace-door", "battery:terrace-door"]);
+  add("leak-utility", "\u041F\u0440\u043E\u0442\u0435\u0447\u043A\u0430 \u0432 \u043A\u043E\u0442\u0435\u043B\u044C\u043D\u043E\u0439", ["leak:utility", "battery:leak-utility"]);
+  add("leak-bath", "\u041F\u0440\u043E\u0442\u0435\u0447\u043A\u0430 \u0432 \u0432\u0430\u043D\u043D\u043E\u0439", ["leak:bath", "battery:leak-bath"]);
   return { version: DEVICE_MODEL_VERSION, groups };
 }
 function validateDeviceModel(input, devices, areas2) {
@@ -320,7 +325,7 @@ function validatePreferences(input, { importing = false } = {}) {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("\u041D\u0443\u0436\u0435\u043D \u043E\u0431\u044A\u0435\u043A\u0442 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043A.");
   if (input.version !== 3) throw new Error("\u0412\u0435\u0440\u0441\u0438\u044F \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043A \u043D\u0435 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u0441\u044F. \u041D\u0443\u0436\u043D\u0430 \u043A\u043E\u043F\u0438\u044F v3.");
   const raw = input, p = defaultPreferences();
-  if (Number.isInteger(raw.housePresetVersion) && raw.housePresetVersion >= 0 && raw.housePresetVersion <= 4) p.housePresetVersion = raw.housePresetVersion;
+  if (Number.isInteger(raw.housePresetVersion) && raw.housePresetVersion >= 0 && raw.housePresetVersion <= 5) p.housePresetVersion = raw.housePresetVersion;
   p.houseProfileConfirmed = !importing && raw.houseProfileConfirmed === true;
   if (!["dark", "light"].includes(raw.theme)) throw new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F \u0442\u0435\u043C\u0430.");
   if (!["auto", "on", "off"].includes(raw.nightMode)) throw new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u043D\u043E\u0447\u043D\u043E\u0439 \u0440\u0435\u0436\u0438\u043C.");
@@ -485,16 +490,17 @@ var HomeAssistant = class {
     if (d?.type !== "station" || d.status !== "installed" || !b?.verified || !/^media_player\.[a-z0-9_]+$/.test(b.entityId)) throw new Error("\u0421\u0442\u0430\u043D\u0446\u0438\u044F \u043D\u0435 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0430 \u0438\u043B\u0438 \u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u0430.");
     if (action === "volume") {
       if (!Number.isInteger(request.value) || request.value < 0 || request.value > 100) throw new Error("\u0413\u0440\u043E\u043C\u043A\u043E\u0441\u0442\u044C \u0434\u043E\u043B\u0436\u043D\u0430 \u0431\u044B\u0442\u044C \u043E\u0442 0 \u0434\u043E 100.");
-    } else if (action !== "playing" || typeof request.value !== "boolean") throw new Error("\u041A\u043E\u043C\u0430\u043D\u0434\u0430 \u0441\u0442\u0430\u043D\u0446\u0438\u0438 \u0437\u0430\u043F\u0440\u0435\u0449\u0435\u043D\u0430.");
+    } else if (!["playing", "next", "previous"].includes(action) || typeof request.value !== "boolean" || ["next", "previous"].includes(action) && request.value !== true) throw new Error("\u041A\u043E\u043C\u0430\u043D\u0434\u0430 \u0441\u0442\u0430\u043D\u0446\u0438\u0438 \u0437\u0430\u043F\u0440\u0435\u0449\u0435\u043D\u0430.");
     const entity = b.entityId;
     if (this.pending.has(entity)) throw new Error("\u0421\u0442\u0430\u043D\u0446\u0438\u044F \u0437\u0430\u043D\u044F\u0442\u0430 \u043F\u0440\u0435\u0434\u044B\u0434\u0443\u0449\u0435\u0439 \u043A\u043E\u043C\u0430\u043D\u0434\u043E\u0439.");
     this.pending.add(entity);
     try {
       const before = await this.request("/api/states/" + entity);
       if (!stationSupports(before, action, request.value)) throw new Error("\u0424\u0443\u043D\u043A\u0446\u0438\u044F \u0441\u0442\u0430\u043D\u0446\u0438\u0438 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430 \u0438\u043B\u0438 \u043D\u0435 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u0441\u044F \u0438\u043D\u0442\u0435\u0433\u0440\u0430\u0446\u0438\u0435\u0439.");
-      const target = action === "volume" ? (e) => Number.isFinite(e.attributes?.volume_level) && Math.abs(e.attributes.volume_level - request.value / 100) <= 0.015 : (e) => e.state === (request.value ? "playing" : "paused");
-      if (target(before)) return { id: request.id, value: request.value, confirmedAt: Date.now() };
-      const service = action === "volume" ? "volume_set" : request.value ? "media_play" : "media_pause";
+      const skip = ["next", "previous"].includes(action);
+      const target = skip ? (e) => !!(e.attributes?.media_title && e.attributes.media_title !== before.attributes?.media_title || e.attributes?.media_artist && e.attributes.media_artist !== before.attributes?.media_artist || Number.isFinite(e.attributes?.media_position) && Number.isFinite(before.attributes?.media_position) && e.attributes.media_position < before.attributes.media_position - 2) : action === "volume" ? (e) => Number.isFinite(e.attributes?.volume_level) && Math.abs(e.attributes.volume_level - request.value / 100) <= 0.015 : (e) => e.state === (request.value ? "playing" : "paused");
+      if (!skip && target(before)) return { id: request.id, value: request.value, confirmedAt: Date.now() };
+      const service = skip ? action === "next" ? "media_next_track" : "media_previous_track" : action === "volume" ? "volume_set" : request.value ? "media_play" : "media_pause";
       await this.request("/api/services/media_player/" + service, { entity_id: entity, ...action === "volume" ? { volume_level: request.value / 100 } : {} });
       const deadline = Date.now() + 1e4;
       do {
@@ -830,6 +836,17 @@ var CameraRTC = class {
   }
 };
 
+// src/sensor-state.js
+function binaryValue(type, value) {
+  const v = String(value ?? "").trim().toLowerCase();
+  if (v === "on" || v === "true") return true;
+  if (v === "off" || v === "false") return false;
+  if (type === "door") return v === "open" ? true : v === "closed" ? false : null;
+  if (type === "leak") return ["wet", "leak", "detected"].includes(v) ? true : ["dry", "no_leak", "not_detected"].includes(v) ? false : null;
+  if (type === "motion") return ["detected", "motion"].includes(v) ? true : ["not_detected", "no_motion"].includes(v) ? false : null;
+  return null;
+}
+
 // src/house-profile.js
 var houseBindings = {
   "living:0": "light.gostinaia_levyi_vykliuchatel",
@@ -846,6 +863,7 @@ var houseBindings = {
   "bath:1": "light.vannaia_pravyi_vykliuchatel",
   "utility:0": "light.tualet_vykliuchatel",
   "pantry:0": "light.kladovaia_vykliuchatel",
+  "corridor-main": "light.koridor_vykliuchatel",
   "temperature:living": "sensor.gostinaia_datchik_temperatury_temperatura",
   "humidity:living": "sensor.gostinaia_datchik_temperatury_vlazhnost",
   "temperature:well": "sensor.skvazhina_datchik_temperatury_temperatura",
@@ -856,7 +874,12 @@ var houseBindings = {
   "terrace-motion": "sensor.terrasa_datchik_dvizheniia_dvizhenie",
   "terrace-lux": "sensor.terrasa_datchik_dvizheniia_osveshchennost",
   "camera-yard": "camera.dvor_kamera_dvor_live_view",
-  "yard-motion": "binary_sensor.dvor_c320ws_motion_alarm",
+  "terrace-door": "sensor.gostinaia_datchik_dveri_dver_okno",
+  "leak:utility": "sensor.kotelnaia_datchik_protechki_vody_protechka_vody",
+  "leak:bath": "sensor.vannaia_datchik_protechki_vody_protechka_vody",
+  "battery:terrace-door": "sensor.gostinaia_datchik_dveri_uroven_zariada",
+  "battery:leak-utility": "sensor.kotelnaia_datchik_protechki_vody_uroven_zariada",
+  "battery:leak-bath": "sensor.vannaia_datchik_protechki_vody_uroven_zariada",
   "master-event": "sensor.prikhozhaia_master_svet_knopka",
   "station": "media_player.yandex_station_c00mp0000t4w0z",
   "battery:living": "sensor.gostinaia_datchik_temperatury_uroven_zariada",
@@ -914,7 +937,7 @@ function migrateYandexSensors(input) {
   return validatePreferences(p);
 }
 function migrateHouseProfile(input) {
-  if ((input.housePresetVersion || 0) >= 3) return migrateYandexSensors(migrateCorridor(input));
+  if ((input.housePresetVersion || 0) >= 3) return migrateInventory20261022(migrateYandexSensors(migrateCorridor(input)));
   const p = JSON.parse(JSON.stringify(input));
   const previousVersion = input.housePresetVersion || 0;
   p.houseProfileConfirmed = input.houseProfileConfirmed === true || previousVersion < 2 && input.mode === "live" && Object.values(input.bindings || {}).some((b) => b.verified);
@@ -955,7 +978,55 @@ function migrateHouseProfile(input) {
     camera.note = "TP-Link \xB7 Live View \xB7 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A \u0437\u0430\u043C\u0435\u043D\u0451\u043D \u043F\u043E \u0432\u044B\u0431\u043E\u0440\u0443 \u0432\u043B\u0430\u0434\u0435\u043B\u044C\u0446\u0430";
   }
   p.housePresetVersion = 3;
-  return migrateYandexSensors(migrateCorridor(validatePreferences(p)));
+  return migrateInventory20261022(migrateYandexSensors(migrateCorridor(validatePreferences(p))));
+}
+function migrateInventory20261022(input) {
+  if ((input.housePresetVersion || 0) >= 5) return input;
+  const p = JSON.parse(JSON.stringify(input));
+  const batteries = [
+    extra("battery:terrace-door", "battery", "living", "\u0411\u0430\u0442\u0430\u0440\u0435\u0439\u043A\u0430 \xB7 \u0434\u0432\u0435\u0440\u044C \u043D\u0430 \u0442\u0435\u0440\u0440\u0430\u0441\u0443"),
+    extra("battery:leak-utility", "battery", "utility", "\u0411\u0430\u0442\u0430\u0440\u0435\u0439\u043A\u0430 \xB7 \u043F\u0440\u043E\u0442\u0435\u0447\u043A\u0430 \u0432 \u043A\u043E\u0442\u0435\u043B\u044C\u043D\u043E\u0439"),
+    extra("battery:leak-bath", "battery", "bath", "\u0411\u0430\u0442\u0430\u0440\u0435\u0439\u043A\u0430 \xB7 \u043F\u0440\u043E\u0442\u0435\u0447\u043A\u0430 \u0432 \u0432\u0430\u043D\u043D\u043E\u0439")
+  ];
+  for (const d of batteries) if (!p.devices.some((x) => x.id === d.id)) p.devices.push(d);
+  const station = p.devices.find((d) => d.id === "station" && d.type === "station");
+  if (station) {
+    station.room = "corridor";
+    station.note = "\u042F\u043D\u0434\u0435\u043A\u0441 \u0421\u0442\u0430\u043D\u0446\u0438\u044F \xB7 \u043F\u043E\u0441\u0442\u043E\u044F\u043D\u043D\u043E\u0435 \u043C\u0435\u0441\u0442\u043E: \u043A\u043E\u0440\u0438\u0434\u043E\u0440";
+  }
+  const door = p.devices.find((d) => d.id === "terrace-door" && d.type === "door");
+  if (door) door.room = "living";
+  const ghost = p.devices.find((d) => d.id === "yard-motion" && d.type === "motion");
+  if (ghost && (!p.bindings[ghost.id]?.entityId || p.bindings[ghost.id].entityId === "binary_sensor.dvor_c320ws_motion_alarm")) {
+    p.devices = p.devices.filter((d) => d.id !== ghost.id);
+    delete p.bindings[ghost.id];
+    if (p.deviceModel) p.deviceModel = detachChannel(p.deviceModel, ghost.id);
+  }
+  for (const d of p.devices) {
+    const target = houseBindings[d.id], old = p.bindings[d.id];
+    if (!target || d.status !== "installed") continue;
+    if (old?.entityId && old.entityId !== target) continue;
+    if (Object.entries(p.bindings).some(([id, b]) => id !== d.id && b.entityId === target)) continue;
+    p.bindings[d.id] = { entityId: target, verified: p.mode === "live" };
+    if (d.id === "corridor-main") d.masterOff = true;
+  }
+  if (p.deviceModel) {
+    const assigned = new Set(p.deviceModel.groups.flatMap((g) => g.members));
+    for (const [key, name, ids] of [
+      ["terrace-door", "\u0414\u0432\u0435\u0440\u044C \u043D\u0430 \u0442\u0435\u0440\u0440\u0430\u0441\u0443", ["terrace-door", "battery:terrace-door"]],
+      ["leak-utility", "\u041F\u0440\u043E\u0442\u0435\u0447\u043A\u0430 \u0432 \u043A\u043E\u0442\u0435\u043B\u044C\u043D\u043E\u0439", ["leak:utility", "battery:leak-utility"]],
+      ["leak-bath", "\u041F\u0440\u043E\u0442\u0435\u0447\u043A\u0430 \u0432 \u0432\u0430\u043D\u043D\u043E\u0439", ["leak:bath", "battery:leak-bath"]]
+    ]) {
+      const members = ids.filter((id) => p.devices.some((d) => d.id === id));
+      if (members.length === 2 && !members.some((id) => assigned.has(id)) && !p.deviceModel.groups.some((g) => g.id === "unit-" + key)) {
+        p.deviceModel.groups.push({ id: "unit-" + key, name, room: p.devices.find((d) => d.id === ids[0]).room, members, visual: { mode: "room" } });
+        members.forEach((id) => assigned.add(id));
+      }
+    }
+  }
+  if (p.mode === "live") p.houseProfileConfirmed = true;
+  p.housePresetVersion = 5;
+  return validatePreferences(p);
 }
 function bindingProblem(d, e) {
   const t = deviceTypes[d.type];
@@ -965,6 +1036,7 @@ function bindingProblem(d, e) {
   if (t.classes) {
     if (!t.classes.includes(e.attributes?.device_class)) return "\u043D\u0435\u0432\u0435\u0440\u043D\u044B\u0439 \u043A\u043B\u0430\u0441\u0441 \u0434\u0430\u0442\u0447\u0438\u043A\u0430";
     if (e.entity_id.startsWith("binary_sensor.") && !["on", "off"].includes(e.state)) return "\u043D\u0435\u0442 \u0441\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u044F on/off";
+    if (["door", "leak", "motion"].includes(d.type) && binaryValue(d.type, e.state) === null) return "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u0435 \u0434\u0430\u0442\u0447\u0438\u043A\u0430";
   }
   if (t.unit && (e.attributes?.unit_of_measurement !== t.unit || !Number.isFinite(Number(e.state)))) return "\u043D\u0435\u0432\u0435\u0440\u043D\u0430\u044F \u0435\u0434\u0438\u043D\u0438\u0446\u0430 \u0438\u043B\u0438 \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u0435";
   if (d.type === "battery" && (Number(e.state) < 0 || Number(e.state) > 100)) return "\u0437\u0430\u0440\u044F\u0434 \u0432\u043D\u0435 \u0434\u0438\u0430\u043F\u0430\u0437\u043E\u043D\u0430 0\u2013100";
@@ -1016,6 +1088,7 @@ var getProfile = (id) => {
   const normalized = JSON.stringify(preferences);
   if (normalized !== row.preferences) db.transaction(() => {
     if (raw.deviceModel === void 0) db.prepare("INSERT OR IGNORE INTO profile_backups(profile_id,reason,preferences) VALUES(?,?,?)").run(id, "before-device-model-v1", row.preferences);
+    if ((raw.housePresetVersion || 0) < 5 && preferences.housePresetVersion === 5) db.prepare("INSERT OR IGNORE INTO profile_backups(profile_id,reason,preferences) VALUES(?,?,?)").run(id, "before-inventory-2026-10-22", row.preferences);
     if (raw.deviceModel !== void 0 && JSON.stringify(raw.devices) !== JSON.stringify(preferences.devices)) db.prepare("INSERT OR IGNORE INTO profile_backups(profile_id,reason,preferences) VALUES(?,?,?)").run(id, "before-spatial-redesign", row.preferences);
     db.prepare("UPDATE profiles SET preferences=? WHERE id=?").run(normalized, id);
   })();

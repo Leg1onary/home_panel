@@ -9,6 +9,22 @@ import {defaultPreferences,validatePreferences} from '../src/preferences.js';
 import {migrateHouseProfile,activateHouseProfile,houseBindings,bindingProblem} from '../src/house-profile.js';
 import {deviceTypes} from '../src/catalog.js';
 import {detachChannel} from '../src/device-model.js';
+import {binaryValue,leakIssues} from '../src/sensor-state.js';
+
+for(const [type,on,off]of [['door','open','closed'],['leak','wet','dry'],['motion','detected','not_detected']]){
+ assert.equal(binaryValue(type,on),true);assert.equal(binaryValue(type,off),false);
+ assert.equal(binaryValue(type,'on'),true);assert.equal(binaryValue(type,'off'),false);
+ for(const value of ['unavailable','unknown','','unexpected',undefined])assert.equal(binaryValue(type,value),null);
+ const d={type},prefix='sensor.',device_class='enum';
+ assert.equal(bindingProblem(d,{entity_id:prefix+'test',state:off,attributes:{device_class}}),'');
+ assert.ok(bindingProblem(d,{entity_id:prefix+'test',state:'unexpected',attributes:{device_class}}));
+}
+const leaks=[{id:'a',type:'leak',status:'installed',room:'bath',name:'Ванная'}];
+assert.deepEqual(leakIssues(leaks,{live:true,online:true,read:()=>({state:'dry'})}),[]);
+assert.equal(leakIssues(leaks,{live:true,online:true,read:()=>({state:'wet'})})[0].alarm,true);
+assert.equal(leakIssues(leaks,{live:true,online:true,read:()=>({state:'unexpected'})})[0].alarm,false);
+assert.equal(leakIssues(leaks,{live:true,online:false,read:()=>({state:'dry'})})[0].alarm,false);
+assert.deepEqual(leakIssues(leaks,{live:false,online:true,read:()=>({state:'wet'})}),[]);
 
 const old=defaultPreferences();
 delete old.housePresetVersion;
@@ -26,17 +42,31 @@ assert.equal(p.devices.find(d=>d.id==='living:0').name,'Моё название'
 assert.equal(p.devices.find(d=>d.id==='hall:1').room,'terrace');
 assert.equal(p.devices.some(d=>d.id==='pump'),false);
 assert.equal(migrateHouseProfile(p),p);
-assert.equal(p.housePresetVersion,4);
+assert.equal(p.housePresetVersion,5);
 for(const id of ['terrace-door','leak:utility','leak:bath']){
  assert.equal(p.devices.find(d=>d.id===id)?.status,'installed');
- assert.deepEqual(p.bindings[id],{entityId:'',verified:false});
+ assert.deepEqual(p.bindings[id],{entityId:houseBindings[id],verified:false});
 }
 const v3=structuredClone(p);v3.housePresetVersion=3;
 v3.devices=v3.devices.filter(d=>d.id!=='leak:bath');
 const v4=migrateHouseProfile(v3);
-assert.equal(v4.housePresetVersion,4);
+assert.equal(v4.housePresetVersion,5);
 assert.equal(v4.devices.some(d=>d.id==='leak:bath'),true);
-assert.equal(p.devices.filter(d=>d.type==='battery').length,6);
+assert.equal(p.devices.filter(d=>d.type==='battery').length,9);
+const upgrade=structuredClone(p);upgrade.housePresetVersion=4;upgrade.mode='live';
+for(const b of Object.values(upgrade.bindings))b.verified=false;
+upgrade.devices.find(d=>d.id==='station').room='living';
+upgrade.bindings['leak:bath']={entityId:'',verified:false};
+const upgraded=migrateHouseProfile(upgrade);
+assert.equal(upgraded.devices.find(d=>d.id==='station').room,'corridor');
+assert.equal(upgraded.devices.find(d=>d.id==='terrace-door').room,'living');
+assert.equal(upgraded.bindings['leak:bath'].verified,true);
+assert.equal(upgraded.houseProfileConfirmed,true);
+assert.equal(upgraded.bindings['corridor-main'].entityId,'light.koridor_vykliuchatel');
+assert.equal(upgraded.bindings['corridor-main'].verified,true);
+assert.equal(upgraded.devices.some(d=>d.id==='yard-motion'),false);
+assert.equal(upgraded.deviceModel.groups.some(g=>g.members.includes('leak:bath')&&g.members.includes('battery:leak-bath')),true);
+assert.equal(migrateHouseProfile(upgraded),upgraded);
 const deleted=defaultPreferences();deleted.devices=deleted.devices.filter(d=>d.id!=='living:1');
 assert.equal(migrateHouseProfile(deleted).devices.some(d=>d.id==='living:1'),false);
 const customPump=defaultPreferences();customPump.bindings.pump={entityId:'switch.owner_pump',verified:true};
@@ -54,7 +84,7 @@ previous.devices=previous.devices.filter(d=>d.id!=='yard-motion');
 previous.deviceModel=detachChannel(previous.deviceModel,'yard-motion');
 const migrated=migrateHouseProfile(previous);
 for(const id of ['temperature:living','humidity:living','temperature:well','humidity:well','battery:living','battery:well']){
- assert.equal(migrated.bindings[id].entityId,houseBindings[id]);assert.equal(migrated.bindings[id].verified,false);
+ assert.equal(migrated.bindings[id].entityId,houseBindings[id]);assert.equal(migrated.bindings[id].verified,true);
 }
 assert.equal(migrated.houseProfileConfirmed,true);
 assert.equal(migrated.devices.some(d=>d.id==='yard-motion'),false,'Do not resurrect deleted devices in v2');
@@ -66,19 +96,19 @@ assert.equal(migrateHouseProfile(migrated),migrated);
 
 const clean=migrateHouseProfile(defaultPreferences()),states=clean.devices.filter(d=>houseBindings[d.id]).map(d=>{
  const t=deviceTypes[d.type],domain=houseBindings[d.id].split('.')[0];
- return {entity_id:houseBindings[d.id],state:d.type==='camera'||d.type==='station'?'idle':d.type==='button_event'?'click':domain==='sensor'?(t.unit?'65':'not_detected'):'off',
+ return {entity_id:houseBindings[d.id],state:d.type==='camera'||d.type==='station'?'idle':d.type==='button_event'?'click':d.type==='door'&&domain==='sensor'?'closed':d.type==='leak'&&domain==='sensor'?'dry':domain==='sensor'?(t.unit?'65':'not_detected'):'off',
   last_reported:new Date().toISOString(),last_updated:new Date().toISOString(),
   attributes:{...(t.unit?{unit_of_measurement:t.unit}:{}),...(t.classes?{device_class:domain==='sensor'?'enum':t.classes[0]}:{})}};
 });
 const all=activateHouseProfile(clean,states);
-assert.equal(all.report.length,33);assert.equal(all.report.every(r=>r.ok),true);
+assert.equal(all.report.length,39);assert.equal(all.report.every(r=>r.ok),true);
 assert.equal(all.preferences.mode,'live');
 const v2=structuredClone(all.preferences);v2.housePresetVersion=2;
 v2.bindings['camera-yard']={entityId:'camera.c320ws_mainstream',verified:true};
 // A deliberate manual climate choice after v2 must not be re-migrated.
 v2.bindings['temperature:living']={entityId:'sensor.a4c1383cc159_temperature',verified:true};
 const cameraUpgrade=migrateHouseProfile(v2);
-assert.deepEqual(cameraUpgrade.bindings['camera-yard'],{entityId:'camera.dvor_kamera_dvor_live_view',verified:false});
+assert.deepEqual(cameraUpgrade.bindings['camera-yard'],{entityId:'camera.dvor_kamera_dvor_live_view',verified:true});
 assert.equal(cameraUpgrade.bindings['temperature:living'].entityId,'sensor.a4c1383cc159_temperature');
 assert.equal(cameraUpgrade.bindings['temperature:living'].verified,true);
 assert.deepEqual(cameraUpgrade.bindings.door,v2.bindings.door);
@@ -107,7 +137,7 @@ assert.equal(activateHouseProfile(freshCamera,offlineStates).preferences.binding
 const partial=activateHouseProfile(clean,states.filter(e=>e.entity_id!==houseBindings['bath:1']));
 assert.equal(partial.preferences.bindings['bath:1'].verified,false);
 assert.equal(partial.preferences.houseProfileConfirmed,true,'Unavailable sensors must not resurrect onboarding');
-assert.equal(partial.report.filter(r=>r.ok).length,32);
+assert.equal(partial.report.filter(r=>r.ok).length,38);
 const battery=clean.devices.find(d=>d.type==='battery');
 assert.ok(bindingProblem(battery,{entity_id:houseBindings[battery.id],state:'-1',attributes:{unit_of_measurement:'%'}}));
 assert.ok(bindingProblem(clean.devices.find(d=>d.id==='door'),{entity_id:houseBindings.door,state:'off',attributes:{device_class:'motion'}}));
@@ -153,5 +183,5 @@ try{
  assert.equal(boot.body.preferences.bindings['bath:1'].verified,true);assert.equal(boot.body.photo,true);
  assert.equal(boot.body.preferences.houseProfileConfirmed,true);
  assert.equal((await call('house-profile','POST',{})).code,200);assert.equal(commands,0);
- console.log('PASS: 33 curated bindings, dual bathroom, migration/idempotency, theme/photo/custom mappings preserved, partial activation, numeric units/classes, CSRF, zero service calls, read-only events/batteries, persistence.');
+ console.log('PASS: 39 inventory bindings, enum safety/alerts, v5 migration/idempotency, theme/photo/custom mappings preserved, partial activation, numeric units/classes, CSRF, zero service calls, read-only events/batteries, persistence.');
 }finally{await stop();await new Promise(r=>fake.close(r));await rm(dir,{recursive:true,force:true})}

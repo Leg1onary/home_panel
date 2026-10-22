@@ -22,7 +22,7 @@ export function defaultDevices(){
    make(`humidity:${id}`,'humidity',id,`Влажность · ${areaName(id)}`,{note:'miaomiaoce.sensor_ht.t2 · BLE; подключение к HA ещё не проверено',demoValue:h,demoStale:id==='attic'})
   ]),
   make('door','door','hall','Входная дверь',{note:'isa.magnet.dw2hl · BLE; подключение к HA ещё не проверено',demoValue:'off'}),
-  make('terrace-door','door','terrace','Дверь на террасу',{note:'Яндекс · Zigbee через станцию; привяжи сущность HA',demoValue:'off'}),
+  make('terrace-door','door','living','Дверь на террасу',{note:'Яндекс · Zigbee через станцию; дверь гостиная–терраса',demoValue:'off'}),
   make('leak:utility','leak','utility','Протечка в котельной',{note:'Яндекс · Zigbee через станцию; привяжи сущность HA',demoValue:'off'}),
   make('leak:bath','leak','bath','Протечка в ванной',{note:'Яндекс · Zigbee через станцию; привяжи сущность HA',demoValue:'off'}),
   make('smoke','smoke','living','Датчик дыма над кухней',{note:'DIGMA SmartLife · подключение отложено',demoValue:'off'}),

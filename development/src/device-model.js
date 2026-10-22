@@ -22,6 +22,9 @@ export function seedDeviceModel(devices){
  add('terrace-motion','Датчик движения · терраса',['terrace-motion','terrace-lux','battery:terrace']);
  add('master-button','Мастер-кнопка',['master-event','battery:master']);
  add('yard-camera','Камера двора',['camera-yard','yard-motion']);
+ add('terrace-door','Дверь на террасу',['terrace-door','battery:terrace-door']);
+ add('leak-utility','Протечка в котельной',['leak:utility','battery:leak-utility']);
+ add('leak-bath','Протечка в ванной',['leak:bath','battery:leak-bath']);
  return {version:DEVICE_MODEL_VERSION,groups};
 }
 export function validateDeviceModel(input,devices,areas){

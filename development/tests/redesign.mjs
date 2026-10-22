@@ -12,13 +12,14 @@ const legacy=structuredClone(base);
 legacy.mode='live';legacy.theme='light';
 legacy.bindings['living:0']={entityId:'light.owner_verified',verified:true};
 Object.assign(legacy.devices.find(d=>d.id==='corridor-main'),{status:'planned',name:'Будущий выключатель 1',note:'Количество клавиш и линии уточним'});
+legacy.bindings['corridor-main']={entityId:'',verified:false};
 legacy.devices.push({id:'corridor-extra',type:'light',room:'corridor',name:'Будущий выключатель 2',status:'planned',note:'Количество клавиш и линии уточним',masterOff:true});
 legacy.bindings['corridor-extra']={entityId:'',verified:false};
 const snapshot=JSON.stringify(legacy),migrated=migrateCorridor(legacy);
 assert.equal(JSON.stringify(legacy),snapshot,'Migration is immutable');
 assert.equal(migrated.mode,'live');assert.equal(migrated.theme,'light');
 assert.deepEqual(migrated.bindings['living:0'],legacy.bindings['living:0']);
-assert.equal(migrated.devices.filter(d=>d.room==='corridor').length,1);
+assert.equal(migrated.devices.filter(d=>d.room==='corridor'&&d.type==='light').length,1);
 assert.equal(migrated.devices.find(d=>d.id==='corridor-main').status,'installed');
 assert.deepEqual(migrated.bindings['corridor-main'],{entityId:'',verified:false});
 assert.equal(migrateCorridor(migrated),migrated);
@@ -35,7 +36,7 @@ assert.equal(migrateCorridor(deleted).devices.some(d=>d.id==='corridor-main'),fa
 const custom=structuredClone(legacy);
 custom.devices.push({id:'owner-corridor',type:'light',room:'corridor',name:'Мой свет',status:'installed',masterOff:false,note:''});
 custom.bindings['owner-corridor']={entityId:'light.my_corridor',verified:true};
-assert.equal(migrateCorridor(custom).devices.filter(d=>d.room==='corridor'&&d.status==='installed').length,1,'Never install a duplicate when an owner channel exists');
+assert.equal(migrateCorridor(custom).devices.filter(d=>d.room==='corridor'&&d.type==='light'&&d.status==='installed').length,1,'Never install a duplicate when an owner channel exists');
 const app=await readFile('src/app.js','utf8');
 assert.match(app,/if\(\['home','model','room'\]\.includes\(state\.view\)\)/,'Spatial views refresh without disposing the scene');
 assert.match(app,/setInterval\(\(\)=>\{updateClocks\(\);applyNight\(\);.*refresh\(\)/,'Clock updates must not rebuild home');
@@ -66,7 +67,7 @@ async function stop(){if(child&&child.exitCode===null){const stopped=new Promise
 try{
  await start();
  const bootstrap=await(await fetch('http://127.0.0.1:3187/api/panel/bootstrap')).json();
- assert.equal(bootstrap.preferences.devices.filter(d=>d.room==='corridor').length,1);
+ assert.equal(bootstrap.preferences.devices.filter(d=>d.room==='corridor'&&d.type==='light').length,1);
  assert.deepEqual(bootstrap.preferences.bindings['living:0'],legacy.bindings['living:0']);
  assert.equal(bootstrap.preferences.theme,'light');assert.equal(bootstrap.preferences.mode,'live');
  assert.equal(bootstrap.photo,true);

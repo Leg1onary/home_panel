@@ -4,6 +4,7 @@
 import {deviceTypes} from './catalog.js';
 import {validatePreferences} from './preferences.js';
 import {detachChannel} from './device-model.js';
+import {binaryValue} from './sensor-state.js';
 
 export const houseBindings={
  'living:0':'light.gostinaia_levyi_vykliuchatel',
@@ -20,6 +21,7 @@ export const houseBindings={
  'bath:1':'light.vannaia_pravyi_vykliuchatel',
  'utility:0':'light.tualet_vykliuchatel',
  'pantry:0':'light.kladovaia_vykliuchatel',
+ 'corridor-main':'light.koridor_vykliuchatel',
  'temperature:living':'sensor.gostinaia_datchik_temperatury_temperatura',
  'humidity:living':'sensor.gostinaia_datchik_temperatury_vlazhnost',
  'temperature:well':'sensor.skvazhina_datchik_temperatury_temperatura',
@@ -30,7 +32,12 @@ export const houseBindings={
  'terrace-motion':'sensor.terrasa_datchik_dvizheniia_dvizhenie',
  'terrace-lux':'sensor.terrasa_datchik_dvizheniia_osveshchennost',
  'camera-yard':'camera.dvor_kamera_dvor_live_view',
- 'yard-motion':'binary_sensor.dvor_c320ws_motion_alarm',
+ 'terrace-door':'sensor.gostinaia_datchik_dveri_dver_okno',
+ 'leak:utility':'sensor.kotelnaia_datchik_protechki_vody_protechka_vody',
+ 'leak:bath':'sensor.vannaia_datchik_protechki_vody_protechka_vody',
+ 'battery:terrace-door':'sensor.gostinaia_datchik_dveri_uroven_zariada',
+ 'battery:leak-utility':'sensor.kotelnaia_datchik_protechki_vody_uroven_zariada',
+ 'battery:leak-bath':'sensor.vannaia_datchik_protechki_vody_uroven_zariada',
  'master-event':'sensor.prikhozhaia_master_svet_knopka',
  'station':'media_player.yandex_station_c00mp0000t4w0z',
  'battery:living':'sensor.gostinaia_datchik_temperatury_uroven_zariada',
@@ -87,7 +94,7 @@ export function migrateYandexSensors(input){
  return validatePreferences(p);
 }
 export function migrateHouseProfile(input){
- if((input.housePresetVersion||0)>=3)return migrateYandexSensors(migrateCorridor(input));
+ if((input.housePresetVersion||0)>=3)return migrateInventory20261022(migrateYandexSensors(migrateCorridor(input)));
  const p=JSON.parse(JSON.stringify(input));
  const previousVersion=input.housePresetVersion||0;
  // Existing live installs have already confirmed bindings in 1.0.5/1.0.6.
@@ -129,7 +136,57 @@ export function migrateHouseProfile(input){
   camera.note='TP-Link · Live View · источник заменён по выбору владельца';
  }
  p.housePresetVersion=3;
- return migrateYandexSensors(migrateCorridor(validatePreferences(p)));
+ return migrateInventory20261022(migrateYandexSensors(migrateCorridor(validatePreferences(p))));
+}
+// Explicitly authorized by the owner after supplying the current HA inventory.
+// This is a one-shot migration, not a recurring reset of owner edits.
+export function migrateInventory20261022(input){
+ if((input.housePresetVersion||0)>=5)return input;
+ const p=JSON.parse(JSON.stringify(input));
+ const batteries=[
+  extra('battery:terrace-door','battery','living','Батарейка · дверь на террасу'),
+  extra('battery:leak-utility','battery','utility','Батарейка · протечка в котельной'),
+  extra('battery:leak-bath','battery','bath','Батарейка · протечка в ванной')
+ ];
+ for(const d of batteries)if(!p.devices.some(x=>x.id===d.id))p.devices.push(d);
+ const station=p.devices.find(d=>d.id==='station'&&d.type==='station');
+ if(station){station.room='corridor';station.note='Яндекс Станция · постоянное место: коридор';}
+ const door=p.devices.find(d=>d.id==='terrace-door'&&d.type==='door');
+ if(door)door.room='living';
+ // This entity is NOT in the supplied inventory. A motion_detection switch is
+ // an enable/disable setting, not a motion observation; never substitute it.
+ const ghost=p.devices.find(d=>d.id==='yard-motion'&&d.type==='motion');
+ if(ghost&&(!p.bindings[ghost.id]?.entityId||p.bindings[ghost.id].entityId==='binary_sensor.dvor_c320ws_motion_alarm')){
+  p.devices=p.devices.filter(d=>d.id!==ghost.id);delete p.bindings[ghost.id];
+  if(p.deviceModel)p.deviceModel=detachChannel(p.deviceModel,ghost.id);
+ }
+ for(const d of p.devices){
+  const target=houseBindings[d.id],old=p.bindings[d.id];
+  if(!target||d.status!=='installed')continue;
+  // Preserve a genuinely custom source. All known current sources are identical
+  // to the approved dump; fill blanks, verify exact matches, never infer by name.
+  if(old?.entityId&&old.entityId!==target)continue;
+  if(Object.entries(p.bindings).some(([id,b])=>id!==d.id&&b.entityId===target))continue;
+  p.bindings[d.id]={entityId:target,verified:p.mode==='live'};
+  if(d.id==='corridor-main')d.masterOff=true;
+ }
+ if(p.deviceModel){
+  const assigned=new Set(p.deviceModel.groups.flatMap(g=>g.members));
+  for(const [key,name,ids]of [
+   ['terrace-door','Дверь на террасу',['terrace-door','battery:terrace-door']],
+   ['leak-utility','Протечка в котельной',['leak:utility','battery:leak-utility']],
+   ['leak-bath','Протечка в ванной',['leak:bath','battery:leak-bath']]
+  ]){
+   const members=ids.filter(id=>p.devices.some(d=>d.id===id));
+   if(members.length===2&&!members.some(id=>assigned.has(id))&&!p.deviceModel.groups.some(g=>g.id==='unit-'+key)){
+    p.deviceModel.groups.push({id:'unit-'+key,name,room:p.devices.find(d=>d.id===ids[0]).room,members,visual:{mode:'room'}});
+    members.forEach(id=>assigned.add(id));
+   }
+  }
+ }
+ if(p.mode==='live')p.houseProfileConfirmed=true;
+ p.housePresetVersion=5;
+ return validatePreferences(p);
 }
 export function bindingProblem(d,e){
  const t=deviceTypes[d.type];
@@ -139,6 +196,7 @@ export function bindingProblem(d,e){
  if(t.classes){
   if(!t.classes.includes(e.attributes?.device_class))return 'неверный класс датчика';
   if(e.entity_id.startsWith('binary_sensor.')&&!['on','off'].includes(e.state))return 'нет состояния on/off';
+  if(['door','leak','motion'].includes(d.type)&&binaryValue(d.type,e.state)===null)return 'неизвестное значение датчика';
  }
  if(t.unit&&(e.attributes?.unit_of_measurement!==t.unit||!Number.isFinite(Number(e.state))))return 'неверная единица или значение';
  if(d.type==='battery'&&(Number(e.state)<0||Number(e.state)>100))return 'заряд вне диапазона 0–100';

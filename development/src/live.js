@@ -10,7 +10,7 @@ export function observed(id){
  return state.liveOnline&&findDevice(state.devices,id)?.status==='installed'&&b?.verified&&b.entityId?state.entityStates[b.entityId]:null;
 }
 export function canControl(id){
- if(id.startsWith('station:'))return !isLive()?state.stationMode==='demo'&&!state.demoOffline:stationSupports(observed('station'),id.slice(8),id==='station:playing'?!state.stationPlaying:undefined);
+ if(id.startsWith('station:'))return !isLive()?state.stationMode==='demo'&&!state.demoOffline:stationSupports(observed('station'),id.slice(8),id==='station:playing'?!state.stationPlaying:true);
  const {device:d,key,action}=resolveAction(id,state.devices);
  if(!d||d.status!=='installed'||!deviceTypes[d.type].controllable)return false;
  if(d.powerId){
