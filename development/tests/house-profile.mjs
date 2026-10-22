@@ -26,7 +26,16 @@ assert.equal(p.devices.find(d=>d.id==='living:0').name,'Моё название'
 assert.equal(p.devices.find(d=>d.id==='hall:1').room,'terrace');
 assert.equal(p.devices.some(d=>d.id==='pump'),false);
 assert.equal(migrateHouseProfile(p),p);
-assert.equal(p.housePresetVersion,3);
+assert.equal(p.housePresetVersion,4);
+for(const id of ['terrace-door','leak:utility','leak:bath']){
+ assert.equal(p.devices.find(d=>d.id===id)?.status,'installed');
+ assert.deepEqual(p.bindings[id],{entityId:'',verified:false});
+}
+const v3=structuredClone(p);v3.housePresetVersion=3;
+v3.devices=v3.devices.filter(d=>d.id!=='leak:bath');
+const v4=migrateHouseProfile(v3);
+assert.equal(v4.housePresetVersion,4);
+assert.equal(v4.devices.some(d=>d.id==='leak:bath'),true);
 assert.equal(p.devices.filter(d=>d.type==='battery').length,6);
 const deleted=defaultPreferences();deleted.devices=deleted.devices.filter(d=>d.id!=='living:1');
 assert.equal(migrateHouseProfile(deleted).devices.some(d=>d.id==='living:1'),false);

@@ -71,8 +71,23 @@ export function migrateCorridor(input){
  }
  return p?validatePreferences(p):input;
 }
+// Owner paired three Yandex Zigbee sensors after re-adding the station (2026-10-22):
+// a contact sensor on the living-to-terrace door and leak sensors in the utility room and bathroom.
+// Entity IDs stay owner-curated in panel settings; no curated binding is inferred here.
+export const yandexSensors=[
+ {id:'terrace-door',type:'door',room:'terrace',name:'Дверь на террасу',status:'installed',masterOff:false,note:'Яндекс · Zigbee через станцию; привяжи сущность HA',demoValue:'off'},
+ {id:'leak:utility',type:'leak',room:'utility',name:'Протечка в котельной',status:'installed',masterOff:false,note:'Яндекс · Zigbee через станцию; привяжи сущность HA',demoValue:'off'},
+ {id:'leak:bath',type:'leak',room:'bath',name:'Протечка в ванной',status:'installed',masterOff:false,note:'Яндекс · Zigbee через станцию; привяжи сущность HA',demoValue:'off'}
+];
+export function migrateYandexSensors(input){
+ if((input.housePresetVersion||0)>=4)return input;
+ const p=JSON.parse(JSON.stringify(input));
+ for(const d of yandexSensors)if(!p.devices.some(x=>x.id===d.id))p.devices.push({...d});
+ p.housePresetVersion=4;
+ return validatePreferences(p);
+}
 export function migrateHouseProfile(input){
- if(input.housePresetVersion===3)return migrateCorridor(input);
+ if((input.housePresetVersion||0)>=3)return migrateYandexSensors(migrateCorridor(input));
  const p=JSON.parse(JSON.stringify(input));
  const previousVersion=input.housePresetVersion||0;
  // Existing live installs have already confirmed bindings in 1.0.5/1.0.6.
@@ -114,7 +129,7 @@ export function migrateHouseProfile(input){
   camera.note='TP-Link · Live View · источник заменён по выбору владельца';
  }
  p.housePresetVersion=3;
- return migrateCorridor(validatePreferences(p));
+ return migrateYandexSensors(migrateCorridor(validatePreferences(p)));
 }
 export function bindingProblem(d,e){
  const t=deviceTypes[d.type];

@@ -669,6 +669,8 @@ body{background:radial-gradient(ellipse at 8% 18%,var(--ambient-blue),transparen
 .status-chip .compact-reading svg{display:none}
 .status-chip .compact-reading+ .compact-reading{display:none}
 .availability-chip{color:var(--accent)}
+.leak-chip.leak-alert{color:var(--warning);border:1px solid var(--warning)}
+[data-theme=light] .leak-chip.leak-alert{color:#8a4b00;border-color:#8a4b00}
 .home-context{gap:var(--space-2);max-height:none;overflow:visible;padding:0;display:flex}
 .context-heading{min-height:32px}
 .context-heading h2{font-size:var(--text-sm);font-weight:600}

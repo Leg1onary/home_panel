@@ -12,7 +12,7 @@ const types={
  battery:{label:'Батарейка',icon:'radio',module:'sensors',domains:['sensor'],unit:'%'},
  button_event:{label:'Мастер-кнопка · событие',icon:'power',module:'sensors',domains:['sensor'],classes:['enum']},
  station:{label:'Медиаплеер / станция',icon:'audio-lines',module:'media',domains:['media_player'],controllable:true,capabilities:['play','pause','volume']},
- leak:{label:'Протечка',icon:'droplets',module:'sensors',domains:['binary_sensor'],classes:['moisture']},
+ leak:{label:'Протечка',icon:'droplets',module:'sensors',domains:['binary_sensor'],classes:['moisture','safety','problem']},
  camera:{label:'Камера',icon:'camera',module:'cameras',domains:['camera'],capabilities:['snapshot','live']},
  curtain:{label:'Шторы / карниз · наблюдение',icon:'door-open',module:'covers',domains:['cover'],locked:true,capabilities:['state','position']},
  vacuum:{label:'Робот-пылесос · наблюдение',icon:'radio',module:'cleaning',domains:['vacuum'],locked:true,capabilities:['state','battery']},

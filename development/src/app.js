@@ -156,7 +156,12 @@ function homeLightSummary(){
  return homeSummary({live:isLive(),online:!noConnection(),total:channels.length,unknown:channels.filter(c=>!canControl(c.id)).length,on:countLights()});
 }
 function homeStatus(){
+ const terraceDoor=state.devices.find(d=>d.id==='terrace-door'&&d.status==='installed');
+ const leaks=state.devices.filter(d=>d.type==='leak'&&d.status==='installed');
+ const leakChip=d=>{const on=isLive()&&state.liveOnline&&observed(d.id)?.state==='on';const place=d.id==='leak:bath'?'ванная':'котельная';return `<button class="status-chip leak-chip ${on?'leak-alert':''}" data-action="leak" data-leak-id="${d.id}">${I('droplets')}${esc(on?`Протечка · ${place}!`:`Протечка · ${place} · сухо`)}</button>`};
  return `<button class="status-chip" data-action="door">${I('door-closed')}${esc(binaryLabel('door','Дверь открыта','Дверь закрыта'))}</button>
+ ${terraceDoor?`<button class="status-chip" data-action="terrace-door">${I('door-open')}${esc(binaryLabel('terrace-door','Дверь на террасу открыта','Дверь на террасу закрыта'))}</button>`:''}
+ ${leaks.map(leakChip).join('')}
  <button class="status-chip" data-view="watch">${I('thermometer')}Климат</button>
  <button class="status-chip well-chip" data-room="well">${I('droplets')}Скважина ${compactRoomClimate('well')}</button>`;
 }
@@ -233,12 +238,16 @@ function lights(){
 }
 function watch(){
  const motion=state.devices.find(d=>d.id==='terrace-motion'&&d.status==='installed');
+ const terraceDoor=state.devices.find(d=>d.id==='terrace-door'&&d.status==='installed');
+ const leaks=state.devices.filter(d=>d.type==='leak'&&d.status==='installed');
  return `<div class="view"><div class="view-title"><div><div class="eyebrow">Наблюдение</div><h1>Климат и датчики</h1><p>Всё, что сообщает твой дом.</p></div></div>
  <div class="watch-grid"><section class="camera-empty">${I('camera')}<h2>Двор под присмотром</h2>
  <p>Нажми на камеру для прямого эфира. Видео работает только в открытом окне просмотра.</p>
  <div class="module-list">${state.devices.filter(d=>d.type==='camera'&&d.status==='installed').map(d=>`<button class="quiet-card" data-camera="${d.id}"><div class="quiet-info">${I('camera')}<div><h3>${esc(d.name)}</h3><p>${isLive()&&observed(d.id)?'Подключена · прямой эфир':'Установлена · подключение не проверено'}</p></div></div>${I('chevron-right')}</button>`).join('')||'<p>Камеры добавляются через каталог.</p>'}</div></section>
  <aside class="side-stack"><section class="overview-status">
  <div class="status-line"><span>${I('door-closed')}Входная дверь</span><strong>${binaryLabel('door','Открыта','Закрыта')}</strong></div>
+ ${terraceDoor?`<div class="status-line"><span>${I('door-open')}Дверь на террасу</span><strong>${binaryLabel('terrace-door','Открыта','Закрыта')}</strong></div>`:''}
+ ${leaks.map(d=>`<div class="status-line"><span>${I('droplets')}${esc(d.name)}</span><strong>${binaryLabel(d.id,'Тревога','Сухо')}</strong></div>`).join('')}
  ${state.devices.some(d=>d.id==='smoke'&&d.status==='installed')?`<div class="status-line"><span>${I('radio')}Дым</span><strong>${binaryLabel('smoke','Тревога','Нет тревоги')}</strong></div>`:''}
  ${motion?`<div class="status-line"><span>${I('trees')}Терраса</span><strong>${esc(deviceReading(motion))}</strong></div>`:''}
  ${state.devices.some(d=>d.id==='rgb')?`<div class="status-line"><span>${I('lightbulb')}RGB прихожей</span><strong>${noConnection()?'Нет связи':isLive()&&!observed('hall:0')?'Нет данных':hallPowered()?'Есть питание':'Без питания'}</strong></div>`:''}</section>
@@ -793,6 +802,13 @@ document.addEventListener('click',e=>{
  <div class="inline-note">Привязка канала не проверена. Управление заблокировано; подача питания не подтверждает работу насоса.</div>
  <div class="control-row"><h3>После проверки на месте</h3><button class="toggle" disabled aria-label="Насос недоступен"><span class="toggle-track"></span></button></div>`);
  if(a==='door')return simpleSheet(`<h2>Входная дверь</h2><p class="description">${binaryLabel('door','Открыта','Закрыта')}. ${isLive()?'Данные только из проверенной сущности Home Assistant.':'Это демонстрационное состояние.'}</p>`);
+ if(a==='terrace-door')return simpleSheet(`<h2>Дверь на террасу</h2><p class="description">${binaryLabel('terrace-door','Открыта','Закрыта')}. Датчик открытия висит на двери между гостиной и террасой. ${isLive()?'Данные только из проверенной сущности Home Assistant.':'Это демонстрационное состояние.'}</p>`);
+ if(a==='leak'){
+  const d=state.devices.find(x=>x.id===(b.dataset.leakId||'leak:utility'));
+  const place=d?.id==='leak:bath'?'в ванной':'в котельной у туалета';
+  return simpleSheet(`<h2>${esc(d?.name||'Протечка')}</h2><p class="description">${binaryLabel(d?.id||'leak:utility','Тревога','Сухо')}. Датчик Яндекса лежит ${place}. ${isLive()?'Данные только из проверенной сущности Home Assistant.':'Это демонстрационное состояние.'}</p>
+  <div class="inline-note">Проверь срабатывание вручную: намочи контакты датчика и убедись, что состояние меняется.</div>`);
+ }
  if(a==='camera')return openYardCamera();
  if(b.id==='reset-model')return modelAPI?.resetModel();
 });

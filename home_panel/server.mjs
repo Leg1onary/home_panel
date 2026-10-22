@@ -66,7 +66,7 @@ var types = {
   battery: { label: "\u0411\u0430\u0442\u0430\u0440\u0435\u0439\u043A\u0430", icon: "radio", module: "sensors", domains: ["sensor"], unit: "%" },
   button_event: { label: "\u041C\u0430\u0441\u0442\u0435\u0440-\u043A\u043D\u043E\u043F\u043A\u0430 \xB7 \u0441\u043E\u0431\u044B\u0442\u0438\u0435", icon: "power", module: "sensors", domains: ["sensor"], classes: ["enum"] },
   station: { label: "\u041C\u0435\u0434\u0438\u0430\u043F\u043B\u0435\u0435\u0440 / \u0441\u0442\u0430\u043D\u0446\u0438\u044F", icon: "audio-lines", module: "media", domains: ["media_player"], controllable: true, capabilities: ["play", "pause", "volume"] },
-  leak: { label: "\u041F\u0440\u043E\u0442\u0435\u0447\u043A\u0430", icon: "droplets", module: "sensors", domains: ["binary_sensor"], classes: ["moisture"] },
+  leak: { label: "\u041F\u0440\u043E\u0442\u0435\u0447\u043A\u0430", icon: "droplets", module: "sensors", domains: ["binary_sensor"], classes: ["moisture", "safety", "problem"] },
   camera: { label: "\u041A\u0430\u043C\u0435\u0440\u0430", icon: "camera", module: "cameras", domains: ["camera"], capabilities: ["snapshot", "live"] },
   curtain: { label: "\u0428\u0442\u043E\u0440\u044B / \u043A\u0430\u0440\u043D\u0438\u0437 \xB7 \u043D\u0430\u0431\u043B\u044E\u0434\u0435\u043D\u0438\u0435", icon: "door-open", module: "covers", domains: ["cover"], locked: true, capabilities: ["state", "position"] },
   vacuum: { label: "\u0420\u043E\u0431\u043E\u0442-\u043F\u044B\u043B\u0435\u0441\u043E\u0441 \xB7 \u043D\u0430\u0431\u043B\u044E\u0434\u0435\u043D\u0438\u0435", icon: "radio", module: "cleaning", domains: ["vacuum"], locked: true, capabilities: ["state", "battery"] },
@@ -107,6 +107,9 @@ function defaultDevices() {
       make(`humidity:${id}`, "humidity", id, `\u0412\u043B\u0430\u0436\u043D\u043E\u0441\u0442\u044C \xB7 ${areaName(id)}`, { note: "miaomiaoce.sensor_ht.t2 \xB7 BLE; \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435 \u043A HA \u0435\u0449\u0451 \u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u043E", demoValue: h, demoStale: id === "attic" })
     ]),
     make("door", "door", "hall", "\u0412\u0445\u043E\u0434\u043D\u0430\u044F \u0434\u0432\u0435\u0440\u044C", { note: "isa.magnet.dw2hl \xB7 BLE; \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435 \u043A HA \u0435\u0449\u0451 \u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u043E", demoValue: "off" }),
+    make("terrace-door", "door", "terrace", "\u0414\u0432\u0435\u0440\u044C \u043D\u0430 \u0442\u0435\u0440\u0440\u0430\u0441\u0443", { note: "\u042F\u043D\u0434\u0435\u043A\u0441 \xB7 Zigbee \u0447\u0435\u0440\u0435\u0437 \u0441\u0442\u0430\u043D\u0446\u0438\u044E; \u043F\u0440\u0438\u0432\u044F\u0436\u0438 \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u044C HA", demoValue: "off" }),
+    make("leak:utility", "leak", "utility", "\u041F\u0440\u043E\u0442\u0435\u0447\u043A\u0430 \u0432 \u043A\u043E\u0442\u0435\u043B\u044C\u043D\u043E\u0439", { note: "\u042F\u043D\u0434\u0435\u043A\u0441 \xB7 Zigbee \u0447\u0435\u0440\u0435\u0437 \u0441\u0442\u0430\u043D\u0446\u0438\u044E; \u043F\u0440\u0438\u0432\u044F\u0436\u0438 \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u044C HA", demoValue: "off" }),
+    make("leak:bath", "leak", "bath", "\u041F\u0440\u043E\u0442\u0435\u0447\u043A\u0430 \u0432 \u0432\u0430\u043D\u043D\u043E\u0439", { note: "\u042F\u043D\u0434\u0435\u043A\u0441 \xB7 Zigbee \u0447\u0435\u0440\u0435\u0437 \u0441\u0442\u0430\u043D\u0446\u0438\u044E; \u043F\u0440\u0438\u0432\u044F\u0436\u0438 \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u044C HA", demoValue: "off" }),
     make("smoke", "smoke", "living", "\u0414\u0430\u0442\u0447\u0438\u043A \u0434\u044B\u043C\u0430 \u043D\u0430\u0434 \u043A\u0443\u0445\u043D\u0435\u0439", { note: "DIGMA SmartLife \xB7 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435 \u043E\u0442\u043B\u043E\u0436\u0435\u043D\u043E", demoValue: "off" }),
     make("terrace-motion", "motion", "terrace", "\u0414\u0432\u0438\u0436\u0435\u043D\u0438\u0435 \u043D\u0430 \u0442\u0435\u0440\u0440\u0430\u0441\u0435", { note: "lumi.motion.agl02 \xB7 Zigbee; \u0441\u0446\u0435\u043D\u0430\u0440\u0438\u0439 \u043F\u043E\u043A\u0430 \u043E\u0441\u0442\u0430\u0451\u0442\u0441\u044F \u0432 \u0410\u043B\u0438\u0441\u0435" }),
     make("terrace-lux", "illuminance", "terrace", "\u041E\u0441\u0432\u0435\u0449\u0451\u043D\u043D\u043E\u0441\u0442\u044C \u0442\u0435\u0440\u0440\u0430\u0441\u044B", { note: "lumi.motion.agl02 \xB7 Zigbee; \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435 \u043A HA \u0435\u0449\u0451 \u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u043E" }),
@@ -317,7 +320,7 @@ function validatePreferences(input, { importing = false } = {}) {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("\u041D\u0443\u0436\u0435\u043D \u043E\u0431\u044A\u0435\u043A\u0442 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043A.");
   if (input.version !== 3) throw new Error("\u0412\u0435\u0440\u0441\u0438\u044F \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043A \u043D\u0435 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u0441\u044F. \u041D\u0443\u0436\u043D\u0430 \u043A\u043E\u043F\u0438\u044F v3.");
   const raw = input, p = defaultPreferences();
-  if (Number.isInteger(raw.housePresetVersion) && raw.housePresetVersion >= 0 && raw.housePresetVersion <= 3) p.housePresetVersion = raw.housePresetVersion;
+  if (Number.isInteger(raw.housePresetVersion) && raw.housePresetVersion >= 0 && raw.housePresetVersion <= 4) p.housePresetVersion = raw.housePresetVersion;
   p.houseProfileConfirmed = !importing && raw.houseProfileConfirmed === true;
   if (!["dark", "light"].includes(raw.theme)) throw new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F \u0442\u0435\u043C\u0430.");
   if (!["auto", "on", "off"].includes(raw.nightMode)) throw new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u043D\u043E\u0447\u043D\u043E\u0439 \u0440\u0435\u0436\u0438\u043C.");
@@ -898,8 +901,20 @@ function migrateCorridor(input) {
   }
   return p ? validatePreferences(p) : input;
 }
+var yandexSensors = [
+  { id: "terrace-door", type: "door", room: "terrace", name: "\u0414\u0432\u0435\u0440\u044C \u043D\u0430 \u0442\u0435\u0440\u0440\u0430\u0441\u0443", status: "installed", masterOff: false, note: "\u042F\u043D\u0434\u0435\u043A\u0441 \xB7 Zigbee \u0447\u0435\u0440\u0435\u0437 \u0441\u0442\u0430\u043D\u0446\u0438\u044E; \u043F\u0440\u0438\u0432\u044F\u0436\u0438 \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u044C HA", demoValue: "off" },
+  { id: "leak:utility", type: "leak", room: "utility", name: "\u041F\u0440\u043E\u0442\u0435\u0447\u043A\u0430 \u0432 \u043A\u043E\u0442\u0435\u043B\u044C\u043D\u043E\u0439", status: "installed", masterOff: false, note: "\u042F\u043D\u0434\u0435\u043A\u0441 \xB7 Zigbee \u0447\u0435\u0440\u0435\u0437 \u0441\u0442\u0430\u043D\u0446\u0438\u044E; \u043F\u0440\u0438\u0432\u044F\u0436\u0438 \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u044C HA", demoValue: "off" },
+  { id: "leak:bath", type: "leak", room: "bath", name: "\u041F\u0440\u043E\u0442\u0435\u0447\u043A\u0430 \u0432 \u0432\u0430\u043D\u043D\u043E\u0439", status: "installed", masterOff: false, note: "\u042F\u043D\u0434\u0435\u043A\u0441 \xB7 Zigbee \u0447\u0435\u0440\u0435\u0437 \u0441\u0442\u0430\u043D\u0446\u0438\u044E; \u043F\u0440\u0438\u0432\u044F\u0436\u0438 \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u044C HA", demoValue: "off" }
+];
+function migrateYandexSensors(input) {
+  if ((input.housePresetVersion || 0) >= 4) return input;
+  const p = JSON.parse(JSON.stringify(input));
+  for (const d of yandexSensors) if (!p.devices.some((x) => x.id === d.id)) p.devices.push({ ...d });
+  p.housePresetVersion = 4;
+  return validatePreferences(p);
+}
 function migrateHouseProfile(input) {
-  if (input.housePresetVersion === 3) return migrateCorridor(input);
+  if ((input.housePresetVersion || 0) >= 3) return migrateYandexSensors(migrateCorridor(input));
   const p = JSON.parse(JSON.stringify(input));
   const previousVersion = input.housePresetVersion || 0;
   p.houseProfileConfirmed = input.houseProfileConfirmed === true || previousVersion < 2 && input.mode === "live" && Object.values(input.bindings || {}).some((b) => b.verified);
@@ -940,7 +955,7 @@ function migrateHouseProfile(input) {
     camera.note = "TP-Link \xB7 Live View \xB7 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A \u0437\u0430\u043C\u0435\u043D\u0451\u043D \u043F\u043E \u0432\u044B\u0431\u043E\u0440\u0443 \u0432\u043B\u0430\u0434\u0435\u043B\u044C\u0446\u0430";
   }
   p.housePresetVersion = 3;
-  return migrateCorridor(validatePreferences(p));
+  return migrateYandexSensors(migrateCorridor(validatePreferences(p)));
 }
 function bindingProblem(d, e) {
   const t = deviceTypes[d.type];
