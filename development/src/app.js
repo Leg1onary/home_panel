@@ -13,7 +13,7 @@ import {isLive,canControl,observed,startLive,discover,readiness} from './live.js
 import {areas,areaName,deviceTypes,sensorTypes,samePhysicalDevice} from './catalog.js';
 import {api} from './api.js';
 import {startCameraPlayer} from './camera-player.js';
-import {houseBindings} from './house-profile.js';
+import {houseBindings,bindingProblem} from './house-profile.js';
 import {stationSupports,stationStateLabel} from './station.js';
 import {buildDeviceModel,detachChannel} from './device-model.js';
 import {deviceStructure,equipmentFromForm} from './device-model-ui.js';
@@ -38,6 +38,8 @@ const date=()=>new Intl.DateTimeFormat('ru-RU',{weekday:'long',day:'numeric',mon
 const reading=n=>n.toFixed(1).replace('.',',');
 let modelAPI=null,modelPromise=null,viewRevision=0,lastFocus=null,toastTimer,idleTimer,settingsOpen=false,photoBlob=null;
 let techTab='connection',bindingRoom='living',techEntities=[],techMessage='';
+// Unsaved form edits survive room switches and failed saves; outcome is per binding.
+let bindingDraft={},bindingOutcome={};
 let catalogEdit=null,cameraRevision=0,cameraURL=null,cameraPlayer=null,cameraDevice=null;
 let equipmentEdit=null;
 const channel=id=>rooms.flatMap(r=>r.channels).find(c=>c.id===id);
@@ -576,14 +578,8 @@ function technical(){
   <button class="secondary full-width" data-action="discover" ${disabled(hasPending())}>${I('radio')}Загрузить сущности из Home Assistant</button>
   <datalist id="ha-entities">${techEntities.map(e=>`<option value="${esc(e.entity_id)}">${esc(e.attributes.friendly_name||e.entity_id)} · ${esc(e.state)}</option>`).join('')}</datalist>
   <p class="setting-help">Не угадываем entity_id. Галочка означает, что ты физически проверил соответствие устройства и канала. Наличие сущности само по себе этого не доказывает.</p>
-  <div class="binding-grid">${bindingDefinitions(state.devices).filter(b=>bindingRoom==='all'||b.device.room===bindingRoom).map(b=>{
-   const binding=state.bindings[b.id];
-   return `<fieldset class="binding-card"><legend>${esc(b.name)}</legend>
-    <p class="setting-help">${deviceTypes[b.type].label} · ${b.device.status==='planned'?'планируется':deviceTypes[b.type].locked?'только наблюдение':'установлено'}</p>
-    <label class="setting-field compact">Сущность Home Assistant<input data-binding="${b.id}" list="ha-entities" placeholder="${b.domains.join(' / ')} · пока не привязано" value="${esc(binding.entityId)}" autocomplete="off" spellcheck="false"/></label>
-    <label class="check-field"><input type="checkbox" data-verified="${b.id}" ${binding.verified?'checked':''} ${disabled(b.device.status==='planned')}/>Соответствие проверено на месте</label>
-   </fieldset>`;
-  }).join('')}</div>
+  ${bindingSummary()}
+  <div class="binding-grid">${bindingDefinitions(state.devices).filter(b=>bindingRoom==='all'||b.device.room===bindingRoom).map(bindingCard).join('')}</div>
   <button class="primary full-width binding-save" data-action="save-bindings" ${disabled(hasPending())}>Сохранить привязки</button>
   <p class="setting-help">Планируемые устройства заблокированы. Камера открывается по нажатию; инженерное оборудование доступно только для наблюдения.</p>`;
  if(techTab==='diagnostics')content=testSettings()+`
@@ -618,11 +614,13 @@ function houseProfileReview(){
  <button class="primary full-width" data-action="house-activate" ${disabled(!state.haConfigured||hasPending()||state.profileBusy)}>Подтвердить привязки и включить HA</button></section>`;
 }
 function openTechnical(tab='connection'){
- settingsOpen=false;state.techOpen=true;techTab=tab;techMessage='';$('#sheet-content').dataset.station='';
+ settingsOpen=false;state.techOpen=true;techTab=tab;techMessage='';bindingDraft={};bindingOutcome={};$('#sheet-content').dataset.station='';
  modal(technical());$('.sheet').classList.add('settings-sheet');state.techOpen=true;
 }
-function updateTechnical(){
+function updateTechnical({keepForm=true}={}){
  if(!state.techOpen)return;
+ // Any re-render (other actions, profile check) keeps what the owner typed but has not saved.
+ if(keepForm&&techTab==='bindings')captureBindingDraft();
  $('#sheet-content').innerHTML=technical();icons();
 }
 async function fullscreen(){
@@ -632,17 +630,77 @@ async function fullscreen(){
   else throw new Error();
  }catch{toast('В этом превью полный экран недоступен. При локальном запуске используй кнопку или F11.')}
 }
+function captureBindingDraft(){
+ $('.sheet')?.querySelectorAll('[data-binding]').forEach(el=>{
+  const id=el.dataset.binding;bindingDraft[id]={entityId:el.value.trim(),verified:$('.sheet').querySelector(`[data-verified="${id}"]`)?.checked===true};
+ });
+}
+function formBinding(id){return bindingDraft[id]||state.bindings[id]}
+// What HA reports for an entity right now, independent of the verified flag.
+function haEntity(entityId){return state.entityStates[entityId]||techEntities.find(e=>e.entity_id===entityId)}
+function haKnown(){return Object.keys(state.entityStates).length>0||techEntities.length>0}
+function bindingHealth(b){
+ const f=formBinding(b.id);
+ if(!f.entityId)return {kind:'empty',text:'Не привязано'};
+ if(!haKnown())return {kind:'unknown',text:'Состояние HA ещё не загружено'};
+ const e=haEntity(f.entityId);
+ if(!e)return {kind:'bad',text:'Не найдена в Home Assistant — вероятно, сменился entity_id'};
+ if(['unknown','unavailable',''].includes(e.state))return {kind:'offline',text:'В HA есть, но сейчас недоступна'};
+ const problem=bindingProblem(b.device,e);
+ if(problem)return {kind:'bad',text:'Не подходит: '+problem};
+ return {kind:'ok',text:`На связи · ${e.state}${e.attributes?.unit_of_measurement?' '+e.attributes.unit_of_measurement:''}`};
+}
+// Unbound, currently available entities of a compatible type, best name match first.
+function bindingSuggestions(b){
+ const pool=Object.keys(state.entityStates).length?Object.values(state.entityStates):techEntities;
+ const used=new Set(bindingDefinitions(state.devices).filter(x=>x.id!==b.id).map(x=>formBinding(x.id)?.entityId).filter(Boolean));
+ const words=String(b.device.name+' '+areaName(b.device.room)).toLowerCase().split(/[^а-яёa-z0-9]+/).filter(w=>w.length>3).map(w=>w.slice(0,5));
+ const score=e=>{const n=(e.entity_id+' '+(e.attributes?.friendly_name||'')).toLowerCase();return words.filter(w=>n.includes(w)).length};
+ return pool.filter(e=>!used.has(e.entity_id)&&!['unknown','unavailable',''].includes(e.state)&&!bindingProblem(b.device,e))
+  .filter(e=>score(e)>0).sort((x,y)=>score(y)-score(x)).slice(0,3);
+}
+function bindingCard(b){
+ const f=formBinding(b.id),h=bindingHealth(b),o=bindingOutcome[b.id];
+ const suggest=['bad','offline','empty'].includes(h.kind)&&b.device.status==='installed'&&haKnown()?bindingSuggestions(b):[];
+ return `<fieldset class="binding-card" data-health="${h.kind}"><legend>${esc(b.name)}</legend>
+  <p class="setting-help">${deviceTypes[b.type].label} · ${b.device.status==='planned'?'планируется':deviceTypes[b.type].locked?'только наблюдение':'установлено'}</p>
+  <label class="setting-field compact">Сущность Home Assistant<input data-binding="${b.id}" list="ha-entities" placeholder="${b.domains.join(' / ')} · пока не привязано" value="${esc(f.entityId)}" autocomplete="off" spellcheck="false"/></label>
+  <p class="binding-health">${esc(h.text)}</p>
+  ${suggest.length?`<div class="binding-suggest"><span>Доступные варианты:</span>${suggest.map(e=>`<button class="text-button" data-suggest="${b.id}" data-entity="${esc(e.entity_id)}" title="${esc(e.attributes?.friendly_name||'')}">${esc(e.entity_id)}</button>`).join('')}</div>`:''}
+  <label class="check-field"><input type="checkbox" data-verified="${b.id}" ${f.verified?'checked':''} ${disabled(b.device.status==='planned')}/>Соответствие проверено на месте</label>
+  ${o?`<p class="binding-outcome" data-kind="${o.kind}">${esc(o.text)}</p>`:''}
+ </fieldset>`;
+}
+function bindingSummary(){
+ const defs=bindingDefinitions(state.devices).filter(b=>b.device.status==='installed');
+ if(!haKnown())return '<p class="setting-help">Нажми «Загрузить сущности», чтобы увидеть состояние каждой привязки.</p>';
+ const problems=defs.map(b=>({b,h:bindingHealth(b)})).filter(x=>['bad','offline'].includes(x.h.kind));
+ if(!problems.length)return '<div class="inline-note">Все привязанные сущности на связи.</div>';
+ return `<div class="binding-problems"><strong>Требуют внимания: ${problems.length}</strong>${problems.map(({b,h})=>`<button class="text-button" data-binding-jump="${b.device.room}">${esc(b.name)} — ${esc(h.kind==='offline'?'недоступна':'не найдена или не подходит')}</button>`).join('')}</div>`;
+}
 async function saveBindings(){
  if(hasPending())return;
+ captureBindingDraft();
  const next=preferences();
- $('.sheet').querySelectorAll('[data-binding]').forEach(el=>{
-  const id=el.dataset.binding;next.bindings[id]={entityId:el.value.trim(),verified:$('.sheet').querySelector(`[data-verified="${id}"]`).checked};
- });
- const old=preferences();
+ for(const [id,b] of Object.entries(bindingDraft))if(next.bindings[id])next.bindings[id]=b;
+ const old=preferences(),wanted=structuredClone(bindingDraft);
  try{
-  validatePreferences(next);applyPreferences(next);await flushStorage();techMessage='Привязки сохранены. Непроверенные каналы остаются заблокированными.';
-  startLive(refresh);refresh();updateTechnical();
- }catch(error){applyPreferences(old);techMessage='Не сохранено: '+error.message;updateTechnical()}
+  validatePreferences(next);applyPreferences(next);
+  const result=await flushStorage();
+  bindingOutcome={};
+  for(const r of result.rejected||[])bindingOutcome[r.id]={kind:'bad',text:'Отметка не сохранена: '+r.problem+'. Entity_id сохранён.'};
+  for(const r of result.offline||[])bindingOutcome[r.id]={kind:'offline',text:'Отметка сохранена. Данные появятся, когда устройство выйдет на связь в HA.'};
+  bindingDraft={};
+  const bad=(result.rejected||[]).length,off=(result.offline||[]).length;
+  techMessage=bad?`Сохранено. У ${bad} привязок отметка не принята — причина в карточке.`:off?`Сохранено. ${off} сейчас недоступны в HA, отметки оставлены.`:'Привязки сохранены.';
+  // Keep the last HA snapshot so card health does not blink while polling restarts.
+  if(Object.keys(state.entityStates).length)techEntities=Object.values(state.entityStates);
+  toast(techMessage);startLive(refresh);refresh();updateTechnical({keepForm:false});
+ }catch(error){
+  applyPreferences(old);bindingDraft=wanted;
+  techMessage='Не сохранено: '+error.message+' Введённое в форме не потеряно.';
+  toast(techMessage);updateTechnical({keepForm:false});
+ }
 }
 function downloadSettings(){
  const blob=new Blob([JSON.stringify({format:'home-panel',version:3,preferences:preferences()},null,2)],{type:'application/json'});
@@ -718,7 +776,14 @@ document.addEventListener('click',e=>{
   return saveEquipmentModel(next);
  }
  if(b.dataset.settingsTab){state.settingsTab=b.dataset.settingsTab;updateSettings();return}
- if(b.dataset.techTab){techTab=b.dataset.techTab;techMessage='';updateTechnical();return}
+ if(b.dataset.techTab){captureBindingDraft();techTab=b.dataset.techTab;techMessage='';updateTechnical();return}
+ if(b.dataset.suggest){
+  captureBindingDraft();const id=b.dataset.suggest;
+  bindingDraft[id]={entityId:b.dataset.entity,verified:false};delete bindingOutcome[id];
+  techMessage='Подставлено. Проверь на месте, отметь галочку и сохрани.';updateTechnical({keepForm:false});
+  $(`[data-binding="${CSS.escape(id)}"]`)?.focus();return;
+ }
+ if(b.dataset.bindingJump){captureBindingDraft();bindingRoom=b.dataset.bindingJump;updateTechnical();return}
  if(b.dataset.favorite){
   const id=b.dataset.favorite,i=state.favorites.indexOf(id);
   if(i>=0)state.favorites.splice(i,1);else if(state.favorites.length<6)state.favorites.push(id);
@@ -758,7 +823,7 @@ document.addEventListener('click',e=>{
     const result=await api('house-profile',{method:'POST',body:{}});
     applyPreferences(result.preferences);startLive(refresh);render(false);
     const failed=result.report.filter(r=>!r.ok);
-    techMessage=`Подключено ${result.report.length-failed.length} / ${result.report.length}. Команды не отправлялись.`+(failed.length?' Недоступны: '+failed.map(r=>r.entityId+' ('+r.problem+')').join('; '):'');
+    techMessage=`На связи ${result.report.length-failed.length} / ${result.report.length}. Команды не отправлялись.`+(failed.length?' Требуют внимания: '+failed.map(r=>`${r.name} — ${r.problem}${r.kept?', отметка сохранена':''}`).join('; ')+'. Подробности и замена — во вкладке «Привязки».':'');
    }catch(error){techMessage=error.message}
    finally{state.profileBusy=false;updateTechnical()}
   })();return;
@@ -781,7 +846,7 @@ document.addEventListener('click',e=>{
  if(a==='export')return downloadSettings();
  if(a==='discover'){
   techMessage='Загружаем список…';updateTechnical();
-  discover().then(result=>{techEntities=result.states;techMessage=`Получено ${techEntities.length} сущностей. Проверь соответствие физическим устройствам.`;updateTechnical()})
+  captureBindingDraft();discover().then(result=>{techEntities=result.states;techMessage=`Получено ${techEntities.length} сущностей. Проверь соответствие физическим устройствам.`;updateTechnical()})
    .catch(error=>{techMessage=error.message;updateTechnical()});return;
  }
  if(a==='reconnect'){startLive(refresh);techMessage=isLive()?'Проверяем связь…':'Выбран деморежим. Подключение к дому не выполняется.';updateTechnical();return}
@@ -821,7 +886,7 @@ document.addEventListener('change',async e=>{
  if(id==='kiosk-setting'){state.kiosk=e.target.value==='on';applyAppearance();persist()}
  if(id==='network-setting'&&!isLive()){state.demoOffline=e.target.value==='offline';refresh();updateTechnical()}
  if(id==='station-setting'&&!isLive()){state.stationMode=e.target.value;refresh();updateTechnical()}
- if(id==='binding-room'){bindingRoom=e.target.value;techMessage='';updateTechnical()}
+ if(id==='binding-room'){captureBindingDraft();bindingRoom=e.target.value;techMessage='';updateTechnical()}
  if(e.target.dataset.binding){
   const box=$('.sheet').querySelector(`[data-verified="${e.target.dataset.binding}"]`);if(box)box.checked=false;
  }

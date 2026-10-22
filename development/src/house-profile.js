@@ -149,9 +149,12 @@ export function activateHouseProfile(input,states){
  for(const d of p.devices){
   const b=p.bindings[d.id];
   if(d.status!=='installed'||!houseBindings[d.id]||b.entityId!==houseBindings[d.id])continue;
-  const problem=bindingProblem(d,byEntity.get(b.entityId));
-  b.verified=!problem;
-  report.push({id:d.id,name:d.name,entityId:b.entityId,ok:!problem,problem});
+  const e=byEntity.get(b.entityId),problem=bindingProblem(d,e);
+  // A temporarily offline entity keeps the owner's on-site verification; only a
+  // missing or mismatching entity loses it.
+  const offline=!!e&&['unknown','unavailable',''].includes(e.state);
+  b.verified=!problem||(offline&&b.verified);
+  report.push({id:d.id,name:d.name,entityId:b.entityId,ok:!problem,offline,missing:!e,kept:offline&&b.verified,problem:!e?'не найдена в HA':offline?'сейчас недоступна':problem});
  }
  p.mode='live';
  p.houseProfileConfirmed=true;

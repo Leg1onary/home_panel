@@ -294,6 +294,17 @@ code{font-family:ui-monospace,monospace;font-size:.92em;background:var(--surface
 .readiness{display:flex;align-items:center;gap:var(--space-4);margin:var(--space-5) 0}.readiness strong{font-size:var(--text-lg);color:var(--accent);white-space:nowrap;flex-shrink:0}.readiness span{font-size:var(--text-xs);color:var(--muted)}
 .binding-card{border:1px solid var(--border);border-radius:16px;margin:var(--space-5) 0;padding:var(--space-4)}
 .binding-card legend{padding:0 var(--space-2);font-size:var(--text-sm);font-weight:600}
+.binding-health{margin:var(--space-2) 0 0;font-size:var(--text-xs);color:var(--muted);line-height:1.4;overflow-wrap:anywhere}
+.binding-card[data-health=ok] .binding-health{color:var(--text)}
+.binding-card[data-health=offline]{border-color:var(--warning)}.binding-card[data-health=offline] .binding-health{color:var(--warning)}
+.binding-card[data-health=bad]{border-color:var(--danger,var(--warning))}.binding-card[data-health=bad] .binding-health{color:var(--danger,var(--warning))}
+.binding-suggest{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-1) var(--space-2);margin-top:var(--space-2);font-size:var(--text-xs);color:var(--muted)}
+.binding-suggest .text-button{min-height:44px;font-size:var(--text-xs);overflow-wrap:anywhere;text-align:left}
+.binding-outcome{margin:var(--space-1) 0 0;font-size:var(--text-xs);line-height:1.4}
+.binding-outcome[data-kind=bad]{color:var(--danger,var(--warning))}.binding-outcome[data-kind=offline]{color:var(--warning)}
+.binding-problems{display:flex;flex-direction:column;align-items:flex-start;gap:0;border:1px solid var(--warning);border-radius:16px;padding:var(--space-3) var(--space-4);margin:var(--space-4) 0}
+.binding-problems strong{font-size:var(--text-sm);color:var(--warning);margin-bottom:var(--space-1)}
+.binding-problems .text-button{min-height:44px;font-size:var(--text-xs);text-align:left}
 .setting-field input:not([type=file]){width:100%;min-width:0;min-height:44px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;color:var(--text);padding:var(--space-3);font-size:var(--text-sm)}
 .setting-field.compact{margin:var(--space-3) 0}
 .check-field{display:flex;align-items:center;gap:var(--space-3);font-size:var(--text-xs);min-height:44px}.check-field input{width:20px;height:20px;accent-color:var(--accent)}

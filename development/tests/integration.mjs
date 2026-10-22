@@ -15,7 +15,8 @@ const extras=[
  {entity_id:'cover.qa_gate',state:'closed',attributes:{current_position:0}},
  {entity_id:'climate.qa_boiler',state:'heat',attributes:{current_temperature:42,temperature:50}},
  {entity_id:'switch.qa_pump',state:'off',attributes:{}},
- {entity_id:'switch.qa_corridor',state:'off',attributes:{}}
+ {entity_id:'switch.qa_corridor',state:'off',attributes:{}},
+ {entity_id:'binary_sensor.offline_door',state:'unavailable',attributes:{device_class:'door'}}
 ];
 const fake=http.createServer(async(req,res)=>{
  if(req.headers.authorization!=='Bearer mock-test-only'){res.writeHead(401);return res.end('{}')}
@@ -75,7 +76,7 @@ try{
  assert.equal((await call('ha/command',{method:'POST',data:{id:'living:0',value:false}})).status,400);
  p.mode='live';p.bindings['living:0']={entityId:'switch.test_living',verified:true};
  assert.equal((await call('preferences',{method:'PUT',data:p})).status,200);
- const list=await call('ha/states');assert.equal(list.body.states.length,6);assert.equal(JSON.stringify(list).includes('NOT_FOR_CLIENT'),false);
+ const list=await call('ha/states');assert.equal(list.body.states.length,7);assert.equal(JSON.stringify(list).includes('NOT_FOR_CLIENT'),false);
  const off=await call('ha/command',{method:'POST',data:{id:'living:0',value:false}});assert.equal(off.status,200);assert.equal(entity.state,'off');assert.equal(calls,1);
  assert.equal((await call('ha/command',{method:'POST',data:{id:'living:0',value:false}})).status,200);assert.equal(calls,1);
  assert.equal((await call('ha/command',{method:'POST',data:{id:'pump',value:true}})).status,400);
@@ -84,8 +85,20 @@ try{
  assert.equal((await call('ha/command',{method:'POST',data:{id:'living:0',value:'on'}})).status,400);
  p.bindings['living:1']={entityId:'switch.test_living',verified:true};
  assert.equal((await call('preferences',{method:'PUT',data:p})).status,400);p.bindings['living:1']={entityId:'',verified:false};
+ // One bad binding never discards the rest of the form: entity_id is kept, the mark is not.
  p.bindings['door']={entityId:'binary_sensor.missing',verified:true};
- assert.equal((await call('preferences',{method:'PUT',data:p})).status,400);p.bindings.door={entityId:'',verified:false};
+ let partialSave=await call('preferences',{method:'PUT',data:p});
+ assert.equal(partialSave.status,200);
+ assert.deepEqual(partialSave.body.preferences.bindings.door,{entityId:'binary_sensor.missing',verified:false});
+ assert.equal(partialSave.body.rejected[0].id,'door');
+ assert.equal(partialSave.body.preferences.bindings['living:0'].verified,true,'Other verified bindings survive');
+ // Owner-verified but temporarily offline entity keeps its mark and stays non-controllable.
+ p=partialSave.body.preferences;p.bindings['door']={entityId:'binary_sensor.offline_door',verified:true};
+ partialSave=await call('preferences',{method:'PUT',data:p});
+ assert.equal(partialSave.status,200);assert.equal(partialSave.body.preferences.bindings.door.verified,true);
+ assert.equal(partialSave.body.offline[0].id,'door');assert.equal(partialSave.body.rejected.length,0);
+ p=partialSave.body.preferences;p.bindings.door={entityId:'',verified:false};
+ assert.equal((await call('preferences',{method:'PUT',data:p})).status,200);
  deny=true;const bad=await call('ha/states');assert.equal(bad.status,400);assert.match(bad.body.error,/авторизацию/);deny=false;
  hold=true;const timeout=await call('ha/command',{method:'POST',data:{id:'living:0',value:true}});assert.equal(timeout.status,400);assert.match(timeout.body.error,/могла выполниться/);assert.equal(entity.state,'off');hold=false;
  // Reorder and rename preserve stable mappings; moving resets verification.

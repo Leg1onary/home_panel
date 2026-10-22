@@ -120,17 +120,22 @@ const server=http.createServer(async(req,res)=>{
      const b=next.bindings[d.id],old=p.preferences.bindings[d.id];
      return b.verified&&(!old?.verified||old.entityId!==b.entityId);
     });
+    // Per-binding outcome: one bad or offline entity must not discard the whole form.
+    // Missing / wrong type -> saved unverified. Existing but offline -> verified kept
+    // (owner checked it on site); it stays without data until HA reports a state.
+    const rejected=[],offline=[];
     if(newVerified.length){
      const list=await ha.states(),entities=new Map(list.map(e=>[e.entity_id,e]));
      for(const def of newVerified){
-      const e=entities.get(next.bindings[def.id].entityId);
-      if(!e)throw new Error(`Сущность не найдена: ${def.name}`);
+      const b=next.bindings[def.id],e=entities.get(b.entityId);
+      if(!e){b.verified=false;rejected.push({id:def.id,name:def.name,problem:'сущность не найдена в Home Assistant'});continue}
+      if(['unknown','unavailable',''].includes(e.state)){offline.push({id:def.id,name:def.name,problem:'сейчас недоступна в Home Assistant'});continue}
       const problem=bindingProblem(def.device,e);
-      if(problem)throw new Error(`${def.name}: ${problem}.`);
+      if(problem){b.verified=false;rejected.push({id:def.id,name:def.name,problem})}
      }
     }
     db.prepare('UPDATE profiles SET preferences=? WHERE id=?').run(JSON.stringify(next),id);
-    return json(res,200,{saved:true,preferences:next});
+    return json(res,200,{saved:true,preferences:next,rejected,offline});
    }
    if(route==='photo'){
     if(req.method==='GET'&&p.photo){res.writeHead(200,{'Content-Type':'image/jpeg','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});return res.end(p.photo)}

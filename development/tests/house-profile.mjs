@@ -96,6 +96,14 @@ assert.equal(migrateHouseProfile(removedCamera).devices.some(d=>d.id==='camera-y
 const duplicateCamera=structuredClone(v2);
 duplicateCamera.bindings['camera-extra-1']={entityId:houseBindings['camera-yard'],verified:false};
 assert.equal(migrateHouseProfile(duplicateCamera).bindings['camera-yard'].entityId,'camera.c320ws_mainstream');
+// Offline curated entity: an owner-verified mark survives, an unverified one stays off.
+const offlineStates=states.map(e=>e.entity_id===houseBindings['camera-yard']?{...e,state:'unavailable'}:e);
+const verifiedCamera=structuredClone(all.preferences);verifiedCamera.bindings['camera-yard'].verified=true;
+const keptCamera=activateHouseProfile(verifiedCamera,offlineStates);
+assert.equal(keptCamera.preferences.bindings['camera-yard'].verified,true);
+assert.equal(keptCamera.report.find(r=>r.id==='camera-yard').kept,true);
+const freshCamera=structuredClone(clean);freshCamera.bindings['camera-yard'].verified=false;
+assert.equal(activateHouseProfile(freshCamera,offlineStates).preferences.bindings['camera-yard'].verified,false);
 const partial=activateHouseProfile(clean,states.filter(e=>e.entity_id!==houseBindings['bath:1']));
 assert.equal(partial.preferences.bindings['bath:1'].verified,false);
 assert.equal(partial.preferences.houseProfileConfirmed,true,'Unavailable sensors must not resurrect onboarding');
