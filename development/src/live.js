@@ -3,6 +3,7 @@ import {state,rooms,sensors} from './schema.js';
 import {bindingDefinitions} from './preferences.js';
 import {deviceTypes,findDevice,resolveAction} from './catalog.js';
 import {stationSupports} from './station.js';
+import {numericReading} from './readings.js';
 
 export const isLive=()=>state.mode==='live';
 export function observed(id){
@@ -38,10 +39,10 @@ function applySnapshot(list){
   const temp=state.devices.find(d=>d.type==='temperature'&&d.room===id&&d.status==='installed');
   const humidity=state.devices.find(d=>d.type==='humidity'&&d.room===id&&d.status==='installed');
   const t=temp?observed(temp.id):null,h=humidity?observed(humidity.id):null;
-  const valid=t&&!['unknown','unavailable',''].includes(t.state)&&Number.isFinite(Number(t.state));
-  const celsius=valid&&t.attributes.unit_of_measurement==='°C';
-  sensors[id]={value:celsius?Number(t.state):0,humidity:h&&!['unknown','unavailable',''].includes(h.state)&&h.attributes.unit_of_measurement==='%'&&Number.isFinite(Number(h.state))?Number(h.state):null,
-   receivedAt:t?Date.parse(t.last_reported||t.last_updated)||0:0,quality:celsius?'live':'unavailable'};
+  const temperature=numericReading(t,{online:state.liveOnline,unit:'°C'}),moisture=numericReading(h,{online:state.liveOnline,unit:'%'});
+  sensors[id]={value:temperature.value??0,humidity:moisture.value,
+   receivedAt:temperature.reportedAt||temperature.updatedAt||temperature.changedAt||0,
+   checkedAt:state.liveUpdatedAt,quality:temperature.available?'live':'unavailable'};
  }
 }
 let timer,busy=false,revision=0;

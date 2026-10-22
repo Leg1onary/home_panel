@@ -1,4 +1,16 @@
-# Home Panel 1.3.0 acceptance
+# Home Panel 1.3.1 acceptance
+
+## 1.3.1 acceptance
+
+- One numeric-state reader separates available HA values from last_changed, last_updated, last_reported and the panel poll time. 34 minutes, a day or no timestamp must not hide valid numeric state or fabricate a fresh report.
+- Check climate cards, main pins, room readings, climate detail, well/attic facts and standby. Unknown/unavailable, wrong units, NaN, missing entity, unverified mapping and offline HA remain unavailable. Demo metadata stays labelled demo. Motion's 5-minute window is unchanged.
+- Main: four compact facts replace redundant shortcuts; well/attic open provenance and filtered history. Light count opens actual known-on lines; unknown lines cannot be described as off. Room navigation works from the list; live polling refreshes it without sending commands.
+- Preserve model, geometry, light/music controls, camera, statistics, settings and existing 39 bindings. Browser QA: 1024x600, 1440x900, 375x812, dark/light; no spoilers in progress messages.
+
+### 1.3.1 observed checks
+
+- Browser verified a 34-minute unchanged 26.9 °C with no last_reported; pin, detail, main facts and standby retain numeric readings. A missing timestamp with 0 °C remains available with unknown metadata, not a fabricated current report. Polling leaves original state timestamps unchanged and preserves disclosure state.
+- Unavailable removes the climate pin; HA offline removes readings and cannot produce an all-lights-off claim. Known-on room list follows live state and links to that room. Well detail links directly to well history.
 
 ## 1.3.0 main flows and acceptance
 

@@ -21,6 +21,7 @@ import {homeSummary} from './home-summary.js';
 import {binaryValue,leakIssues} from './sensor-state.js';
 import {motionObservation,elapsedLabel} from './motion.js';
 import {historyState,statisticsView,inspectHistoryChart} from './history-ui.js';
+import {numericReading,stateTimes} from './readings.js';
 
 const $=s=>document.querySelector(s);
 const I=name=>`<i data-lucide="${name}"></i>`;
@@ -96,6 +97,11 @@ function lightCountLabel(){
 function sensorStatus(id){
  const s=sensors[id];if(noConnection())return isLive()?'Нет связи с Home Assistant':'Нет связи · демо';
  if(s.quality==='unavailable')return 'Нет данных';
+ if(isLive()){
+  const d=state.devices.find(d=>d.type==='temperature'&&d.room===id&&d.status==='installed');
+  const times=stateTimes(d?observed(d.id):null);
+  return times.updatedAt?'Состояние HA обновлено '+elapsedLabel(times.updatedAt):'Время обновления HA неизвестно';
+ }
  return s.quality==='stale'||Date.now()-s.receivedAt>30*60*1000?'Данные устарели':(isLive()?'Home Assistant · ':'Демопакет · ')+timeOf(s.receivedAt);
 }
 function climate(){
@@ -131,9 +137,9 @@ function home(){
  return `<div class="view dashboard-view">
  <h1 class="visually-hidden">Мой дом</h1>
  <div class="dashboard-layout"><div class="house-column">${sceneStage()}
- <div class="house-status" id="home-status">${homeStatus()}</div></div>
+ <div class="house-status home-facts" id="home-status">${homeStatus()}</div></div>
  <aside class="home-context">
- <div class="context-heading quick-heading"><h2>Под рукой</h2></div>
+ <div class="context-heading quick-heading"><h2>Под рукой</h2><span id="home-light-overview">${lightOverviewBadge()}</span></div>
  <div id="home-quick">${homeQuick()}</div>
  <div class="context-heading rooms-heading"><h2>Комнаты</h2><button class="text-button" data-action="favorites" aria-label="Настроить избранные комнаты">${I('sliders-horizontal')}</button></div>
  <div class="favorite-rooms" id="home-favorites">${favoriteRooms()}</div>
@@ -163,10 +169,35 @@ function homeLightSummary(){
 }
 function homeStatus(){
  const terraceDoor=state.devices.find(d=>d.id==='terrace-door'&&d.status==='installed');
- return `<button class="status-chip" data-action="door" aria-label="Входная дверь: ${esc(binaryLabel('door','открыта','закрыта'))}">${I('door-closed')}${esc(binaryLabel('door','Вход открыт','Вход закрыт'))}</button>
- ${terraceDoor?`<button class="status-chip" data-action="terrace-door" aria-label="Дверь на террасу: ${esc(binaryLabel('terrace-door','открыта','закрыта'))}">${I('door-open')}${esc(binaryLabel('terrace-door','Терраса открыта','Терраса закрыта'))}</button>`:''}
- <button class="status-chip" data-view="watch">${I('thermometer')}Климат</button>
- <button class="status-chip well-chip" data-room="well">${I('droplets')}Скважина ${compactRoomClimate('well')}</button>`;
+ const door=binaryLabel('door','Открыта','Закрыта'),terrace=binaryLabel('terrace-door','Открыта','Закрыта');
+ const fact=(label,value,attrs,attention=false)=>`<button class="home-fact ${attention?'needs-attention':''}" ${attrs}><span>${label}</span><strong>${esc(value)}</strong></button>`;
+ const temperature=id=>{
+  const d=state.devices.find(d=>d.room===id&&d.status==='installed'&&d.type==='temperature');
+  return d?deviceReading(d):'Нет датчика';
+ };
+ return fact('Входная',door,`data-action="door" aria-label="Входная дверь: ${esc(door)}"`,door==='Открыта')+
+ (terraceDoor?fact('Терраса',terrace,'data-action="terrace-door"',terrace==='Открыта'):'')+
+ fact('Скважина',temperature('well'),'data-sensor="well"')+
+ fact('Чердак',temperature('attic'),'data-sensor="attic"');
+}
+function lightOverview(){
+ const all=rooms.flatMap(r=>channelsFor(r).map(c=>({r,c})));
+ const unknown=all.filter(({c})=>noConnection()||isLive()&&!canControl(c.id));
+ const on=all.filter(({c})=>!noConnection()&&(!isLive()||canControl(c.id))&&c.on);
+ return {all,unknown,on};
+}
+function lightOverviewBadge(){
+ const {all,unknown,on}=lightOverview();
+ const label=noConnection()?'Свет · нет связи':`Свет · ${on.length}/${all.length}${unknown.length?' ?':''}`;
+ return `<button class="light-overview-badge ${on.length?'has-light':''}" data-action="active-lights" aria-label="Где горит свет: включено ${on.length}, без данных ${unknown.length}">${esc(label)}${I('chevron-right')}</button>`;
+}
+function lightOverviewSheet(){
+ const {all,unknown,on}=lightOverview();
+ const rows=items=>items.map(({r,c})=>`<button class="light-overview-row" data-room="${r.id}"><span><strong>${esc(r.short)}</strong><small>${esc(c.name)}</small></span>${I('arrow-up-right')}</button>`).join('');
+ return `<h2>Где горит свет</h2><p class="description">${isLive()?'Текущие состояния HA':'Демонстрационные состояния'} · ${unknown.length?`известно включённых: ${on.length}; без данных: ${unknown.length}`:`${on.length} из ${all.length} линий включены`}.</p>
+ ${on.length?`<div class="light-overview-list">${rows(on)}</div>`:unknown.length?'<div class="inline-note">Подтверждённых включённых линий нет, но часть состояний неизвестна.</div>':'<div class="lights-all-off">'+I('circle-check')+'<strong>Все подключённые линии выключены</strong></div>'}
+ ${unknown.length?`<h3 class="light-unknown-title">Без подтверждённого состояния · ${unknown.length}</h3><div class="light-overview-list">${rows(unknown)}</div>`:''}
+ <button class="secondary" data-view="rooms">Открыть всё управление светом</button>`;
 }
 function houseAlerts(){
  return leakIssues(state.devices,{live:isLive(),online:state.liveOnline,read:observed})
@@ -296,10 +327,7 @@ function deviceReading(d){
  if(noConnection())return 'Нет связи';
  const value=isLive()?e?.state:d.demoStale?undefined:d.demoValue;
  if(value===undefined||value===null||['unknown','unavailable',''].includes(value))return 'Нет данных';
- if(isLive()&&['temperature','humidity','illuminance'].includes(d.type)){
-  const reported=Date.parse(e.last_reported||e.last_updated)||0;
-  if(Date.now()-reported>30*60*1000)return 'Данные устарели';
- }
+ if(isLive()&&['temperature','humidity','illuminance'].includes(d.type)&&!numericReading(e,{unit:type.unit}).available)return 'Нет данных';
  if(type.unit)return Number.isFinite(Number(value))?`${reading(Number(value))} ${type.unit}`:'Нет данных';
  if(d.type==='button_event')return String(value);
  if(d.type==='motion'&&isLive())return motionObservation(e).text;
@@ -412,7 +440,7 @@ function refresh(){
  if(['home','model','room'].includes(state.view)){
   updateDetail();modelAPI?.updateModel(rooms,state);
   if(state.view==='home'){
-   updateRegion('#home-favorites',favoriteRooms());updateRegion('#home-status',homeStatus());updateRegion('#home-quick',homeQuick());
+   updateRegion('#home-favorites',favoriteRooms());updateRegion('#home-status',homeStatus());updateRegion('#home-quick',homeQuick());updateRegion('#home-light-overview',lightOverviewBadge());
   }
  }else if(state.view!=='statistics')render(false);
  if(!$('#overlay').hidden){
@@ -424,6 +452,16 @@ function refresh(){
  $('#master').disabled=masterBlocked();updateHeader();
  updateRegion('#house-alerts',houseAlerts());$('#house-alerts').hidden=!$('#house-alerts').innerHTML;
  document.documentElement.dataset.leakAlert=String(!$('#house-alerts').hidden);
+ const lightsSheet=$('[data-lights-overview]');
+ if(lightsSheet&&!$('#overlay').hidden)updateRegion('[data-lights-overview]',lightOverviewSheet());
+ const climateSheet=$('[data-climate-sheet]');
+ if(climateSheet&&!$('#overlay').hidden){
+  const content=document.createElement('div');content.innerHTML=sensorSheet(climateSheet.dataset.climateSheet);
+  for(const part of ['.description','.sensor-detail','.sensor-provenance','.inline-note']){
+   const next=content.querySelector(part);
+   if(next)updateRegion(`[data-climate-sheet] ${part}`,next.innerHTML);
+  }
+ }
  icons();
  const motionSheet=$('[data-motion-sheet]');
  if(motionSheet)motionSheet.innerHTML=motionSheetMarkup(motionSheet.dataset.motionSheet);
@@ -512,10 +550,12 @@ function stationSheet(){
 }
 function sensorSheet(id){
  const s=sensors[id],name={living:'Гостиная',well:'Скважина',attic:'Чердак'}[id];
+ const d=state.devices.find(d=>d.type==='temperature'&&d.room===id&&d.status==='installed'),times=stateTimes(d?observed(d.id):null);
+ const stamp=at=>at?new Date(at).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'}):'Нет достоверной метки';
  return `<h2>Температура · ${name}</h2><p class="description">${sensorStatus(id)}</p>
- <div class="sensor-detail">${s.quality==='unavailable'?'—':reading(s.value)} °C <span>${s.humidity===null?'—':s.humidity+' %'} влажности</span></div>
- <div class="inline-note">${isLive()?(s.quality==='unavailable'?'Датчик не привязан или недоступен.':sensorStatus(id)==='Данные устарели'?'Последнее значение устарело.':'Значение из состояния Home Assistant, не независимая проверка датчика.'):'Это демонстрационный пример, не измерение из твоего дома.'}</div>
- <p class="description">${s.receivedAt?'Время пакета: '+new Intl.DateTimeFormat('ru-RU',{dateStyle:'short',timeStyle:'short',timeZone:'Europe/Moscow'}).format(s.receivedAt):'Пакет ещё не получен'}. Источник: ${isLive()?'Home Assistant':'демонстрационный адаптер'}.</p>`;
+ <div class="sensor-detail">${noConnection()||s.quality==='unavailable'?'—':reading(s.value)} °C <span>${noConnection()||s.humidity===null?'—':s.humidity+' %'} влажности</span></div>
+ <div class="inline-note">${isLive()?(s.quality==='unavailable'||noConnection()?'Нет доступного проверенного состояния HA.':'HA отдаёт это значение. Давность изменения не означает неисправность; новое физическое измерение этим не подтверждается.'):'Это демонстрационный пример, не измерение из твоего дома.'}</div>
+ ${isLive()?`<details class="sensor-meta"><summary>Временные метки HA</summary><dl class="sensor-provenance"><div><dt>Изменение значения</dt><dd>${stamp(times.changedAt)}</dd></div><div><dt>Изменение состояния или атрибутов</dt><dd>${stamp(times.updatedAt)}</dd></div><div><dt>Запись состояния в HA</dt><dd>${stamp(times.reportedAt)}</dd></div><div><dt>Последний успешный опрос HA панелью</dt><dd>${stamp(state.liveUpdatedAt||null)}</dd></div></dl><p class="history-footnote">Опрос HA не считается отчётом датчика. Для контроля молчания физического устройства нужна достоверная метка last_seen его интеграции.</p></details><button class="secondary sensor-history-link" data-history-zone="${id}">История показаний ${I('arrow-up-right')}</button>`:`<p class="description">Время демонстрационного примера: ${s.receivedAt?stamp(s.receivedAt):'неизвестно'}.</p>`}`;
 }
 function settings(){
  const tab=state.settingsTab;
@@ -800,8 +840,9 @@ document.addEventListener('click',e=>{
  if(b.dataset.view)return navigate(b.dataset.view);
  if(b.dataset.historyHours){historyState.hours=Number(b.dataset.historyHours);historyState.data=null;loadStatistics(true);return}
  if(b.dataset.historyMetric){historyState.metric=b.dataset.historyMetric;paintStatistics();return}
+ if(b.dataset.historyZone){historyState.room=b.dataset.historyZone;return navigate('statistics')}
  if(b.dataset.room)return openRoom(b.dataset.room);
- if(b.dataset.sensor)return simpleSheet(sensorSheet(b.dataset.sensor));
+ if(b.dataset.sensor)return simpleSheet(`<div data-climate-sheet="${esc(b.dataset.sensor)}">${sensorSheet(b.dataset.sensor)}</div>`);
  if(b.dataset.camera)return cameraSheet(b.dataset.camera);
  if(b.dataset.cameraStart)return cameraStart(b.dataset.cameraStart);
  if(b.dataset.cameraHls)return cameraStart(b.dataset.cameraHls,'hls');
@@ -853,6 +894,7 @@ document.addEventListener('click',e=>{
  }
  const a=b.dataset.action;
  if(a==='history-reload')return loadStatistics(true);
+ if(a==='active-lights'){simpleSheet(`<div data-lights-overview>${lightOverviewSheet()}</div>`);return}
  if(a==='motion'){
   const id=b.dataset.motionId||'terrace-motion';
   simpleSheet(`<div data-motion-sheet="${esc(id)}">${motionSheetMarkup(id)}</div>`);return;

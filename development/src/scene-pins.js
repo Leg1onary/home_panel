@@ -1,5 +1,6 @@
 import {motionObservation,elapsedLabel} from './motion.js';
 import {binaryValue} from './sensor-state.js';
+import {numericReading} from './readings.js';
 export function scenePins(state,now=Date.now()){
  if(state.view!=='home')return [];
  const live=state.mode==='live';
@@ -11,9 +12,10 @@ export function scenePins(state,now=Date.now()){
  };
  const pins=[];
  const temp=read('temperature:living'),humidity=read('humidity:living');
- const fresh=temp&&(temp.demo||now-(Date.parse(temp.last_reported||temp.last_updated)||0)<=1800000);
- if(fresh&&temp.state!==''&&Number.isFinite(Number(temp.state))){
-  pins.push({id:'climate',x:450,z:115,kind:'climate',action:'sensor',sensor:'living',label:Number(temp.state).toFixed(1)+'°',detail:temp.demo?'демо':humidity&&Number.isFinite(Number(humidity.state))?Math.round(Number(humidity.state))+'% · гостиная':'Гостиная',priority:2});
+ const t=numericReading(temp?.demo?{...temp,state:String(temp.state)}:temp,{unit:temp?.demo?undefined:'°C',now});
+ const h=numericReading(humidity?.demo?{...humidity,state:String(humidity.state)}:humidity,{unit:humidity?.demo?undefined:'%',now});
+ if(t.available){
+  pins.push({id:'climate',x:450,z:115,kind:'climate',action:'sensor',sensor:'living',label:t.value.toFixed(1)+'°',detail:temp.demo?'демо':h.available?Math.round(h.value)+'% · гостиная':'Гостиная',priority:2});
  }
  const motion=read('terrace-motion'),m=motionObservation(motion,now);
  if(motion&&!motion.demo&&m.kind!=='unknown')pins.push({id:'motion',x:85,z:405,kind:m.kind==='active'?'motion-active':'motion-idle',action:'motion',motionId:'terrace-motion',label:m.kind==='active'?'Движение':'Терраса',detail:m.kind==='active'?'свежее событие':elapsedLabel(m.at,now),priority:3});

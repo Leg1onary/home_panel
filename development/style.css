@@ -777,6 +777,26 @@ html[data-view=home] .shell>footer[data-storage=saved]{display:none}
 }
 
 /* One compact header; the main floor plan is already on Home. */
+.house-status.home-facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-2);padding:0;margin:var(--space-2) 0 0;max-width:100%}
+.home-fact{min-width:0;min-height:62px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:var(--space-1);padding:var(--space-2);border:1px solid transparent;border-radius:var(--radius-md);background:var(--surface);color:var(--text)}
+.home-fact>span{font-size:var(--text-xs);color:var(--muted);line-height:1.3}
+.home-fact>strong{font-size:var(--text-sm);font-weight:500;line-height:1.4}
+.home-fact.needs-attention{border-color:var(--accent)}.home-fact.needs-attention strong{color:var(--accent)}
+.light-overview-badge{display:flex;align-items:center;justify-content:center;gap:var(--space-1);min-height:44px;padding:var(--space-2);background:none;border:0;border-radius:var(--radius-sm);font-size:var(--text-xs);color:var(--muted);white-space:nowrap}
+.light-overview-badge.has-light{color:var(--accent)}.light-overview-badge svg{width:14px;height:14px}
+.light-overview-list{margin:var(--space-4) 0}
+.light-overview-row{display:flex;align-items:center;justify-content:space-between;width:100%;min-height:64px;padding:var(--space-3) 0;gap:var(--space-3);text-align:left;border:0;border-bottom:1px solid var(--border);background:none;color:var(--text)}
+.light-overview-row strong{display:block;font-size:var(--text-sm);font-weight:500}
+.light-overview-row small{display:block;font-size:var(--text-xs);color:var(--muted);margin-top:var(--space-1)}
+.lights-all-off{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-5) 0;margin-bottom:var(--space-3)}
+.lights-all-off svg{flex-shrink:0;color:var(--accent)}.lights-all-off strong{font-size:var(--text-base);font-weight:500;line-height:1.5}
+.light-unknown-title{font-size:var(--text-sm);font-weight:500;margin-top:var(--space-5)}
+.sensor-provenance{margin:var(--space-5) 0;display:flex;flex-direction:column;gap:var(--space-3)}
+.sensor-provenance>div{display:flex;justify-content:space-between;gap:var(--space-4);padding-bottom:var(--space-3);border-bottom:1px solid var(--border);font-size:var(--text-xs);line-height:1.5}
+.sensor-provenance dt{color:var(--muted);max-width:55%}.sensor-provenance dd{margin:0;text-align:right}
+.sensor-meta{margin-top:var(--space-4);border-top:1px solid var(--border)}
+.sensor-meta summary{cursor:pointer;min-height:44px;padding:var(--space-3) 0;font-size:var(--text-sm);line-height:1.5;color:var(--muted)}
+.sensor-history-link{margin-top:var(--space-4);width:100%}
 .app-rail nav .stats-nav-short{display:none}
 .motion-detail{width:100%;text-align:left;gap:var(--space-3)}
 .motion-detail strong{max-width:64%;text-align:right}
