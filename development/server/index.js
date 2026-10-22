@@ -13,6 +13,7 @@ import {deviceTypes,samePhysicalDevice} from '../src/catalog.js';
 import {migrateHouseProfile,activateHouseProfile,bindingProblem} from '../src/house-profile.js';
 import {seedDeviceModel,buildDeviceModel} from '../src/device-model.js';
 import {loadHistory} from './history.js';
+import {StationAssistant} from './assistant.js';
 
 const port=Number(process.env.PORT||8080),preview=process.env.PANEL_PREVIEW==='1';
 const addon=process.env.PANEL_ADDON==='1';
@@ -44,6 +45,9 @@ const getProfile=id=>{
  })();
  return {preferences,photo:row.photo};
 };
+const assistant=new StationAssistant(ha,db,()=>db.prepare('SELECT id FROM profiles').all().map(({id})=>({id,preferences:getProfile(id).preferences})));
+const assistantScopes=new Set();
+if(!preview)setInterval(()=>assistant.tick(),15000).unref();
 const json=(res,code,body)=>{res.writeHead(code,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(body))};
 async function body(req,max=131072){
  const chunks=[];let n=0;
@@ -93,6 +97,18 @@ const server=http.createServer(async(req,res)=>{
     return json(res,200,{preferences:p.preferences,photo:!!p.photo,proof:proofs.get(id),preview,addon,haConfigured:ha.enabled});
    }
    if(req.method!=='GET')authorize(req,id);
+   if(route==='assistant/status'&&req.method==='GET')return json(res,200,await assistant.status(id,p.preferences));
+   if(route==='assistant/shopping'&&req.method==='GET')return json(res,200,await assistant.shopping(p.preferences));
+   if(route==='assistant/settings'&&req.method==='PUT'){
+    if(pendingScopes.has(id))throw new Error('Дождись завершения действия.');
+    return json(res,200,{settings:assistant.saveSettings(id,JSON.parse((await body(req)).toString()))});
+   }
+   if(route==='assistant/action'&&req.method==='POST'){
+    if(pendingScopes.has(id))throw new Error('Дождись завершения предыдущего действия.');
+    pendingScopes.set(id,(pendingScopes.get(id)||0)+1);assistantScopes.add(id);
+    try{return json(res,200,await assistant.execute(id,p.preferences,JSON.parse((await body(req)).toString())))}
+    finally{assistantScopes.delete(id);const n=pendingScopes.get(id)-1;if(n)pendingScopes.set(id,n);else pendingScopes.delete(id)}
+   }
    if(route==='ha/history'&&req.method==='GET'){
     if(url.searchParams.has('entity_id')||url.searchParams.has('filter_entity_id'))throw new Error('Сущности истории определяются только проверенными привязками профиля.');
     return json(res,200,await loadHistory(ha,p.preferences,url.searchParams.get('hours')));
@@ -191,6 +207,7 @@ const server=http.createServer(async(req,res)=>{
     res.writeHead(200,{'Content-Type':image.type,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});return res.end(image.bytes);
    }
    if(route==='ha/command'&&req.method==='POST'){
+    if(assistantScopes.has(id))throw new Error('Дождись завершения действия станции.');
     const request=JSON.parse((await body(req)).toString());
     pendingScopes.set(id,(pendingScopes.get(id)||0)+1);
     try{return json(res,200,await ha.command(request,p.preferences))}

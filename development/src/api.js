@@ -13,15 +13,15 @@ async function refreshProof(){
  await refreshingProof;
 }
 async function request(path,options,refreshed){
- const {method='GET',body,raw=false,image=false}=options;
+ const {method='GET',body,raw=false,image=false,timeout=35000}=options;
  let response,timer;
  const controller=typeof AbortController==='function'?new AbortController():null;
- if(controller)timer=setTimeout(()=>controller.abort(),35000);
+ if(controller)timer=setTimeout(()=>controller.abort(),timeout);
  try{response=await fetch(panelURL(path),{
   method,credentials:'same-origin',...(controller?{signal:controller.signal}:{}),
   headers:{...(body!==undefined?{'Content-Type':raw?'image/jpeg':'application/json'}:{}),...(method!=='GET'?{'X-Panel-Proof':proof}:{})},
   body:body===undefined?undefined:raw?body:JSON.stringify(body)
- })}catch{throw new Error(path==='ha/command'?'Сервер не подтвердил результат. Команда могла выполниться; проверь состояние перед повтором.':'Сервер недоступен. Настройки не сохранены.')}
+ })}catch{throw new Error(path==='ha/command'||path==='assistant/action'?'Сервер не подтвердил результат. Действие могло выполниться; проверь состояние перед повтором. Автоповтора нет.':'Сервер недоступен. Настройки не сохранены.')}
  finally{clearTimeout(timer)}
  if(!response.ok){
   let message='Локальный сервер недоступен.',code;

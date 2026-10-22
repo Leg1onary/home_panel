@@ -1,4 +1,22 @@
-# Home Panel 1.3.1 acceptance
+# Home Panel 1.4.0 acceptance
+
+## 1.4.0 station hub acceptance
+
+- Baseline: 1.3.1 station sheet only has music controls. Add Home/Music/Shopping/Signals in the existing station entry; do not add a seventh main navigation item or alter the model.
+- Home: brief is composed from verified current HA state only; max100 characters fits cloud TTS. Text announcement, bounded timers, weather, My Wave use typed server-side allowlisted actions, never arbitrary services or URLs. Readback is not invented: accepted command != spoken / camera shown / timer started.
+- Leave: explicit scope confirmation, only currently-on verified master-light lines, pause music if supported, then brief. No locks, water, security or arbitrary switches. Unknown lines must not be called off.
+- Shopping: only todo.shopping_list, get_items response required, add and complete with HA readback. Synchronization is local-only and behind a complete destructive-effects confirmation; never automatic.
+- Voice alerts run in the addon independently of browsers. Two leaks and two doors, one delivery per event, SQLite claim before sending, no retry on ambiguity, quiet hours22–08 Moscow for doors only. Auto voices require actual alice_state local marker and support; temporary volume is delegated to local YandexStation.
+- New additive SQLite tables only; keep profile/settings v3/device model v1, existing bindings, camera, history, 8090. Durable request IDs prevent duplicate or ambiguous replay, also after restart.
+- Test invalid payloads, off/demo/unverified/unsupported/cloud gating, no secret leaks, correct API session/origin policy, restart dedupe, door quiet hours, wet/dry rearm, no command on every UI poll, form drafts surviving polls, all four tabs, mobile/desktop dark/light, legacy controls, statistics and camera.
+- All physical commands in QA target fake HA only. No claim that the owner's camera/account link, audio, shopping synchronization or alert audibility has been tested on-site.
+
+### Observed 1.4.0 browser and runtime checks
+
+- All six home tools, music play/pause readback, shopping add/complete/readback, explicit sync consent, saving signals, camera request consent, scoped leave with one known-on line and truthful accepted results passed against fake HA.
+- Message and settings drafts survived repeated polls. 375×812 dark/light and 1440×900/1024×600 views have no horizontal overflow; long shopping labels wrap.
+- With the browser context fully closed, cloud mode sent no alarm. Restoring local IDLE produced one leak announcement with temporary volume0.45. Backend restart while still wet produced no second announcement.
+- An assistant action without API proof was rejected before service delivery. Existing climate detail→history, lights, sensors, systems, camera, settings and theme persistence remained functional; no page errors observed.
 
 ## 1.3.1 acceptance
 

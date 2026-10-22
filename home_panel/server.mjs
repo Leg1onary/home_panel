@@ -4,7 +4,7 @@ import { readFile, stat, mkdir } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 import { spawn } from "node:child_process";
 import { isIP } from "node:net";
-import { randomBytes as randomBytes3, createHash, timingSafeEqual } from "node:crypto";
+import { randomBytes as randomBytes3, createHash as createHash2, timingSafeEqual } from "node:crypto";
 import Database from "better-sqlite3";
 
 // config/house.json
@@ -365,7 +365,7 @@ var HomeAssistant = class {
       this.url = u.href.replace(/\/$/, "");
     }
   }
-  async request(path, body2) {
+  async request(path, body2, { timeout = 6e3 } = {}) {
     if (!this.enabled) throw new Error("Home Assistant \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D. \u041D\u0430 \u043C\u0435\u0441\u0442\u0435 \u0434\u043E\u0431\u0430\u0432\u0438\u043C HA_URL \u0438 HA_TOKEN \u0432 .env \u043B\u043E\u043A\u0430\u043B\u044C\u043D\u043E\u0433\u043E \u0441\u0435\u0440\u0432\u0435\u0440\u0430.");
     let response;
     try {
@@ -374,7 +374,7 @@ var HomeAssistant = class {
         redirect: "error",
         headers: { Authorization: `Bearer ${this.token}`, "Content-Type": "application/json" },
         ...body2 === void 0 ? {} : { body: JSON.stringify(body2) },
-        signal: AbortSignal.timeout(6e3)
+        signal: AbortSignal.timeout(timeout)
       });
     } catch {
       throw new Error("\u041D\u0435\u0442 \u0441\u0432\u044F\u0437\u0438 \u0441 Home Assistant. \u041F\u0440\u043E\u0432\u0435\u0440\u044C \u0441\u0435\u0442\u044C \u0438 \u0430\u0434\u0440\u0435\u0441 \u043B\u043E\u043A\u0430\u043B\u044C\u043D\u043E\u0433\u043E \u0441\u0435\u0440\u0432\u0435\u0440\u0430.");
@@ -388,7 +388,7 @@ var HomeAssistant = class {
     }
   }
   sanitize(e) {
-    const keys = ["friendly_name", "device_class", "unit_of_measurement", "temperature_unit", "brightness", "rgb_color", "supported_color_modes", "current_position", "battery_level", "current_temperature", "temperature", "hvac_action", "supported_features", "volume_level", "media_title", "media_artist"];
+    const keys = ["friendly_name", "device_class", "unit_of_measurement", "temperature_unit", "brightness", "rgb_color", "supported_color_modes", "current_position", "battery_level", "current_temperature", "temperature", "hvac_action", "supported_features", "volume_level", "media_title", "media_artist", "alice_state", "assumed_state"];
     return {
       entity_id: e.entity_id,
       state: e.state,
@@ -1165,6 +1165,287 @@ async function loadHistory(ha2, p, hoursText) {
   }
 }
 
+// server/assistant.js
+import { createHash } from "node:crypto";
+
+// src/readings.js
+function stateTimes(e, now = Date.now()) {
+  const parse = (value) => {
+    const at = typeof value === "string" ? Date.parse(value) : NaN;
+    return Number.isFinite(at) && at <= now + 6e4 ? at : null;
+  };
+  return { reportedAt: parse(e?.last_reported), updatedAt: parse(e?.last_updated), changedAt: parse(e?.last_changed) };
+}
+function numericReading(e, { online = true, unit, now = Date.now() } = {}) {
+  const times = stateTimes(e, now), raw = e?.state;
+  const valid = online && e && typeof raw === "string" && raw.trim() !== "" && !["unknown", "unavailable"].includes(raw) && Number.isFinite(Number(raw));
+  const available = Boolean(valid && (!unit || e.attributes?.unit_of_measurement === unit));
+  return {
+    ...times,
+    available,
+    value: available ? Number(raw) : null,
+    reason: !online ? "ha-offline" : !e ? "missing" : !valid ? "unavailable" : unit && e.attributes?.unit_of_measurement !== unit ? "wrong-unit" : null
+  };
+}
+
+// server/assistant.js
+var DEFAULTS = { leakAlerts: true, doorAlerts: true, doorMinutes: 10, quietNight: true, volume: 0.45, cameraName: "\u0434\u0432\u043E\u0440" };
+var PLAY_MEDIA = 512;
+var labels = { brief: "\u0421\u0432\u043E\u0434\u043A\u0430 \u0434\u043E\u043C\u0430", announce: "\u041E\u0431\u044A\u044F\u0432\u043B\u0435\u043D\u0438\u0435", leave: "\u042F \u0443\u0445\u043E\u0436\u0443", camera: "\u0414\u0432\u043E\u0440 \u043D\u0430 \u044D\u043A\u0440\u0430\u043D\u0435", timer: "\u0422\u0430\u0439\u043C\u0435\u0440", cancelTimers: "\u041E\u0442\u043C\u0435\u043D\u0430 \u0442\u0430\u0439\u043C\u0435\u0440\u043E\u0432", favorite: "\u041C\u043E\u044F \u0432\u043E\u043B\u043D\u0430", weather: "\u041F\u043E\u0433\u043E\u0434\u0430", shoppingAdd: "\u0414\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u0438\u0435 \u043F\u043E\u043A\u0443\u043F\u043A\u0438", shoppingComplete: "\u041F\u043E\u043A\u0443\u043F\u043A\u0430 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0430", shoppingSync: "\u0421\u0438\u043D\u0445\u0440\u043E\u043D\u0438\u0437\u0430\u0446\u0438\u044F \u043F\u043E\u043A\u0443\u043F\u043E\u043A", alert: "\u0413\u043E\u043B\u043E\u0441\u043E\u0432\u043E\u0435 \u043F\u0440\u0435\u0434\u0443\u043F\u0440\u0435\u0436\u0434\u0435\u043D\u0438\u0435" };
+var todo = "todo.shopping_list";
+function validateAssistantSettings(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some((k) => !Object.prototype.hasOwnProperty.call(DEFAULTS, k))) throw new Error("\u041D\u0435\u0432\u0435\u0440\u043D\u044B\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u0441\u0442\u0430\u043D\u0446\u0438\u0438.");
+  const s = { ...DEFAULTS, ...input };
+  if (["leakAlerts", "doorAlerts", "quietNight"].some((k) => typeof s[k] !== "boolean")) throw new Error("\u041D\u0435\u0432\u0435\u0440\u043D\u044B\u0435 \u043F\u0435\u0440\u0435\u043A\u043B\u044E\u0447\u0430\u0442\u0435\u043B\u0438 \u043E\u043F\u043E\u0432\u0435\u0449\u0435\u043D\u0438\u0439.");
+  if (!Number.isInteger(s.doorMinutes) || s.doorMinutes < 5 || s.doorMinutes > 60) throw new Error("\u041D\u0430\u043F\u043E\u043C\u0438\u043D\u0430\u043D\u0438\u0435 \u043E \u0434\u0432\u0435\u0440\u0438: \u043E\u0442 5 \u0434\u043E 60 \u043C\u0438\u043D\u0443\u0442.");
+  if (!Number.isFinite(s.volume) || s.volume < 0.1 || s.volume > 0.7) throw new Error("\u0413\u0440\u043E\u043C\u043A\u043E\u0441\u0442\u044C \u043E\u0431\u044A\u044F\u0432\u043B\u0435\u043D\u0438\u044F: 10\u201370%.");
+  if (typeof s.cameraName !== "string" || !s.cameraName.trim() || s.cameraName.length > 40 || !/^[- а-яёa-z0-9]+$/iu.test(s.cameraName) || /(^|\s)(и|затем|потом|включи|выключи|открой|закрой|удали|скажи|отмени)(\s|$)/iu.test(s.cameraName)) throw new Error("\u0423\u043A\u0430\u0436\u0438 \u0442\u043E\u043B\u044C\u043A\u043E \u043A\u043E\u0440\u043E\u0442\u043A\u043E\u0435 \u0438\u043C\u044F \u043A\u0430\u043C\u0435\u0440\u044B, \u043D\u0435 \u043A\u043E\u043C\u0430\u043D\u0434\u0443.");
+  s.cameraName = s.cameraName.trim();
+  return s;
+}
+function homeBrief(p, states) {
+  const byId = new Map(states.map((e) => [e.entity_id, e]));
+  const read = (id) => {
+    const d = p.devices.find((d2) => d2.id === id), b = p.bindings[id];
+    return d?.status === "installed" && b?.verified ? byId.get(b.entityId) : null;
+  };
+  const parts = ["\u041F\u043E HA:"];
+  for (const [id, name] of [["leak:utility", "\u043A\u043E\u0442\u0435\u043B\u044C\u043D\u0430\u044F"], ["leak:bath", "\u0432\u0430\u043D\u043D\u0430\u044F"]]) if (binaryValue("leak", read(id)?.state) === true) parts.push("\u043F\u0440\u043E\u0442\u0435\u0447\u043A\u0430, " + name + ".");
+  const missing = [["door", "\u0432\u0445\u043E\u0434"], ["terrace-door", "\u0442\u0435\u0440\u0440\u0430\u0441\u0430"], ["leak:utility", "\u043A\u043E\u0442\u0435\u043B\u044C\u043D\u0430\u044F"], ["leak:bath", "\u0432\u0430\u043D\u043D\u0430\u044F"]].filter(([id]) => {
+    const d = p.devices.find((d2) => d2.id === id && d2.status === "installed");
+    return d && binaryValue(d.type, read(id)?.state) === null;
+  }).map(([, name]) => name);
+  if (missing.length) parts.push("\u043D\u0435\u0442 \u0434\u0430\u043D\u043D\u044B\u0445: " + missing.join(", ") + ".");
+  for (const [id, name] of [["door", "\u0432\u0445\u043E\u0434"], ["terrace-door", "\u0442\u0435\u0440\u0440\u0430\u0441\u0430"]]) {
+    const v = binaryValue("door", read(id)?.state);
+    if (v === true) parts.push(name + " \u043E\u0442\u043A\u0440\u044B\u0442" + (id === "terrace-door" ? "\u0430" : "") + ".");
+  }
+  const lights = p.devices.filter((d) => d.status === "installed" && ["light", "rgb"].includes(d.type));
+  const unknown = lights.filter((d) => !["on", "off"].includes(read(d.id)?.state)).length;
+  const on = lights.filter((d) => read(d.id)?.state === "on").length;
+  parts.push(!lights.length ? "\u043D\u0435\u0442 \u043B\u0438\u043D\u0438\u0439 \u0441\u0432\u0435\u0442\u0430." : unknown ? `\u0441\u0432\u0435\u0442: ${on} \u0432\u043A\u043B\u044E\u0447\u0435\u043D\u043E, ${unknown} \u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E.` : on ? `\u0441\u0432\u0435\u0442: ${on} \u0432\u043A\u043B\u044E\u0447\u0435\u043D\u043E.` : "\u0441\u0432\u0435\u0442 \u0432\u044B\u043A\u043B\u044E\u0447\u0435\u043D.");
+  for (const [id, name] of [["temperature:living", "\u0433\u043E\u0441\u0442\u0438\u043D\u0430\u044F"], ["temperature:well", "\u0441\u043A\u0432\u0430\u0436\u0438\u043D\u0430"]]) {
+    const v = numericReading(read(id), { unit: "\xB0C" });
+    parts.push(v.available ? `${name} ${String(v.value).replace(".", ",")} \u0433\u0440\u0430\u0434\u0443\u0441\u0430.` : `${name}: \u043D\u0435\u0442 \u0434\u0430\u043D\u043D\u044B\u0445.`);
+  }
+  let text = "";
+  for (const part of parts) if ((text + " " + part).trim().length <= 100) text = (text + " " + part).trim();
+  return text;
+}
+var StationAssistant = class {
+  constructor(ha2, db2, profiles, { now = () => Date.now() } = {}) {
+    this.ha = ha2;
+    this.db = db2;
+    this.profiles = profiles;
+    this.now = now;
+    this.ticking = false;
+    db2.exec(`CREATE TABLE IF NOT EXISTS assistant_settings(profile_id TEXT PRIMARY KEY,settings TEXT NOT NULL);
+   CREATE TABLE IF NOT EXISTS assistant_requests(profile_id TEXT NOT NULL,request_id TEXT NOT NULL,fingerprint TEXT NOT NULL,action TEXT NOT NULL,status TEXT NOT NULL,result TEXT,created_at INTEGER NOT NULL,PRIMARY KEY(profile_id,request_id));
+   CREATE TABLE IF NOT EXISTS assistant_observations(profile_id TEXT NOT NULL,device_id TEXT NOT NULL,entity_id TEXT NOT NULL,active INTEGER NOT NULL,opened_at INTEGER,notified INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(profile_id,device_id,entity_id));
+   CREATE INDEX IF NOT EXISTS assistant_requests_by_profile_time ON assistant_requests(profile_id,created_at DESC);`);
+  }
+  settings(id) {
+    const row = this.db.prepare("SELECT settings FROM assistant_settings WHERE profile_id=?").get(id);
+    return row ? validateAssistantSettings(JSON.parse(row.settings)) : { ...DEFAULTS };
+  }
+  saveSettings(id, input) {
+    const s = validateAssistantSettings(input);
+    this.db.prepare("INSERT INTO assistant_settings VALUES(?,?) ON CONFLICT(profile_id) DO UPDATE SET settings=excluded.settings").run(id, JSON.stringify(s));
+    return s;
+  }
+  requireLive(p) {
+    if (!this.ha.enabled || p.mode !== "live") throw new Error("\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044F \u0441\u0442\u0430\u043D\u0446\u0438\u0438 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B \u0442\u043E\u043B\u044C\u043A\u043E \u0432 \u0440\u0430\u0431\u043E\u0447\u0435\u043C \u0440\u0435\u0436\u0438\u043C\u0435 \u0441 HA. \u0414\u0435\u043C\u043E \u043D\u0438\u0447\u0435\u0433\u043E \u043D\u0435 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u0442.");
+  }
+  binding(p) {
+    this.requireLive(p);
+    const b = p.bindings.station, d = p.devices.find((d2) => d2.id === "station");
+    if (d?.type !== "station" || d.status !== "installed" || !b?.verified || !/^media_player\.[a-z0-9_]+$/.test(b.entityId)) throw new Error("\u0421\u0442\u0430\u043D\u0446\u0438\u044F \u043D\u0435 \u043F\u0440\u0438\u0432\u044F\u0437\u0430\u043D\u0430 \u0438\u043B\u0438 \u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u0430.");
+    return b.entityId;
+  }
+  features(e) {
+    return { available: stationAvailable(e), playMedia: stationAvailable(e) && !!(Number(e.attributes?.supported_features) & PLAY_MEDIA), local: stationAvailable(e) && typeof e?.attributes?.alice_state === "string" && e.attributes.alice_state.length > 0 && !!(Number(e.attributes?.supported_features) & 1) && e.attributes.assumed_state !== true };
+  }
+  async status(id, p) {
+    this.requireLive(p);
+    const entity = this.binding(p), states = await this.ha.states(), station = states.find((e) => e.entity_id === entity);
+    const f = this.features(station), settings = this.settings(id), read = (key) => {
+      const b = p.bindings[key];
+      return b?.verified ? states.find((e) => e.entity_id === b.entityId) : null;
+    };
+    const lights = p.devices.filter((d) => ["light", "rgb"].includes(d.type) && d.status === "installed" && d.masterOff && read(d.id)?.state === "on").map((d) => ({ id: d.id, name: d.name, room: d.room }));
+    const warnings = [];
+    for (const d of p.devices.filter((d2) => d2.status === "installed" && ["door", "leak"].includes(d2.type))) {
+      const v = binaryValue(d.type, read(d.id)?.state);
+      if (v !== false) warnings.push({ id: d.id, name: d.name, room: d.room, kind: v === true ? d.type === "leak" ? "alarm" : "open" : "unknown" });
+    }
+    for (const d of p.devices.filter((d2) => d2.status === "installed" && ["light", "rgb"].includes(d2.type) && d2.masterOff)) if (!["on", "off"].includes(read(d.id)?.state)) warnings.push({ id: d.id, name: d.name, room: d.room, kind: "unknown" });
+    return {
+      ...f,
+      entity,
+      brief: homeBrief(p, states),
+      settings,
+      leave: { lights, pause: station?.state === "playing" && stationSupports(station, "playing", false), warnings },
+      automation: { pollEverySeconds: 15, lastPollAt: this.lastPollAt || null, lastError: this.lastError || null },
+      activity: this.db.prepare("SELECT action,status,created_at FROM assistant_requests WHERE profile_id=? ORDER BY created_at DESC LIMIT 8").all(id).map((r) => ({ ...r, label: labels[r.action] || r.action }))
+    };
+  }
+  async sendMedia(p, type, text, { volume, localOnly = false } = {}) {
+    const entity = this.binding(p);
+    if (this.ha.pending.has(entity)) throw new Error("\u0421\u0442\u0430\u043D\u0446\u0438\u044F \u0437\u0430\u043D\u044F\u0442\u0430. \u0414\u043E\u0436\u0434\u0438\u0441\u044C \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u044F \u043F\u0440\u0435\u0434\u044B\u0434\u0443\u0449\u0435\u0433\u043E \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F.");
+    this.ha.pending.add(entity);
+    try {
+      const e = await this.ha.request("/api/states/" + entity), f = this.features(e);
+      if (!f.playMedia) throw new Error("\u0421\u0442\u0430\u043D\u0446\u0438\u044F \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430 \u0438\u043B\u0438 play_media \u043D\u0435 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u0441\u044F.");
+      if (localOnly && !f.local) throw new Error("\u041D\u0443\u0436\u043D\u0430 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0451\u043D\u043D\u0430\u044F \u043B\u043E\u043A\u0430\u043B\u044C\u043D\u0430\u044F \u0441\u0432\u044F\u0437\u044C \u0441\u043E \u0441\u0442\u0430\u043D\u0446\u0438\u0435\u0439.");
+      await this.ha.request("/api/services/media_player/play_media", {
+        entity_id: entity,
+        media_content_type: type,
+        media_content_id: text,
+        ...type === "text" && f.local && volume !== void 0 ? { extra: { volume_level: volume } } : {}
+      }, { timeout: type === "shopping_list" ? 45e3 : 6e3 });
+      return { phase: "accepted", message: "HA \u043F\u0440\u0438\u043D\u044F\u043B \u0437\u0430\u043F\u0440\u043E\u0441. \u0424\u0430\u043A\u0442\u0438\u0447\u0435\u0441\u043A\u043E\u0435 \u043E\u0437\u0432\u0443\u0447\u0438\u0432\u0430\u043D\u0438\u0435 \u0438\u043B\u0438 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u0435 \u0441\u0442\u0430\u043D\u0446\u0438\u0435\u0439 \u043D\u0435 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u043E." };
+    } finally {
+      this.ha.pending.delete(entity);
+    }
+  }
+  async shopping(p) {
+    this.requireLive(p);
+    const e = await this.ha.request("/api/states/" + todo);
+    if (["unknown", "unavailable"].includes(e.state) || e.entity_id !== todo) throw new Error("\u0421\u043F\u0438\u0441\u043E\u043A todo.shopping_list \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D. \u0414\u043E\u0431\u0430\u0432\u044C \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u044B\u0439 \u0441\u043F\u0438\u0441\u043E\u043A \u043F\u043E\u043A\u0443\u043F\u043E\u043A \u0432 HA.");
+    const result = await this.ha.request("/api/services/todo/get_items?return_response", { entity_id: todo, status: "needs_action" });
+    const items = result?.service_response?.[todo]?.items;
+    if (!Array.isArray(items)) throw new Error("HA \u043D\u0435 \u0432\u0435\u0440\u043D\u0443\u043B \u0441\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0435 \u0441\u043F\u0438\u0441\u043A\u0430 \u043F\u043E\u043A\u0443\u043F\u043E\u043A.");
+    return { entity: todo, items: items.slice(0, 100).filter((i) => typeof i.uid === "string" && typeof i.summary === "string").map((i) => ({ uid: i.uid, summary: i.summary, status: i.status })), truncated: items.length > 100 };
+  }
+  validateAction(r) {
+    if (!r || !Object.prototype.hasOwnProperty.call(labels, r.action) || r.action === "alert") throw new Error("\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u0435 \u0437\u0430\u043F\u0440\u0435\u0449\u0435\u043D\u043E.");
+    if (typeof r.requestId !== "string" || !/^[a-zA-Z0-9_-]{8,80}$/.test(r.requestId)) throw new Error("\u041D\u0435\u0442 \u0443\u043D\u0438\u043A\u0430\u043B\u044C\u043D\u043E\u0433\u043E \u0438\u0434\u0435\u043D\u0442\u0438\u0444\u0438\u043A\u0430\u0442\u043E\u0440\u0430 \u0437\u0430\u043F\u0440\u043E\u0441\u0430.");
+    if (["leave", "camera", "shoppingSync", "cancelTimers"].includes(r.action) && r.confirmed !== true) throw new Error("\u0421\u043D\u0430\u0447\u0430\u043B\u0430 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435 \u0438 \u0435\u0433\u043E \u043E\u0431\u043B\u0430\u0441\u0442\u044C.");
+    if (r.action === "announce" && (typeof r.text !== "string" || !r.text.trim() || r.text.length > 100 || /[<>\x00-\x08\x0b-\x1f]/.test(r.text))) throw new Error("\u041E\u0431\u044A\u044F\u0432\u043B\u0435\u043D\u0438\u0435: 1\u2013100 \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432 \u043E\u0431\u044B\u0447\u043D\u043E\u0433\u043E \u0442\u0435\u043A\u0441\u0442\u0430, \u0431\u0435\u0437 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438.");
+    if (r.action === "timer" && (!Number.isInteger(r.minutes) || r.minutes < 1 || r.minutes > 180)) throw new Error("\u0422\u0430\u0439\u043C\u0435\u0440: \u043E\u0442 1 \u0434\u043E 180 \u043C\u0438\u043D\u0443\u0442.");
+    if (r.action === "shoppingAdd" && (typeof r.item !== "string" || !r.item.trim() || r.item.length > 160 || /[\x00-\x1f]/.test(r.item))) throw new Error("\u041F\u043E\u043A\u0443\u043F\u043A\u0430: 1\u2013160 \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432.");
+    if (r.action === "shoppingComplete" && (typeof r.uid !== "string" || r.uid.length > 200)) throw new Error("\u041D\u0435\u0432\u0435\u0440\u043D\u0430\u044F \u0437\u0430\u043F\u0438\u0441\u044C \u0441\u043F\u0438\u0441\u043A\u0430.");
+    if (Object.keys(r).some((k) => !["action", "requestId", "confirmed", "text", "minutes", "item", "uid"].includes(k))) throw new Error("\u041B\u0438\u0448\u043D\u0438\u0435 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F.");
+  }
+  async execute(id, p, r) {
+    this.requireLive(p);
+    this.validateAction(r);
+    const fingerprint = createHash("sha256").update(JSON.stringify(r)).digest("hex");
+    const previous = this.db.prepare("SELECT * FROM assistant_requests WHERE profile_id=? AND request_id=?").get(id, r.requestId);
+    if (previous) {
+      if (previous.fingerprint !== fingerprint) throw new Error("\u0418\u0434\u0435\u043D\u0442\u0438\u0444\u0438\u043A\u0430\u0442\u043E\u0440 \u0443\u0436\u0435 \u043F\u0440\u0438\u043D\u0430\u0434\u043B\u0435\u0436\u0438\u0442 \u0434\u0440\u0443\u0433\u043E\u043C\u0443 \u0437\u0430\u043F\u0440\u043E\u0441\u0443.");
+      return previous.result ? JSON.parse(previous.result) : { phase: "unknown", message: "\u042D\u0442\u043E\u0442 \u0437\u0430\u043F\u0440\u043E\u0441 \u0443\u0436\u0435 \u043F\u0440\u0438\u043D\u044F\u0442 \u0438\u043B\u0438 \u0431\u044B\u043B \u043F\u0440\u0435\u0440\u0432\u0430\u043D. \u041F\u043E\u0432\u0442\u043E\u0440\u0430 \u043D\u0435\u0442; \u043F\u0440\u043E\u0432\u0435\u0440\u044C \u0441\u0442\u0430\u043D\u0446\u0438\u044E." };
+    }
+    this.db.prepare("INSERT INTO assistant_requests VALUES(?,?,?,?,?,?,?)").run(id, r.requestId, fingerprint, r.action, "running", null, this.now());
+    try {
+      const result = await this.perform(id, p, r);
+      this.db.prepare("UPDATE assistant_requests SET status=?,result=? WHERE profile_id=? AND request_id=?").run(result.phase, JSON.stringify(result), id, r.requestId);
+      return result;
+    } catch (error) {
+      const result = { phase: "unknown", message: error.message + " \u0410\u0432\u0442\u043E\u043F\u043E\u0432\u0442\u043E\u0440\u0430 \u043D\u0435\u0442. \u0415\u0441\u043B\u0438 \u0437\u0430\u043F\u0440\u043E\u0441 \u0434\u043E\u0448\u0451\u043B \u0434\u043E HA, \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435 \u043C\u043E\u0433\u043B\u043E \u0432\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u044C\u0441\u044F." };
+      this.db.prepare("UPDATE assistant_requests SET status=?,result=? WHERE profile_id=? AND request_id=?").run("unknown", JSON.stringify(result), id, r.requestId);
+      return result;
+    }
+  }
+  async perform(id, p, r) {
+    const settings = this.settings(id);
+    if (r.action === "brief") return this.sendMedia(p, "text", homeBrief(p, await this.ha.states()), { volume: settings.volume });
+    if (r.action === "announce") return this.sendMedia(p, "text", r.text.trim(), { volume: settings.volume });
+    if (r.action === "camera") return this.sendMedia(p, "command", "\u041F\u043E\u043A\u0430\u0436\u0438 \u043A\u0430\u043C\u0435\u0440\u0443 " + settings.cameraName);
+    if (r.action === "timer") return this.sendMedia(p, "command", `\u041F\u043E\u0441\u0442\u0430\u0432\u044C \u0442\u0430\u0439\u043C\u0435\u0440 \u043D\u0430 ${r.minutes} \u043C\u0438\u043D\u0443\u0442`);
+    if (r.action === "cancelTimers") return this.sendMedia(p, "command", "\u041E\u0442\u043C\u0435\u043D\u0438 \u0432\u0441\u0435 \u0442\u0430\u0439\u043C\u0435\u0440\u044B");
+    if (r.action === "favorite") return this.sendMedia(p, "command", "\u0412\u043A\u043B\u044E\u0447\u0438 \u043C\u043E\u044E \u0432\u043E\u043B\u043D\u0443");
+    if (r.action === "weather") return this.sendMedia(p, "command", "\u041A\u0430\u043A\u0430\u044F \u0441\u0435\u0433\u043E\u0434\u043D\u044F \u043F\u043E\u0433\u043E\u0434\u0430");
+    if (r.action === "shoppingSync") return this.sendMedia(p, "shopping_list", todo, { localOnly: true });
+    if (["shoppingAdd", "shoppingComplete"].includes(r.action)) {
+      const before = await this.shopping(p);
+      if (r.action === "shoppingComplete" && !before.items.some((i) => i.uid === r.uid)) throw new Error("\u0417\u0430\u043F\u0438\u0441\u044C \u0443\u0436\u0435 \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442. \u041E\u0431\u043D\u043E\u0432\u0438 \u0441\u043F\u0438\u0441\u043E\u043A.");
+      await this.ha.request("/api/services/todo/" + (r.action === "shoppingAdd" ? "add_item" : "update_item"), { entity_id: todo, ...r.action === "shoppingAdd" ? { item: r.item.trim() } : { item: r.uid, status: "completed" } });
+      const after = await this.shopping(p);
+      const confirmed = r.action === "shoppingComplete" ? !after.items.some((i) => i.uid === r.uid) : after.items.some((i) => i.summary === r.item.trim() && !before.items.some((b) => b.uid === i.uid));
+      return { phase: confirmed ? "confirmed" : "accepted", message: confirmed ? "\u0418\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0435 \u0441\u043F\u0438\u0441\u043A\u0430 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u043E \u0447\u0442\u0435\u043D\u0438\u0435\u043C HA." : "HA \u043F\u0440\u0438\u043D\u044F\u043B \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0435; \u043F\u0440\u043E\u0432\u0435\u0440\u044C \u0441\u043F\u0438\u0441\u043E\u043A.", shopping: after };
+    }
+    if (r.action === "leave") {
+      const snapshot = await this.status(id, p);
+      const results = await Promise.all(snapshot.leave.lights.map(async (d) => {
+        try {
+          await this.ha.command({ id: d.id, value: false }, p);
+          return { name: d.name, room: d.room, ok: true };
+        } catch (error) {
+          return { name: d.name, room: d.room, ok: false, message: error.message };
+        }
+      }));
+      if (snapshot.leave.pause) try {
+        await this.ha.command({ id: "station:playing", value: false }, p);
+      } catch (error) {
+        results.push({ name: "\u041C\u0443\u0437\u044B\u043A\u0430", ok: false, message: error.message });
+      }
+      let speech;
+      try {
+        speech = await this.sendMedia(p, "text", homeBrief(p, await this.ha.states()), { volume: settings.volume });
+      } catch (error) {
+        speech = { phase: "unknown", message: error.message };
+      }
+      const warnings = (await this.status(id, p)).leave.warnings, ok = results.every((r2) => r2.ok) && !warnings.some((w) => w.kind === "unknown");
+      return { phase: ok ? "confirmed" : "partial", message: `\u041F\u043E \u0434\u0430\u043D\u043D\u044B\u043C HA \u0432\u044B\u043A\u043B\u044E\u0447\u0435\u043D\u043E \u043B\u0438\u043D\u0438\u0439: ${results.filter((r2) => r2.ok).length}/${snapshot.leave.lights.length}. ${ok ? "\u041F\u0440\u043E\u0432\u0435\u0440\u044C \u0437\u0430\u043C\u0435\u0447\u0430\u043D\u0438\u044F \u043F\u043E \u0434\u0432\u0435\u0440\u044F\u043C \u0438 \u0434\u0430\u0442\u0447\u0438\u043A\u0430\u043C." : "\u041D\u0435 \u0432\u0441\u0451 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u043E; \u043F\u0440\u043E\u0432\u0435\u0440\u044C \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430."}`, results, speech, warnings };
+    }
+    throw new Error("\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u0435 \u0437\u0430\u043F\u0440\u0435\u0449\u0435\u043D\u043E.");
+  }
+  async tick() {
+    if (this.ticking || !this.ha.enabled) return;
+    this.ticking = true;
+    try {
+      const profiles = this.profiles().filter((x) => x.preferences.mode === "live");
+      if (!profiles.length) return;
+      const states = await this.ha.states(), byId = new Map(states.map((e) => [e.entity_id, e])), now = this.now();
+      this.lastPollAt = now;
+      this.lastError = null;
+      for (const { id, preferences: p } of profiles) {
+        const b = p.bindings.station;
+        if (!b?.verified) continue;
+        const f = this.features(byId.get(b.entityId)), canSpeak = f.playMedia && f.local && !this.ha.pending.has(b.entityId) && p.devices.some((d) => d.id === "station" && d.type === "station" && d.status === "installed") && byId.get(b.entityId).attributes.alice_state.toUpperCase() === "IDLE";
+        const s = this.settings(id), hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Moscow", hour: "2-digit", hourCycle: "h23" }).format(now));
+        for (const d of p.devices.filter((d2) => d2.status === "installed" && ["leak", "door"].includes(d2.type)).sort((a, b2) => (a.type === "leak" ? 0 : 1) - (b2.type === "leak" ? 0 : 1))) {
+          const binding = p.bindings[d.id];
+          if (!binding?.verified) continue;
+          const e = byId.get(binding.entityId), value = binaryValue(d.type, e?.state);
+          if (value === null) continue;
+          let row = this.db.prepare("SELECT * FROM assistant_observations WHERE profile_id=? AND device_id=? AND entity_id=?").get(id, d.id, binding.entityId);
+          const key = [id, d.id, binding.entityId];
+          if (!value) {
+            if (!row || row.active || row.notified) this.db.prepare("INSERT INTO assistant_observations VALUES(?,?,?,0,NULL,0) ON CONFLICT(profile_id,device_id,entity_id) DO UPDATE SET active=0,opened_at=NULL,notified=0").run(...key);
+            continue;
+          }
+          if (!row?.active) {
+            const timestamp = Date.parse(e.last_changed || e.last_updated);
+            const opened = Number.isFinite(timestamp) && timestamp <= now ? timestamp : now;
+            this.db.prepare("INSERT INTO assistant_observations VALUES(?,?,?,1,?,0) ON CONFLICT(profile_id,device_id,entity_id) DO UPDATE SET active=1,opened_at=excluded.opened_at,notified=0").run(...key, opened);
+            row = { opened_at: opened, notified: 0 };
+          }
+          if (row.notified) continue;
+          const due = d.type === "leak" ? s.leakAlerts : s.doorAlerts && now - row.opened_at >= s.doorMinutes * 6e4 && (!s.quietNight || hour >= 8 && hour < 22);
+          if (!due || !canSpeak) continue;
+          this.db.prepare("UPDATE assistant_observations SET notified=1 WHERE profile_id=? AND device_id=? AND entity_id=?").run(...key);
+          const requestId = "alert_" + createHash("sha256").update(JSON.stringify([...key, row.opened_at])).digest("hex");
+          this.db.prepare("INSERT OR IGNORE INTO assistant_requests VALUES(?,?,?,?,?,?,?)").run(id, requestId, requestId, "alert", "running", null, now);
+          let result;
+          try {
+            result = await this.sendMedia(p, "text", d.type === "leak" ? "\u0412\u043D\u0438\u043C\u0430\u043D\u0438\u0435! " + d.name.slice(0, 60) + "." : "\u041F\u0440\u043E\u0432\u0435\u0440\u044C: " + d.name.slice(0, 60) + " \u0434\u043E\u043B\u0433\u043E \u043E\u0442\u043A\u0440\u044B\u0442\u0430.", { volume: s.volume, localOnly: true });
+          } catch (error) {
+            result = { phase: "unknown", message: error.message };
+          }
+          this.db.prepare("UPDATE assistant_requests SET status=?,result=? WHERE profile_id=? AND request_id=?").run(result.phase, JSON.stringify(result), id, requestId);
+          break;
+        }
+      }
+    } catch (error) {
+      this.lastError = error.message;
+    } finally {
+      this.ticking = false;
+    }
+  }
+};
+
 // server/index.js
 var port = Number(process.env.PORT || 8080);
 var preview = process.env.PANEL_PREVIEW === "1";
@@ -1202,6 +1483,9 @@ var getProfile = (id) => {
   })();
   return { preferences, photo: row.photo };
 };
+var assistant = new StationAssistant(ha, db, () => db.prepare("SELECT id FROM profiles").all().map(({ id }) => ({ id, preferences: getProfile(id).preferences })));
+var assistantScopes = /* @__PURE__ */ new Set();
+if (!preview) setInterval(() => assistant.tick(), 15e3).unref();
 var json = (res, code, body2) => {
   res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
   res.end(JSON.stringify(body2));
@@ -1227,7 +1511,7 @@ function identify(req) {
   }
   const host = req.headers.host || "", direct = /^(localhost|127\.0\.0\.1|\[::1\]):\d+$/.test(host);
   const visitor = req.headers["x-visitor-id"];
-  if (preview && visitor) return "preview:" + createHash("sha256").update(String(visitor)).digest("hex");
+  if (preview && visitor) return "preview:" + createHash2("sha256").update(String(visitor)).digest("hex");
   if (direct && ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(req.socket.remoteAddress)) return "local";
   throw new Error("\u0414\u043E\u0441\u0442\u0443\u043F \u0440\u0430\u0437\u0440\u0435\u0448\u0451\u043D \u0442\u043E\u043B\u044C\u043A\u043E \u0441 \u044D\u0442\u043E\u0433\u043E \u043A\u043E\u043C\u043F\u044C\u044E\u0442\u0435\u0440\u0430 \u0438\u043B\u0438 \u0447\u0435\u0440\u0435\u0437 \u043F\u0440\u0438\u0432\u0430\u0442\u043D\u043E\u0435 \u043F\u0440\u0435\u0432\u044C\u044E.");
 }
@@ -1258,6 +1542,25 @@ var server = http.createServer(async (req, res) => {
         return json(res, 200, { preferences: p.preferences, photo: !!p.photo, proof: proofs.get(id), preview, addon, haConfigured: ha.enabled });
       }
       if (req.method !== "GET") authorize(req, id);
+      if (route === "assistant/status" && req.method === "GET") return json(res, 200, await assistant.status(id, p.preferences));
+      if (route === "assistant/shopping" && req.method === "GET") return json(res, 200, await assistant.shopping(p.preferences));
+      if (route === "assistant/settings" && req.method === "PUT") {
+        if (pendingScopes.has(id)) throw new Error("\u0414\u043E\u0436\u0434\u0438\u0441\u044C \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u044F \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F.");
+        return json(res, 200, { settings: assistant.saveSettings(id, JSON.parse((await body(req)).toString())) });
+      }
+      if (route === "assistant/action" && req.method === "POST") {
+        if (pendingScopes.has(id)) throw new Error("\u0414\u043E\u0436\u0434\u0438\u0441\u044C \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u044F \u043F\u0440\u0435\u0434\u044B\u0434\u0443\u0449\u0435\u0433\u043E \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F.");
+        pendingScopes.set(id, (pendingScopes.get(id) || 0) + 1);
+        assistantScopes.add(id);
+        try {
+          return json(res, 200, await assistant.execute(id, p.preferences, JSON.parse((await body(req)).toString())));
+        } finally {
+          assistantScopes.delete(id);
+          const n = pendingScopes.get(id) - 1;
+          if (n) pendingScopes.set(id, n);
+          else pendingScopes.delete(id);
+        }
+      }
       if (route === "ha/history" && req.method === "GET") {
         if (url.searchParams.has("entity_id") || url.searchParams.has("filter_entity_id")) throw new Error("\u0421\u0443\u0449\u043D\u043E\u0441\u0442\u0438 \u0438\u0441\u0442\u043E\u0440\u0438\u0438 \u043E\u043F\u0440\u0435\u0434\u0435\u043B\u044F\u044E\u0442\u0441\u044F \u0442\u043E\u043B\u044C\u043A\u043E \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u043D\u044B\u043C\u0438 \u043F\u0440\u0438\u0432\u044F\u0437\u043A\u0430\u043C\u0438 \u043F\u0440\u043E\u0444\u0438\u043B\u044F.");
         return json(res, 200, await loadHistory(ha, p.preferences, url.searchParams.get("hours")));
@@ -1375,6 +1678,7 @@ var server = http.createServer(async (req, res) => {
         return res.end(image.bytes);
       }
       if (route === "ha/command" && req.method === "POST") {
+        if (assistantScopes.has(id)) throw new Error("\u0414\u043E\u0436\u0434\u0438\u0441\u044C \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u044F \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F \u0441\u0442\u0430\u043D\u0446\u0438\u0438.");
         const request = JSON.parse((await body(req)).toString());
         pendingScopes.set(id, (pendingScopes.get(id) || 0) + 1);
         try {

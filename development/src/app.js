@@ -22,6 +22,7 @@ import {binaryValue,leakIssues} from './sensor-state.js';
 import {motionObservation,elapsedLabel} from './motion.js';
 import {historyState,statisticsView,inspectHistoryChart} from './history-ui.js';
 import {numericReading,stateTimes} from './readings.js';
+import {duoUI,assistantView} from './assistant-ui.js';
 
 const $=s=>document.querySelector(s);
 const I=name=>`<i data-lucide="${name}"></i>`;
@@ -71,15 +72,17 @@ function toast(message){
  clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.remove('visible'),3600);
 }
 function modal(content,room=null){
+ clearInterval(duoTimer);duoGeneration++;
  clearCamera();
  $('#overlay').classList.remove('camera-overlay');
- $('.sheet').classList.remove('camera-sheet','settings-sheet');
+ $('.sheet').classList.remove('camera-sheet','settings-sheet','station-hub-sheet');
  $('.sheet').scrollTop=0;
  lastFocus=document.activeElement;$('#sheet-content').innerHTML=content;
  $('#sheet-content').dataset.room=room||'';$('#overlay').hidden=false;icons();$('.close').focus();armIdle();
  $('#sheet-content').scrollTop=0;
 }
 function closeModal(){
+ clearInterval(duoTimer);duoGeneration++;
  stationAdjusting=false;
  clearCamera();
  $('#overlay').hidden=true;$('#overlay').classList.remove('camera-overlay');settingsOpen=false;state.techOpen=false;
@@ -218,7 +221,7 @@ function homeQuick(){
  ${camera?`<button class="quick-device camera-shortcut" data-camera="${camera.id}" aria-label="Двор: открыть прямой эфир"><span class="quick-device-icon">${I('camera')}</span><span><strong>Двор</strong><small>Камера</small></span></button>`:''}
  ${media?`<div class="quick-device media-shortcut">
  <button class="quick-device-icon" data-action="station-play" aria-label="${state.stationPlaying?'Пауза на станции':'Продолжить на станции'}" ${disabled(!canControl('station:playing')||hasPending())}>${I(state.stationPlaying?'pause':'play')}</button>
- <button class="media-details" data-action="station" aria-label="Станция · ${esc(stationRoom())}: открыть управление"><strong>Музыка</strong><small title="${esc(observed('station')?.attributes?.media_title||stationRoom())}">${esc(observed('station')?.attributes?.media_title||stationRoom())}</small></button>
+ <button class="media-details" data-action="station" aria-label="Станция · ${esc(stationRoom())}: открыть управление"><strong>Станция</strong><small title="${esc(observed('station')?.attributes?.media_title||stationRoom())}">${esc(observed('station')?.attributes?.media_title||stationRoom())}</small></button>
  ${stationSkipButtons()}</div>`:''}
  </div>`;
 }
@@ -447,6 +450,7 @@ function refresh(){
   if(state.techOpen&&techTab==='diagnostics')$('#sheet-content').innerHTML=technical();
   else if(settingsOpen){/* HA polling must not replace an open form or its focus. */}
   else if($('#sheet-content').dataset.station==='true'&&!stationAdjusting)$('#sheet-content').innerHTML=stationSheet();
+  else if(duoOpen()&&duoUI.tab==='music'&&!stationAdjusting&&!duoUI.busy)updateRegion('#assistant-music',stationSheet());
   else updateDetail();
  }
  $('#master').disabled=masterBlocked();updateHeader();
@@ -547,6 +551,55 @@ function stationSheet(){
  <div class="rgb-control"><label for="station-volume">Громкость <span id="station-volume-label">${enabled?state.stationVolume+' % · демо':'Недоступна'}</span></label>
  <input id="station-volume" type="range" min="0" max="100" value="${state.stationVolume}" ${disabled(!enabled||hasPending())}/>${phaseLine('station:volume')}</div>
  <p class="description">Эти функции условно показаны в деморежиме. В рабочей версии появятся только подтверждённые возможности интеграции. Эта веб-панель не предназначена для запуска на экране станции.</p>`;
+}
+let duoTimer,duoGeneration=0,duoInFlight=-1;
+function clearDuoResult(){duoUI.message='';duoUI.error='';duoUI.phase='';const result=$('.duo-result');if(result)result.hidden=true}
+function duoOpen(){return !$('#overlay').hidden&&$('#sheet-content').dataset.station==='hub'}
+function paintDuo(){
+ if(!duoOpen())return;
+ const tab=document.activeElement?.dataset.duoTab;
+ $('#sheet-content').innerHTML=assistantView(stationRoom(),stationSheet(),{live:isLive(),online:state.liveOnline});icons();
+ if(tab)$(`[data-duo-tab="${tab}"]`)?.focus({preventScroll:true});
+}
+async function refreshDuo(){
+ if(!duoOpen()||duoUI.busy)return;
+ if(!isLive()){duoUI.status=null;duoUI.loading=false;paintDuo();return}
+ const generation=duoGeneration;if(duoInFlight===generation)return;duoInFlight=generation;
+ try{const status=await api('assistant/status');if(generation!==duoGeneration||!duoOpen())return;duoUI.status=status;duoUI.statusError=''}
+ catch(error){if(generation===duoGeneration)duoUI.statusError=error.message}
+ finally{if(duoInFlight===generation)duoInFlight=-1}
+ if(generation!==duoGeneration||!duoOpen())return;
+ duoUI.loading=false;
+ if(!document.activeElement?.matches('#sheet-content input,#sheet-content textarea,#sheet-content select'))paintDuo();
+}
+async function openDuo(){
+ settingsOpen=false;duoUI.confirm=null;duoUI.tool=null;duoUI.tab='home';duoUI.loading=isLive();duoUI.error='';duoUI.message='';
+ modal('');$('#sheet-content').dataset.station='hub';$('.sheet').classList.add('station-hub-sheet');paintDuo();
+ const generation=duoGeneration;await refreshDuo();
+ if(generation===duoGeneration&&duoOpen()){clearInterval(duoTimer);duoTimer=setInterval(refreshDuo,10000)}
+}
+async function loadDuoList(){
+ if(!isLive()){duoUI.listError='Нужен подключённый HA.';paintDuo();return}
+ try{const data=await api('assistant/shopping');duoUI.items=data.items;duoUI.listLoaded=true;duoUI.listError=''}
+ catch(error){duoUI.listError=error.message}
+ if(duoUI.tab==='shopping')paintDuo();
+}
+async function runDuo(action,extra={}){
+ if(duoUI.busy||!isLive()||!state.liveOnline)return;
+ duoUI.busy=true;duoUI.error='';duoUI.message='';duoUI.confirm=null;paintDuo();$('.sheet').scrollTop=0;
+ try{
+  await flushStorage();
+  const result=await api('assistant/action',{method:'POST',timeout:60000,body:{action,requestId:deviceId(),...extra}});
+  duoUI.phase=result.phase;duoUI.message=result.message;
+  if(result.shopping){duoUI.items=result.shopping.items;duoUI.listLoaded=true;duoUI.listError=''}
+  if(action==='shoppingSync'&&result.phase==='accepted')await loadDuoList();
+  if(action==='announce'&&result.phase==='accepted')duoUI.draft='';
+  if(action==='shoppingAdd'&&result.phase==='confirmed')duoUI.item='';
+  if(result.warnings?.length)duoUI.message+=' Замечания: '+result.warnings.map(w=>(w.room?areaName(w.room)+' / ':'')+w.name+(w.kind==='unknown'?' — нет данных':w.kind==='alarm'?' — тревога':' — открыта')).join('; ');
+  if(result.results?.some(r=>!r.ok))duoUI.message+=' Не подтверждено: '+result.results.filter(r=>!r.ok).map(r=>(r.room?areaName(r.room)+' / ':'')+r.name).join('; ');
+  if(result.speech?.phase==='unknown')duoUI.message+=' Озвучивание не подтверждено.';
+ }catch(error){duoUI.error=error.message;duoUI.phase='unknown'}
+ finally{duoUI.busy=false;paintDuo();if(duoOpen())$('.sheet').scrollTop=0;await refreshDuo()}
 }
 function sensorSheet(id){
  const s=sensors[id],name={living:'Гостиная',well:'Скважина',attic:'Чердак'}[id];
@@ -835,7 +888,7 @@ function wake(){
 }
 function simpleSheet(content){settingsOpen=false;$('#sheet-content').dataset.station='';modal(content)}
 
-document.addEventListener('click',e=>{
+document.addEventListener('click',async e=>{
  const b=e.target.closest('button');if(!b)return;
  if(b.dataset.view)return navigate(b.dataset.view);
  if(b.dataset.historyHours){historyState.hours=Number(b.dataset.historyHours);historyState.data=null;loadStatistics(true);return}
@@ -843,6 +896,28 @@ document.addEventListener('click',e=>{
  if(b.dataset.historyZone){historyState.room=b.dataset.historyZone;return navigate('statistics')}
  if(b.dataset.room)return openRoom(b.dataset.room);
  if(b.dataset.sensor)return simpleSheet(`<div data-climate-sheet="${esc(b.dataset.sensor)}">${sensorSheet(b.dataset.sensor)}</div>`);
+ if(b.dataset.duoTab){
+  clearDuoResult();duoUI.tab=b.dataset.duoTab;duoUI.confirm=null;duoUI.tool=null;paintDuo();$('.sheet').scrollTop=0;
+  if(duoUI.tab==='shopping')loadDuoList();return;
+ }
+ if(b.dataset.duoTool){clearDuoResult();duoUI.tool=b.dataset.duoTool;paintDuo();return}
+ if(b.hasAttribute('data-duo-back')){clearDuoResult();duoUI.tool=null;paintDuo();return}
+ if(b.hasAttribute('data-duo-cancel')){duoUI.confirm=null;paintDuo();return}
+ if(b.hasAttribute('data-duo-list-reload'))return loadDuoList();
+ if(b.dataset.duoComplete)return runDuo('shoppingComplete',{uid:b.dataset.duoComplete});
+ if(b.dataset.duoExecute)return runDuo(b.dataset.duoExecute,{confirmed:true});
+ if(b.dataset.duoAction){
+  const action=b.dataset.duoAction;
+  if(b.dataset.duoConfirm){clearDuoResult();duoUI.confirm=action;paintDuo();return}
+  return runDuo(action,action==='announce'?{text:duoUI.draft}:action==='timer'?{minutes:duoUI.timer}:action==='shoppingAdd'?{item:duoUI.item}:{});
+ }
+ if(b.hasAttribute('data-duo-save')){
+  const settings={leakAlerts:$('#duo-leaks').checked,doorAlerts:$('#duo-doors').checked,doorMinutes:Number($('#duo-door-minutes').value),quietNight:$('#duo-quiet').checked,volume:Number($('#duo-alert-volume').value)/100,cameraName:$('#duo-camera-name').value};
+  if(duoUI.busy)return;duoUI.busy=true;paintDuo();
+  try{await api('assistant/settings',{method:'PUT',body:settings});duoUI.settingsDraft=null;duoUI.message='Настройки сохранены на сервере. Оповещения не зависят от открытой вкладки.';duoUI.phase='confirmed';duoUI.error=''}
+  catch(error){duoUI.error=error.message}
+  finally{duoUI.busy=false;paintDuo();await refreshDuo();if(duoOpen())$('.sheet').scrollTop=0}return;
+ }
  if(b.dataset.camera)return cameraSheet(b.dataset.camera);
  if(b.dataset.cameraStart)return cameraStart(b.dataset.cameraStart);
  if(b.dataset.cameraHls)return cameraStart(b.dataset.cameraHls,'hls');
@@ -957,7 +1032,7 @@ document.addEventListener('click',e=>{
   const clear=()=>{if(state.heroURL)URL.revokeObjectURL(state.heroURL);state.heroURL=null;photoBlob=null;state.photoSaved=false;if(state.view==='home')render();updateSettings()};
   if(state.photoStored)removePhoto().then(clear).catch(error=>toast(error.message));else clear();return;
  }
- if(a==='station'){settingsOpen=false;modal(stationSheet());$('#sheet-content').dataset.station='true';return}
+ if(a==='station')return openDuo();
  if(a==='station-play'&&!hasPending())return command('station:playing',!state.stationPlaying);
  if(['station-next','station-previous'].includes(a)&&!hasPending()){
   const id=a==='station-next'?'station:next':'station:previous';
@@ -1027,6 +1102,13 @@ document.addEventListener('change',async e=>{
  }
 });
 document.addEventListener('input',e=>{
+ if(e.target.id.startsWith('duo-'))clearDuoResult();
+ if(e.target.id==='duo-message')duoUI.draft=e.target.value;
+ if(e.target.id==='duo-item')duoUI.item=e.target.value;
+ if(e.target.id==='duo-minutes')duoUI.timer=Number(e.target.value);
+ if(duoOpen()&&duoUI.tab==='settings'&&e.target.id.startsWith('duo-')&&$('#duo-leaks')){
+  duoUI.settingsDraft={leakAlerts:$('#duo-leaks').checked,doorAlerts:$('#duo-doors').checked,doorMinutes:Number($('#duo-door-minutes').value),quietNight:$('#duo-quiet').checked,volume:Number($('#duo-alert-volume').value)/100,cameraName:$('#duo-camera-name').value};
+ }
  if(e.target.id==='equipment-filter'){
   const query=e.target.value.trim().toLowerCase();
   $('.sheet').querySelectorAll('[data-equipment-option]').forEach(el=>{el.hidden=!el.dataset.search.includes(query)});

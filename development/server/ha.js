@@ -11,14 +11,14 @@ export class HomeAssistant {
    this.url=u.href.replace(/\/$/,'');
   }
  }
- async request(path,body){
+ async request(path,body,{timeout=6000}={}){
   if(!this.enabled)throw new Error('Home Assistant не настроен. На месте добавим HA_URL и HA_TOKEN в .env локального сервера.');
   let response;
   try{
    response=await fetch(this.url+path,{
     method:body===undefined?'GET':'POST',redirect:'error',
     headers:{Authorization:`Bearer ${this.token}`,'Content-Type':'application/json'},
-    ...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(6000)
+    ...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(timeout)
    });
   }catch{throw new Error('Нет связи с Home Assistant. Проверь сеть и адрес локального сервера.')}
   if(response.status===401||response.status===403)throw new Error('Home Assistant отклонил авторизацию. Проверь локальный токен.');
@@ -26,7 +26,7 @@ export class HomeAssistant {
   try{return await response.json()}catch{throw new Error('Некорректный ответ Home Assistant.')}
  }
  sanitize(e){
-  const keys=['friendly_name','device_class','unit_of_measurement','temperature_unit','brightness','rgb_color','supported_color_modes','current_position','battery_level','current_temperature','temperature','hvac_action','supported_features','volume_level','media_title','media_artist'];
+  const keys=['friendly_name','device_class','unit_of_measurement','temperature_unit','brightness','rgb_color','supported_color_modes','current_position','battery_level','current_temperature','temperature','hvac_action','supported_features','volume_level','media_title','media_artist','alice_state','assumed_state'];
   return {entity_id:e.entity_id,state:e.state,last_changed:e.last_changed,last_updated:e.last_updated,last_reported:e.last_reported,
    attributes:Object.fromEntries(keys.filter(k=>e.attributes?.[k]!==undefined).map(k=>[k,e.attributes[k]]))};
  }
