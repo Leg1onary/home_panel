@@ -18,6 +18,7 @@ import {stationSupports,stationStateLabel} from './station.js';
 import {buildDeviceModel,detachChannel} from './device-model.js';
 import {deviceStructure,equipmentFromForm} from './device-model-ui.js';
 import {homeSummary} from './home-summary.js';
+import {digestItems} from './digest.js';
 import {binaryValue,leakIssues} from './sensor-state.js';
 import {motionObservation,elapsedLabel} from './motion.js';
 import {historyState,statisticsView,inspectHistoryChart} from './history-ui.js';
@@ -163,6 +164,7 @@ function home(){
  <div class="context-heading rooms-heading"><h2>Комнаты</h2><button class="text-button" data-action="favorites" aria-label="Настроить избранные комнаты">${I('sliders-horizontal')}</button></div>
  <div class="favorite-rooms" id="home-favorites">${favoriteRooms()}</div>
  <button class="all-zones-link text-button" data-action="allrooms">Все комнаты и зоны ${I('arrow-up-right')}</button>
+ <div id="home-digest" hidden></div>
  ${!state.preview&&!state.houseProfileConfirmed&&state.devices.some(d=>houseBindings[d.id]===state.bindings[d.id]?.entityId)?'<div class="profile-invite"><div><strong>Профиль ждёт проверки</strong><p>Подтверди привязки перед управлением домом.</p></div><button class="secondary" data-action="house-review">Проверить профиль</button></div>':''}
  </aside></div></div>`;
 }
@@ -234,6 +236,11 @@ function houseAlerts(){
   .sort((a,b)=>Number(b.alarm)-Number(a.alarm))
   .map(d=>`<button class="house-alert ${d.alarm?'is-alarm':'is-unavailable'}" data-action="leak" data-leak-id="${esc(d.id)}" ${d.alarm?'role="alert"':''}>${I(d.alarm?'triangle-alert':'wifi-off')}<span><strong>${esc(d.alarm?d.name+'!':'Нет данных · '+d.name)}</strong><small>${d.alarm?'Проверь воду и источник протечки':'Датчик недоступен или его состояние неизвестно'}</small></span>${I('chevron-right')}</button>`).join('');
 }
+function digestCard(){
+ const items=digestItems({mode:state.mode,liveOnline:state.liveOnline,devices:state.devices,bindings:state.bindings,entityStates:state.entityStates||{},now:Date.now()});
+ if(!items.length)return '';
+ return `<div class="digest-card ${items[0].level==='danger'?'is-danger':''}"><h3>${I('info')}Дайджест дома</h3><ul>${items.map(it=>`<li class="digest-item digest-${it.level}">${I(it.icon)}<span>${esc(it.text)}</span></li>`).join('')}</ul></div>`;
+}
 function stationRoom(){return areaName(state.devices.find(d=>d.id==='station')?.room||'corridor')}
 function stationSkipButtons(){
  const e=isLive()?observed('station'):null;
@@ -273,7 +280,8 @@ function controls(r){
  return `${r.channels.map(c=>{
  const id=c.id;
  const note=c.planned?c.note:isLive()&&!canControl(id)?'Нет данных · канал не проверен или недоступен':noConnection()?'Нет связи':c.note||'Отдельная линия света';
- return `<div class="control-group"><div class="control-row"><div><h3>${esc(c.name)}</h3><p>${esc(note||'Планируется')}</p></div>
+const isPlanned=c.planned;
+ return `<div class="control-group${isPlanned?' is-planned':''}"><div class="control-row"><div><h3>${esc(c.name)}</h3><p>${esc(note||'Планируется')}</p></div>
  ${toggle(id,c.name,c.on,c.planned,`data-device="${id}"`)}</div>${phaseLine(id)}</div>`;
  }).join('')}${state.devices.some(d=>d.id==='rgb'&&d.room===r.id)?rgbControls():''}
  ${!r.channels.length?'<p class="empty-room-note">Здесь нет линий света. Другие устройства доступны ниже.</p>':''}
@@ -337,8 +345,8 @@ function logicalSensorCards(roomId){
  return buildDeviceModel(preferences(),state.entityStates,isLive()&&state.liveOnline)
   .map(g=>({...g,components:g.components.filter(c=>sensorTypes.includes(c.type)&&c.installed&&(!roomId||c.room===roomId))}))
   .filter(g=>g.components.some(c=>c.type!=='battery'))
-  .map(g=>`<article class="module-card"><div class="title-line"><span>${esc(areaName(g.room))}</span>${I(g.icon)}</div><h3>${esc(g.name)}</h3>
-   ${g.components.map(c=>`<div class="status-line"><span>${esc(deviceTypes[c.type].label)}</span><strong>${esc(deviceReading(byId.get(c.id)))}</strong></div>`).join('')}
+  .map(g=>`<article class="module-card sensor-card"><div class="title-line"><span>${esc(areaName(g.room))}</span>${I(g.icon)}</div><h3>${esc(g.name)}</h3>
+   ${g.components.map(c=>{const text=deviceReading(byId.get(c.id));return `<div class="status-line"><span>${esc(deviceTypes[c.type].label)}</span><strong${text==='Нет данных'?' class="is-unavailable"':''}>${esc(text)}</strong></div>`}).join('')}
    <p>${isLive()?'Только проверенные данные HA':'Демонстрационный режим'}</p></article>`).join('');
 }
 function deviceHealth(){
@@ -370,10 +378,14 @@ function deviceReading(d){
  return 'Нет данных';
 }
 function sensorCard(d){
- return `<article class="module-card"><div class="title-line"><span>${esc(areaName(d.room))}</span>${I(deviceTypes[d.type].icon)}</div><h3>${esc(d.name)}</h3><strong class="module-reading">${esc(deviceReading(d))}</strong><p>${d.status==='planned'?'Будущее устройство':isLive()?'Только проверенные данные HA':'Демонстрационный режим'}${d.demoStale&&!isLive()?' · пример устарел':''}</p></article>`;
+ const reading=deviceReading(d);
+ return `<article class="module-card sensor-card"><div class="title-line"><span>${esc(areaName(d.room))}</span>${I(deviceTypes[d.type].icon)}</div><h3>${esc(d.name)}</h3><strong class="module-reading${reading==='Нет данных'?' is-unavailable':''}">${esc(reading)}</strong><p>${d.status==='planned'?'Будущее устройство':isLive()?'Только проверенные данные HA':'Демонстрационный режим'}${d.demoStale&&!isLive()?' · пример устарел':''}</p></article>`;
 }
 function engineering(){
- return `<div class="view"><div class="view-title"><div><h1>Инженерия дома</h1><p>Отдельно от света. Пока только наблюдение, без команд оборудованию.</p></div></div><div class="module-grid">${state.devices.filter(d=>deviceTypes[d.type].module==='engineering').map(d=>`<article class="module-card engineering-card"><div class="title-line"><span>${esc(areaName(d.room))}</span>${I(deviceTypes[d.type].icon)}</div><h2>${esc(d.name)}</h2><strong class="module-reading">${esc(deviceReading(d))}</strong><p>${esc(d.note)}</p><div class="inline-note">${d.type==='gate'?'Управление воротами заблокировано. Нужны проверка привода, положения и защиты от препятствий.':d.type==='heating'?'Управление котлом заблокировано. Внешний интерфейс допускается только после проверки документации и специалистом.':'Управление питанием заблокировано. Подача питания не доказывает циркуляцию воды.'}</div></article>`).join('')||'<p>Оборудование добавляется через каталог.</p>'}</div><div class="wide-hint"><span>ESP32 и другие будущие модули подключаются через проверенные сущности Home Assistant.</span><button data-action="catalog">Каталог устройств ${I('arrow-right')}</button></div></div>`;
+ const order={pump:0,heating:1,gate:2,filter:3};
+ return `<div class="view"><div class="view-title"><div><h1>Инженерия дома</h1><p>Отдельно от света. Пока только наблюдение, без команд оборудованию.</p></div></div><div class="module-grid">${state.devices.filter(d=>deviceTypes[d.type].module==='engineering').sort((a,b)=>(order[a.type]??9)-(order[b.type]??9)).map(d=>{
+  const reading=deviceReading(d),unavailable=reading==='Нет данных'||reading==='Нет связи';
+  return `<article class="module-card engineering-card"><div class="title-line"><span>${esc(areaName(d.room))}</span><span class="sys-badge${unavailable?' is-muted':''}" role="img" aria-label="${unavailable?'Нет данных':'В системе'}"></span>${I(deviceTypes[d.type].icon)}</div><h2>${esc(d.name)}</h2><strong class="module-reading${unavailable?' is-unavailable':''}">${esc(reading)}</strong><p>${esc(d.note)}</p><div class="inline-note">${d.type==='gate'?'Управление воротами заблокировано. Нужны проверка привода, положения и защиты от препятствий.':d.type==='heating'?'Управление котлом заблокировано. Внешний интерфейс допускается только после проверки документации и специалистом.':'Управление питанием заблокировано. Подача питания не доказывает циркуляцию воды.'}</div></article>`}).join('')||'<p>Оборудование добавляется через каталог.</p>'}</div><div class="wide-hint"><span>ESP32 и другие будущие модули подключаются через проверенные сущности Home Assistant.</span><button data-action="catalog">Каталог устройств ${I('arrow-right')}</button></div></div>`;
 }
 function clearCamera(){
  cameraRevision++;if(cameraPlayer)cameraPlayer.stop();cameraPlayer=null;cameraDevice=null;
@@ -469,8 +481,11 @@ function refresh(){
  const focus=document.activeElement?.getAttribute('aria-label');
  if(['home','model','room'].includes(state.view)){
   updateDetail();modelAPI?.updateModel(rooms,state);
+  const weatherEntity=Object.values(state.entityStates||{}).find(e=>e.entity_id?.startsWith('weather.')),weatherTemp=weatherEntity?.attributes?.temperature;
+  modelAPI?.setModelWeather(weatherTemp<0&&weatherEntity?.state==='snowy'?'snow':weatherTemp<0&&weatherEntity?.state==='rainy'?'rain':null);
   if(state.view==='home'){
    updateRegion('#home-favorites',favoriteRooms());updateRegion('#home-status',weatherCard()+homeStatus());updateRegion('#home-quick',homeQuick());updateRegion('#home-scenarios',scenariosRow());updateRegion('#home-light-overview',lightOverviewBadge());updateRegion('#hero-status',heroStatusChip());
+    const digest=$('#home-digest');if(digest){updateRegion('#home-digest',digestCard());digest.hidden=!digest.querySelector('.digest-card')}
   }
  }else if(state.view!=='statistics')render(false);
  if(!$('#overlay').hidden){
@@ -890,6 +905,7 @@ function about(){
 }
 function applyNight(){
  const hour=+new Intl.DateTimeFormat('en-GB',{hour:'numeric',hourCycle:'h23',timeZone:PANEL_TIMEZONE}).format(Date.now());
+ if(applyNight.hour!==hour){applyNight.hour=hour;modelAPI?.setModelTime(hour)}
  const night=state.nightMode==='on'||state.nightMode==='auto'&&(hour>=22||hour<7);
  document.documentElement.dataset.night=String(night);
 }

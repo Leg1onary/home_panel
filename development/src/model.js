@@ -4,6 +4,9 @@ import {buildInterior} from './interior.js';
 import {floorVisual} from './model-state.js';
 import {modelLevels} from './model-geometry.js';
 import {scenePins,pinMarkup} from './scene-pins.js';
+import {motionObservation} from './motion.js';
+import {binaryValue} from './sensor-state.js';
+import {PANEL_TIMEZONE} from './dom.js';
 let current;
 const floorPoints={
  living:[[220,27],[744,27],[744,291],[220,291]],
@@ -18,6 +21,14 @@ const floorPoints={
  terrace:[[0,0],[190,0],[190,640],[0,640]]
 };
 const project=([x,y])=>[(x-390)/78,(y-470)/78];
+// Scene environment survives remounts so a view switch restores time/weather.
+const sceneEnv={hour:null,weather:null};
+const panelHour=()=>+new Intl.DateTimeFormat('en-GB',{hour:'numeric',hourCycle:'h23',timeZone:PANEL_TIMEZONE}).format(Date.now());
+const centroid=pts=>pts.reduce((a,p)=>[a[0]+p[0]/pts.length,a[1]+p[1]/pts.length],[0,0]);
+// Day/evening/night look of the whole scene. Recomputed on hour change only.
+function dayPalette(h){return h>=22||h<8?{ambient:['#33406e',.4],hemi:['#2a3558','#161d33',.55],sun:['#5a6aa8',.55]}:h>=17?{ambient:['#d9b98a',.85],hemi:['#eccfa0','#3a2f3a',1.4],sun:['#ff9f5e',1.7]}:{ambient:['#c5cce8',1.1],hemi:['#d7dff4','#353349',2],sun:['#ffe3b9',3]}}
+export function setModelTime(hour){sceneEnv.hour=hour;if(current)current.applyTime(hour)}
+export function setModelWeather(kind){sceneEnv.weather=kind;if(current)current.applyWeather(kind)}
 function roomAt(x,y){
  for(const [id,points]of Object.entries(floorPoints)){
   let inside=false;
@@ -70,7 +81,7 @@ export function mountModel(canvas,rooms,state,onSelect){
  const orbit=new OrbitControls(camera,canvas);orbit.target.set(0,0,0);orbit.enablePan=false;orbit.minZoom=.45;orbit.maxZoom=3;orbit.minPolarAngle=.3;orbit.maxPolarAngle=1.1;
  // Direct manipulation: no inertia tail that keeps a wall tablet rendering.
  orbit.enableDamping=false;orbit.rotateSpeed=.45;
- scene.add(new THREE.AmbientLight('#c5cce8',1.1));
+ const ambient=new THREE.AmbientLight('#c5cce8',1.1);scene.add(ambient);
  const hemisphere=new THREE.HemisphereLight('#d7dff4','#353349',2);scene.add(hemisphere);
  const sun=new THREE.DirectionalLight('#ffe3b9',3);sun.position.set(-6,18,-9);sun.castShadow=true;sun.shadow.mapSize.set(modest?512:1024,modest?512:1024);sun.shadow.camera.left=-12;sun.shadow.camera.right=12;sun.shadow.camera.top=12;sun.shadow.camera.bottom=-12;sun.shadow.normalBias=.025;sun.shadow.bias=-.00015;scene.add(sun);
  const ground=new THREE.Mesh(new THREE.PlaneGeometry(200,200),new THREE.ShadowMaterial({opacity:.14}));ground.rotation.x=-Math.PI/2;ground.position.y=modelLevels.ground;ground.receiveShadow=true;scene.add(ground);
@@ -119,18 +130,115 @@ export function mountModel(canvas,rooms,state,onSelect){
  const select=e=>{if(!down||Math.hypot(e.clientX-down[0],e.clientY-down[1])>8)return;const r=canvas.getBoundingClientRect();pointer.set((e.clientX-r.left)/r.width*2-1,-((e.clientY-r.top)/r.height)*2+1);ray.setFromCamera(pointer,camera);const hit=ray.intersectObjects([...Object.values(floors),...zoneFloors])[0];if(hit)onSelect(hit.object.userData.room)};
  const pointerDown=e=>{down=[e.clientX,e.clientY]};
  canvas.addEventListener('pointerdown',pointerDown);canvas.addEventListener('pointerup',select);
- let raf=0,paused=false,dead=false,frames=0;
+ let raf=0,paused=false,dead=false,frames=0,lastTime=0;
+ // Warm point lights for rooms with lit lines: cached by room id, max 8.
+ const roomLights=new Map(),lightTweens=new Map();
+ const ensureLight=(id,color='#f3b569',y=1.3)=>{
+  let l=roomLights.get(id);if(l)return l;
+  if(roomLights.size>=8)return null;
+  l=new THREE.PointLight(color,0,6.5,1.6);
+  const [x,z]=project(centroid(floorPoints[id]||floorPoints.terrace));
+  l.position.set(x,modelLevels.floor+y,z);l.userData.target=0;scene.add(l);roomLights.set(id,l);return l;
+ };
+ const setLightTarget=(l,target)=>{
+  if(!l)return;l.userData.target=target;
+  if(reduceMotion||Math.abs(l.intensity-target)<.003){if(reduceMotion)l.intensity=target;lightTweens.delete(l);return}
+  lightTweens.set(l,{from:l.intensity,at:performance.now()});invalidate();
+ };
+ // Light count per room, splitting hall channels wired to the terrace.
+ function roomLitCounts(rooms,state){
+  const counts=new Map();
+  for(const r of rooms)for(const c of r.channels){
+   if(c.planned||!c.on)continue;
+   const rid=state.devices?.find(d=>d.id===c.id)?.room||r.id;
+   counts.set(rid,(counts.get(rid)||0)+1);
+  }
+  return counts;
+ }
+ function applyRoomLights(rooms,state){
+  const counts=roomLitCounts(rooms,state);
+  for(const l of roomLights.values())setLightTarget(l,0);
+  let created=0;
+  for(const [rid,n]of counts){
+   if(!floorPoints[rid]||['attic','well','yard'].includes(rid))continue;
+   const l=roomLights.get(rid)||(created<8?ensureLight(rid):null);
+   if(!l)continue;created++;
+   setLightTarget(l,Math.min(2,.5+.5*Math.min(n,3)));
+  }
+ }
+ // Terrace motion: brief light wave, at most one pulse per 10s.
+ let terraceGlow=null,terracePulseAt=0,lastMotionPulse=0,terraceActive=false;
+ const startTerracePulse=()=>{
+  terraceGlow=terraceGlow||ensureLight('__terracePulse','#e4a65c',.9);
+  if(!terraceGlow)return;
+  terracePulseAt=performance.now();lastMotionPulse=terracePulseAt;invalidate();
+ };
+ function terraceMotion(state){
+  if(state.mode!=='live'){
+   const d=state.devices?.find(d=>d.id==='terrace-motion'&&d.status==='installed');
+   return !state.demoOffline&&binaryValue('motion',d?.demoValue)===true;
+  }
+  const b=state.bindings?.['terrace-motion'],d=state.devices?.find(d=>d.id==='terrace-motion'&&d.status==='installed');
+  return Boolean(d&&b?.verified&&motionObservation(state.entityStates?.[b.entityId]).kind==='active');
+ }
+ // Weather particles: round canvas sprites, never square points.
+ const weather={kind:null,points:null};
+ let dropSprite=null;
+ const roundSprite=()=>{
+  if(dropSprite)return dropSprite;
+  const c=document.createElement('canvas');c.width=c.height=32;const ctx=c.getContext('2d');
+  const g=ctx.createRadialGradient(16,16,2,16,16,15);
+  g.addColorStop(0,'rgba(255,255,255,1)');g.addColorStop(.7,'rgba(255,255,255,.65)');g.addColorStop(1,'rgba(255,255,255,0)');
+  ctx.fillStyle=g;ctx.fillRect(0,0,32,32);
+  dropSprite=new THREE.CanvasTexture(c);return dropSprite;
+ };
+ function applyWeather(kind){
+  if(weather.kind===kind)return;weather.kind=kind;
+  if(weather.points){scene.remove(weather.points);weather.points.geometry.dispose();weather.points.material.dispose();weather.points=null}
+  if(!kind||reduceMotion||typeof document==='undefined')return;
+  const count=kind==='snow'?240:180,pos=new Float32Array(count*3);
+  for(let i=0;i<count;i++){pos[i*3]=(Math.random()*2-1)*9;pos[i*3+1]=Math.random()*6.5;pos[i*3+2]=(Math.random()*2-1)*9}
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  const m=new THREE.PointsMaterial({map:roundSprite(),color:kind==='snow'?'#ffffff':'#8fb8e0',size:kind==='snow'?.17:.1,transparent:true,opacity:kind==='snow'?.85:.7,depthWrite:false,sizeAttenuation:true});
+  weather.points=new THREE.Points(g,m);weather.points.frustumCulled=false;scene.add(weather.points);invalidate();
+ }
+ const applyTime=hour=>{
+  const p=dayPalette(hour??panelHour());
+  ambient.color.set(p.ambient[0]);ambient.intensity=p.ambient[1];
+  hemisphere.color.set(p.hemi[0]);hemisphere.groundColor.set(p.hemi[1]);hemisphere.intensity=p.hemi[2];
+  sun.color.set(p.sun[0]);sun.intensity=p.sun[1];invalidate();
+ };
+ current.applyTime=applyTime;
+ current.applyWeather=applyWeather;
+ current.applyRoomLights=applyRoomLights;
+ applyTime(sceneEnv.hour);applyWeather(sceneEnv.weather);
  function invalidate(){
   if(!raf&&!dead&&!paused&&!document.hidden)raf=requestAnimationFrame(draw);
  }
  function draw(time){
   raf=0;if(dead||paused||document.hidden)return;
-  const moving=orbit.update();
+  const moving=orbit.update(),dt=lastTime?Math.min(.05,(time-lastTime)/1000):0;lastTime=time;
   for(const [m,t]of tweens){
    const progress=Math.min(1,(time-t.at)/420),ease=1-Math.pow(1-progress,3);
    m.material.color.lerpColors(t.from,t.to,ease);m.material.emissiveIntensity=t.emissiveFrom+(t.emissiveTo-t.emissiveFrom)*ease;
    if(progress===1)tweens.delete(m);
   }
+   for(const [l,t]of lightTweens){
+    const progress=Math.min(1,(time-t.at)/400),ease=1-Math.pow(1-progress,3);
+    l.intensity=t.from+(l.userData.target-t.from)*ease;if(progress===1)lightTweens.delete(l);
+   }
+   if(terracePulseAt){
+    const dp=(time-terracePulseAt)/2000;
+    if(dp<1){terraceGlow.intensity=Math.sin(dp*Math.PI)*1.4}else{terracePulseAt=0;terraceGlow.intensity=0}
+   }
+   if(weather.points&&dt){
+    const attr=weather.points.geometry.attributes.position,arr=attr.array,fall=(weather.kind==='snow'?1.1:5.5)*dt;
+    for(let i=0;i<arr.length;i+=3){
+     arr[i+1]-=fall;if(weather.kind==='snow')arr[i]+=Math.sin(time*.001+i)*dt*.35;
+     if(arr[i+1]<modelLevels.ground+.1){arr[i+1]=6+Math.random()*1.2;arr[i]=(Math.random()*2-1)*9}
+    }
+    attr.needsUpdate=true;
+   }
   renderer.render(scene,camera);canvas.dataset.renderFrames=String(++frames);
   const used=[];
   for(const p of pinData){
@@ -142,7 +250,7 @@ export function mountModel(canvas,rooms,state,onSelect){
    if(b.left<host.left+2||b.right>host.right-2||b.top<host.top||used.some(r=>b.left<r.right+5&&b.right>r.left-5&&b.top<r.bottom+5&&b.bottom>r.top-5)){el.hidden=true;continue}
    used.push(b);
   }
-  if(moving||tweens.size)invalidate();
+  if(moving||tweens.size||lightTweens.size||terracePulseAt||weather.points)invalidate();
  }
  const visibility=()=>{
   if(document.hidden){cancelAnimationFrame(raf);raf=0}else invalidate();
@@ -198,7 +306,7 @@ export function mountModel(canvas,rooms,state,onSelect){
    dead=true;cancelAnimationFrame(raf);orbit.removeEventListener('change',invalidate);
    document.removeEventListener('visibilitychange',visibility);
    canvas.removeEventListener('pointerdown',pointerDown);canvas.removeEventListener('pointerup',select);
-   pinLayer.remove();tweens.clear();
+   pinLayer.remove();tweens.clear();lightTweens.clear();
   }
  };
  updateModel(rooms,state);
@@ -215,6 +323,10 @@ export function updateModel(rooms,state){
   const c=rooms.find(x=>x.id==='living')?.channels.find(c=>c.id===`living:${i}`);
   current.paintFloor(m,floorVisual(c?[c]:[],state));
  });
+ current.applyRoomLights(rooms,state);
+ const motionActive=terraceMotion(state);
+ if(motionActive&&!terraceActive&&!reduceMotion&&performance.now()-lastMotionPulse>10000)startTerracePulse();
+ terraceActive=motionActive;
  for(const [id,outline]of Object.entries(outlines))outline.visible=state.selected===id;
  const focusRoom=state.view==='room'&&floorPoints[state.selected]?state.selected:undefined;
  current.scene.traverse(o=>{

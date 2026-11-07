@@ -1184,3 +1184,79 @@ button:not(:disabled):active{transform:scale(.97)}
 .scenario-details li{list-style:none;display:flex;flex-direction:column}
 .scenario-details li span{opacity:.85}
 
+/* Wave 6: дайджест дома — glass-карточка с уровнями важности */
+.digest-card{margin-top:var(--space-4);padding:var(--space-4);border:1px solid var(--border);border-radius:var(--radius-lg);background:linear-gradient(155deg,rgba(255,255,255,.07),rgba(255,255,255,.02)),var(--surface);box-shadow:var(--panel-shadow),inset 0 1px 0 rgba(255,255,255,.08);backdrop-filter:blur(14px) saturate(1.25);-webkit-backdrop-filter:blur(14px) saturate(1.25)}
+@supports not (backdrop-filter:blur(1px)){.digest-card{background:var(--surface-solid,var(--surface))}}
+[data-theme=light] .digest-card{background:linear-gradient(155deg,rgba(255,255,255,.9),rgba(255,255,255,.55)),var(--surface)}
+.digest-card h3{display:flex;align-items:center;gap:var(--space-2);font-size:var(--text-sm);letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.digest-card h3 svg{width:16px;height:16px;flex-shrink:0;color:var(--accent-teal)}
+.digest-card ul{list-style:none;margin:var(--space-3) 0 0;padding:0;display:flex;flex-direction:column;max-height:4.9em;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.digest-card ul::-webkit-scrollbar{width:4px}
+.digest-card ul::-webkit-scrollbar-thumb{background:var(--border);border-radius:999px}
+.digest-card li.digest-item{display:flex;align-items:flex-start;gap:var(--space-2);font-size:var(--text-xs);line-height:1.4;padding:var(--space-1) 0}
+.digest-item svg{width:16px;height:16px;flex-shrink:0;margin-top:1px}
+.digest-item span{min-width:0;overflow-wrap:anywhere}
+.digest-danger{color:#e5634f}.digest-danger svg{color:#e5634f}
+.digest-warn{color:var(--warning)}.digest-warn svg{color:var(--warning)}
+.digest-info{color:var(--muted)}.digest-info svg{color:var(--muted)}
+.digest-card.is-danger{border-color:rgba(229,99,79,.55)}
+.digest-card.is-danger h3{color:#e5634f}
+
+/* Wave 7: экраны — запланированные группы, сенсоры, инженерия, настройки */
+.control-group.is-planned{opacity:.62}
+.control-group.is-planned .control-row{border-top-style:dashed;border-bottom-style:dashed}
+.control-group.is-planned h3{color:var(--muted)}
+.control-group.is-planned .toggle{pointer-events:none}
+.empty-room-note{border:1px dashed var(--border);border-radius:var(--radius-md);padding:var(--space-3) var(--space-4);background:var(--surface-2)}
+input[type=range]{accent-color:var(--accent);appearance:none;-webkit-appearance:none;background:transparent}
+input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;margin-top:-7px;border-radius:50%;background:var(--accent);border:2px solid var(--accent-ink);box-shadow:0 0 0 4px rgba(220,232,189,.18);transition:transform .15s}
+input[type=range]:active::-webkit-slider-thumb{transform:scale(1.15)}
+input[type=range]::-moz-range-track{height:6px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border)}
+input[type=range]::-moz-range-progress{height:6px;border-radius:999px;background:var(--accent)}
+input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--accent);border:2px solid var(--accent-ink);box-shadow:0 0 0 4px rgba(220,232,189,.18);transition:transform .15s}
+input[type=range]:active::-moz-range-thumb{transform:scale(1.15)}
+input[type=range]:disabled{opacity:.45}
+input[type=range]:disabled::-webkit-slider-thumb{background:var(--faint);border-color:var(--surface);box-shadow:none}
+input[type=range]:disabled::-moz-range-thumb{background:var(--faint);border-color:var(--surface);box-shadow:none}
+[data-theme=light] input[type=range]::-webkit-slider-thumb{box-shadow:0 0 0 4px rgba(82,102,55,.16)}
+.swatches button{cursor:pointer;transition:transform .15s,border-color .2s,box-shadow .2s}
+.swatches button:hover{transform:scale(1.08)}
+.swatches button.selected{border-color:var(--text);box-shadow:0 0 0 3px rgba(220,232,189,.22)}
+[data-theme=light] .swatches button.selected{box-shadow:0 0 0 3px rgba(82,102,55,.18)}
+.retry-button:hover{color:var(--text)}
+.sensor-card{transition:transform .2s,box-shadow .2s,border-color .2s}
+.sensor-card:hover{transform:translateY(-2px);box-shadow:var(--panel-shadow),0 10px 24px rgba(0,0,0,.18);border-color:var(--accent)}
+[data-theme=light] .sensor-card:hover{box-shadow:var(--panel-shadow),0 10px 24px rgba(39,44,35,.1)}
+.sensor-card .title-line>span{font-size:var(--text-xs);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.sensor-card .module-reading{font-size:var(--value);font-variant-numeric:tabular-nums;line-height:1.15;margin:var(--space-2) 0}
+.sensor-card .module-reading.is-unavailable{color:var(--faint)}
+.engineering-card{border-left:3px solid var(--accent-teal);transition:transform .2s,box-shadow .2s}
+.engineering-card:hover{transform:translateY(-2px);box-shadow:var(--panel-shadow),0 10px 24px rgba(0,0,0,.18)}
+.sys-badge{display:inline-block;width:9px;height:9px;border-radius:50%;background:#5ac463;box-shadow:0 0 8px rgba(90,196,99,.6)}
+.sys-badge.is-muted{background:var(--faint);box-shadow:none}
+[data-theme=light] .sys-badge{box-shadow:0 0 8px rgba(66,115,59,.35)}
+.battery-low{border-color:var(--warning);box-shadow:inset 3px 0 0 var(--warning)}
+.history-chart-card{background:linear-gradient(155deg,rgba(255,255,255,.07),rgba(255,255,255,.02)),var(--surface);border:1px solid var(--border);box-shadow:var(--panel-shadow),inset 0 1px 0 rgba(255,255,255,.08);backdrop-filter:blur(14px) saturate(1.25);-webkit-backdrop-filter:blur(14px) saturate(1.25)}
+@supports not (backdrop-filter:blur(1px)){.history-chart-card{background:var(--surface-solid,var(--surface))}}
+[data-theme=light] .history-chart-card{background:linear-gradient(155deg,rgba(255,255,255,.9),rgba(255,255,255,.55)),var(--surface)}
+.history-legend>span{padding:5px 12px;border-radius:999px;border:1px solid var(--border);background:var(--surface-2)}
+.history-legend i{width:8px;height:8px;border-radius:50%}
+.history-legend b{font-weight:500;font-variant-numeric:tabular-nums}
+.history-timeline li{transition:background .15s}
+.history-timeline li:not(.is-focus):hover{background:var(--surface-2);border-radius:var(--radius-sm)}
+.history-light-row{border-radius:var(--radius-sm);padding:var(--space-2);margin:0 calc(var(--space-2)*-1);transition:background .15s}
+.history-light-row:hover{background:var(--surface-2)}
+.setting-field input:not([type=file]){border:1px solid var(--border);transition:border-color .2s,box-shadow .2s}
+.setting-field select{border:1px solid var(--border);transition:border-color .2s,box-shadow .2s}
+.setting-field input:not([type=file]):focus,.setting-field select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(220,232,189,.2);outline:none}
+[data-theme=light] .setting-field input:not([type=file]):focus,[data-theme=light] .setting-field select:focus{box-shadow:0 0 0 3px rgba(82,102,55,.18)}
+.settings-tabs button,.tech-tabs button{transition:background .2s,color .2s}
+.settings-tabs button:not(.active):hover,.tech-tabs button:not(.active):hover{background:var(--surface-2);color:var(--text)}
+.primary,.secondary,.binding-save{transition:transform .12s,background .2s,box-shadow .2s}
+.primary:hover,.binding-save:hover{filter:brightness(1.06)}
+.primary:active,.secondary:active,.binding-save:active{transform:scale(.97)}
+.sheet-actions .primary{min-height:48px}
+
+/* Финал: спиннеры обязаны жить даже при reduced-motion */
+@media(prefers-reduced-motion:reduce){.command-status.pending svg,.scenario-chip.is-run svg.spin{animation:spin 1s linear infinite!important}}

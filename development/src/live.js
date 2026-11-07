@@ -64,7 +64,10 @@ function startSSE(onChange=()=>{}){
   const fail=()=>{
    if(sse!==source)return;closeSSE();
    if(done){pollLive(onChange);timer=setInterval(()=>{if(!document.hidden)pollLive(onChange)},5000)}
-   else{done=true;resolve(false)}
+   else{done=true;resolve(false);
+    // SSE не открылся при старте: поднимаем поллинг ровно один раз, иначе панель
+    // навсегда останется offline без опроса (startLive игнорирует resolve(false)).
+    pollLive(onChange);timer=setInterval(()=>{if(!document.hidden)pollLive(onChange)},5000)}
   };
   source.addEventListener('snapshot',e=>{
    try{applySnapshot(JSON.parse(e.data).states)}catch{return fail()}
