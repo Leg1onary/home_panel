@@ -1,11 +1,11 @@
-import {areaName,areas} from './catalog.js';
+﻿import {areaName,areas} from './catalog.js';
 import {binaryValue} from './sensor-state.js';
-export const historyState={hours:24,metric:'temperature',room:'all',eventType:'all',data:null,loading:false,error:'',request:0};
-const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+export const historyState={hours:24,metric:'temperature',room:'all',eventType:'all',data:null,loading:false,error:'',request:0,focus:null};
+import {esc,timeOf,PANEL_TIMEZONE} from './dom.js';
 const palette=()=>typeof document!=='undefined'&&document.documentElement.dataset.theme==='light'?['#92611f','#16727e','#7545a7','#aa3552','#42733b']:['#e6ba72','#7acbd7','#c5a4ee','#f5a5b3','#9acd9b'];
 const colorFor=(g,i,colors)=>colors[({living:0,well:1,attic:2})[g.room]??i%colors.length];
 const number=v=>Number.isFinite(v)?v.toLocaleString('ru-RU',{maximumFractionDigits:1}):'—';
-const time=t=>new Date(t).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+const time=t=>new Date(t).toLocaleString('ru-RU',{timeZone:PANEL_TIMEZONE,day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
 let chart=null;
 function selectedSeries(s){return (s.data?.series||[]).filter(g=>g.type===s.metric&&(s.room==='all'||g.room===s.room))}
 function graph(s){
@@ -21,7 +21,7 @@ function graph(s){
  const y=v=>bottom-(v-min)/(max-min)*(bottom-top);
  chart={groups,start:data.start,end:data.end,width,left,right};
  const ticks=Array.from({length:4},(_,i)=>{const value=min+(max-min)*i/3,py=y(value);return `<line x1="${left}" y1="${py}" x2="${right}" y2="${py}" class="history-grid"/><text x="${left-9}" y="${py+4}" text-anchor="end">${number(value)}</text>`}).join('');
- const times=Array.from({length:4},(_,i)=>{const at=data.start+(data.end-data.start)*i/3,label=new Date(at).toLocaleString('ru-RU',data.end-data.start>86400000?{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit'}:{timeZone:'Europe/Moscow',hour:'2-digit',minute:'2-digit'});return `<text x="${x(at)}" y="${bottom+28}" text-anchor="${i===0?'start':i===3?'end':'middle'}">${label}</text>`}).join('');
+ const times=Array.from({length:4},(_,i)=>{const at=data.start+(data.end-data.start)*i/3,label=new Date(at).toLocaleString('ru-RU',data.end-data.start>86400000?{timeZone:PANEL_TIMEZONE,day:'2-digit',month:'2-digit'}:{timeZone:PANEL_TIMEZONE,hour:'2-digit',minute:'2-digit'});return `<text x="${x(at)}" y="${bottom+28}" text-anchor="${i===0?'start':i===3?'end':'middle'}">${label}</text>`}).join('');
  const paths=groups.map((g,i)=>{
   let path='',previous=null;
   for(const p of g.points){
@@ -66,6 +66,8 @@ function eventText(e){
 export function statisticsView(s=historyState){
  const colors=palette();
  const d=s.data,groups=selectedSeries(s),events=(d?.events||[]).filter(e=>(s.room==='all'||e.room===s.room)&&(s.eventType==='all'||e.type===s.eventType)).slice(0,200);
+ const f=s.focus,context=f?(d?.events||[]).filter(e=>e.id===f.id&&Math.abs(e.at-f.at)<=30*60*1000):[];
+ const eventItem=(e,isFocused)=>`<li class="${e.type==='leak'&&binaryValue('leak',e.state)===true?'is-alarm':''}${isFocused?' is-focus':''}" data-history-event-id="${esc(e.id)}" data-history-event-at="${e.at}" role="button" tabindex="0" aria-pressed="${isFocused}" aria-label="${esc(e.name)}: показать контекст событий"><time datetime="${new Date(e.at).toISOString()}">${time(e.at)}</time><div><strong>${esc(e.name)}</strong><span>${esc(areaName(e.room))} · ${esc(eventText(e))}</span></div></li>`;
  const roomIds=[...new Set([...areas.map(a=>a.id),...[...(d?.series||[]),...(d?.events||[]),...(d?.lights||[])].map(g=>g.room)])];
  const lights=(d?.lights||[]).filter(e=>s.room==='all'||e.room===s.room);
  const lineHours=lights.reduce((sum,e)=>sum+e.onMs/3600000,0),coverage=lights.length?lights.reduce((sum,e)=>sum+e.coverage,0)/lights.length:0;
@@ -81,7 +83,8 @@ export function statisticsView(s=historyState){
  <div class="history-ranges">${groups.map(g=>`<span>${esc(areaName(g.room))}: <b>${number(g.min)}…${number(g.max)} ${s.metric==='temperature'?'°C':'%'}</b></span>`).join('')}</div>
  <p class="history-footnote">Разрывы — нет достоверных показаний. Последняя точка относится к истории, а не обязательно к текущему состоянию.</p></section>
  <div class="history-bottom"><section class="history-events"><div class="history-section-heading"><div><h2>События</h2><p>Реальные изменения HA, без расчётных сбросов движения</p></div><select id="history-event-type" aria-label="Тип события">${[['all','Все события'],['door','Двери'],['motion','Движение'],['leak','Протечки'],['light','Свет']].map(([v,t])=>`<option value="${v}" ${s.eventType===v?'selected':''}>${t}</option>`).join('')}</select></div>
- ${events.length?`<ol class="history-timeline" tabindex="0" aria-label="Журнал изменений">${events.map(e=>`<li class="${e.type==='leak'&&binaryValue('leak',e.state)===true?'is-alarm':''}"><time datetime="${new Date(e.at).toISOString()}">${time(e.at)}</time><div><strong>${esc(e.name)}</strong><span>${esc(areaName(e.room))} · ${esc(eventText(e))}</span></div></li>`).join('')}</ol>`:'<div class="history-empty is-small">Событий за выбранный период и фильтр нет.</div>'}
+ ${events.length?`<ol class="history-timeline" tabindex="0" aria-label="Журнал изменений">${events.map(e=>eventItem(e,!!f&&f.id===e.id&&f.at===e.at)).join('')}</ol>`:'<div class="history-empty is-small">Событий за выбранный период и фильтр нет.</div>'}
+ ${f?`<div class="history-event-context" role="region" aria-live="polite" aria-label="Контекст выбранного события"><h3>Контекст</h3><p>${context.length} событий этого устройства за период ±30 минут</p><ol class="history-timeline is-context">${context.map(e=>eventItem(e,f.at===e.at)).join('')}</ol><button class="text-button" data-action="history-focus-clear">Сбросить фокус</button></div>`:''}
  ${d?.truncated?'<p class="history-footnote">До 200 последних записей каждого типа. Общий список тоже ограничен 200 записями; выбери тип для отдельной истории.</p>':''}</section>
  <section class="history-lights"><h2>Свет за период</h2><div class="history-line-hours">${d&&coverage>0?number(lineHours):'—'}<small>линия·ч</small></div><p>Сумма времени включения всех линий, не расход электричества.</p>
  <p class="history-footnote">Покрытие достоверными состояниями: ${d?Math.round(coverage*100):'—'} %. Непривязанные линии не учитываются.</p>

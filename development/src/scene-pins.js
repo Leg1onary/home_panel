@@ -28,7 +28,7 @@ export function scenePins(state,now=Date.now()){
  }
  return pins.sort((a,b)=>b.priority-a.priority);
 }
-const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+import {esc} from './dom.js';
 export function pinMarkup(p){
  return `<button class="scene-pin ${p.kind}" data-pin="${esc(p.id)}" data-action="${p.action}" ${p.sensor?`data-sensor="${p.sensor}"`:''} ${p.motionId?`data-motion-id="${p.motionId}"`:''} ${p.leakId?`data-leak-id="${p.leakId}"`:''} aria-label="${esc(p.label+' · '+p.detail)}"><span class="pin-label"><strong>${esc(p.label)}</strong><small>${esc(p.detail)}</small></span><i class="pin-anchor"></i></button>`;
 }

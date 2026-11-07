@@ -39,7 +39,7 @@ export const houseBindings={
  'battery:leak-utility':'sensor.kotelnaia_datchik_protechki_vody_uroven_zariada',
  'battery:leak-bath':'sensor.vannaia_datchik_protechki_vody_uroven_zariada',
  'master-event':'sensor.prikhozhaia_master_svet_knopka',
- 'station':'media_player.yandex_station_c00mp0000t4w0z',
+ 'station':'media_player.yandex_station_r10c5zt00h7hek',
  'battery:living':'sensor.gostinaia_datchik_temperatury_uroven_zariada',
  'battery:well':'sensor.skvazhina_datchik_temperatury_uroven_zariada',
  'battery:attic':'sensor.cherdak_datchik_temperatury_uroven_zariada',
@@ -49,7 +49,7 @@ export const houseBindings={
 };
 const extra=(id,type,room,name)=>({id,type,room,name,status:'installed',masterOff:false,note:'По выгрузке HA · только наблюдение'});
 export const houseExtras=[
- extra('station','station','living','Яндекс Станция Дуо Макс'),
+ extra('station','station','living','Яндекс Станция Миди'),
  extra('yard-motion','motion','yard','Движение · камера двора'),
  extra('master-event','button_event','hall','Мастер-свет · последнее событие'),
  ...[

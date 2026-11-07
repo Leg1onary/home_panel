@@ -9,11 +9,13 @@ import {defaultPreferences,validatePreferences,bindingDefinitions} from '../src/
 import {HomeAssistant} from './ha.js';
 import {CameraStreams} from './stream.js';
 import {CameraRTC} from './rtc.js';
+import {LiveFeed} from './live-stream.js';
 import {deviceTypes,samePhysicalDevice} from '../src/catalog.js';
 import {migrateHouseProfile,activateHouseProfile,bindingProblem} from '../src/house-profile.js';
 import {seedDeviceModel,buildDeviceModel} from '../src/device-model.js';
 import {loadHistory} from './history.js';
 import {StationAssistant} from './assistant.js';
+import {runScenario} from './scenarios.js';
 
 const port=Number(process.env.PORT||8080),preview=process.env.PANEL_PREVIEW==='1';
 const addon=process.env.PANEL_ADDON==='1';
@@ -30,6 +32,7 @@ const rtc=new CameraRTC(ha);
 setInterval(()=>streams.prune(),30000).unref();
 setInterval(()=>rtc.prune(),30000).unref();
 const proofs=new Map(),pendingScopes=new Map();
+const live=new LiveFeed({ha}),liveIds=new Map();
 const getProfile=id=>{
  let row=db.prepare('SELECT * FROM profiles WHERE id=?').get(id);
  if(!row){db.prepare('INSERT INTO profiles(id,preferences) VALUES(?,?)').run(id,JSON.stringify(defaultPreferences()));row=db.prepare('SELECT * FROM profiles WHERE id=?').get(id)}
@@ -170,6 +173,16 @@ const server=http.createServer(async(req,res)=>{
     if(req.method==='DELETE'){db.prepare('UPDATE profiles SET photo=NULL WHERE id=?').run(id);return json(res,200,{saved:true})}
    }
    if(route==='ha/states'&&req.method==='GET')return json(res,200,{states:await ha.states(),receivedAt:Date.now()});
+   if(route==='ha/stream'&&req.method==='GET'){
+    if(req.headers['sec-fetch-site']==='cross-site')return json(res,403,{error:'Межсайтовый запрос запрещён.'});
+    if(!ha.enabled)return json(res,400,{error:'Home Assistant не настроен.'});
+    req.socket.setNoDelay(true);req.socket.setTimeout(0);req.setTimeout(0);
+    const pid=req.headers['x-panel-id']||'',old=liveIds.get(pid);
+    if(old&&!old.writableEnded)old.end();
+    if(pid)liveIds.set(pid,res);
+    res.on('close',()=>{if(liveIds.get(pid)===res)liveIds.delete(pid)});
+    live.subscribe(res);return;
+   }
    if(route==='device-model'&&req.method==='GET')return json(res,200,{version:1,devices:buildDeviceModel(p.preferences)});
    if(route==='ha/stream/start'&&req.method==='POST'){
     const request=JSON.parse((await body(req)).toString());
@@ -213,6 +226,13 @@ const server=http.createServer(async(req,res)=>{
     try{return json(res,200,await ha.command(request,p.preferences))}
     finally{const n=pendingScopes.get(id)-1;if(n)pendingScopes.set(id,n);else pendingScopes.delete(id)}
    }
+   if(route==='ha/scenario'&&req.method==='POST'){
+    if(assistantScopes.has(id))throw new Error('Дождись завершения действия станции.');
+    const request=JSON.parse((await body(req)).toString());
+    pendingScopes.set(id,(pendingScopes.get(id)||0)+1);
+    try{return json(res,200,await runScenario(request?.id,ha,p.preferences))}
+    finally{const n=pendingScopes.get(id)-1;if(n)pendingScopes.set(id,n);else pendingScopes.delete(id)}
+   }
    return json(res,404,{error:'Маршрут не найден.'});
   }
   if(req.method!=='GET'&&req.method!=='HEAD')return json(res,405,{error:'Метод запрещён.'});
@@ -236,4 +256,4 @@ server.listen(port,preview||addon?'0.0.0.0':'127.0.0.1',()=>{
  if(process.platform==='win32'&&process.argv.includes('--open'))spawn('rundll32.exe',['url.dll,FileProtocolHandler',`http://127.0.0.1:${port}`],{stdio:'ignore'}).on('error',()=>{});
 });
 server.on('error',error=>{console.error(error.code==='EADDRINUSE'?`Port ${port} is busy. Close the other panel server or set PORT in .env.`:'Panel server could not start.');process.exitCode=1});
-for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>server.close(()=>{db.close();process.exit(0)}));
+for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>server.close(()=>{live.stop();db.close();process.exit(0)}));

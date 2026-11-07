@@ -45,7 +45,7 @@ function applySnapshot(list){
    checkedAt:state.liveUpdatedAt,quality:temperature.available?'live':'unavailable'};
  }
 }
-let timer,busy=false,revision=0;
+let timer,busy=false,revision=0,sse=null;
 export async function pollLive(onChange=()=>{}){
  if(!isLive()||busy)return;busy=true;const rev=revision;
  try{
@@ -55,12 +55,39 @@ export async function pollLive(onChange=()=>{}){
  }catch(error){if(rev===revision){state.liveOnline=false;state.liveError=error.message;applySnapshot([])}}
  finally{busy=false;onChange()}
 }
+const closeSSE=()=>{if(sse){sse.close();sse=null}};
+const stopFallback=()=>{if(timer){clearInterval(timer);timer=null}};
+function startSSE(onChange=()=>{}){
+ return new Promise(resolve=>{
+  let done=false;
+  const source=new EventSource(api.panelURL('ha/stream'));sse=source;
+  const fail=()=>{
+   if(sse!==source)return;closeSSE();
+   if(done){pollLive(onChange);timer=setInterval(()=>{if(!document.hidden)pollLive(onChange)},5000)}
+   else{done=true;resolve(false)}
+  };
+  source.addEventListener('snapshot',e=>{
+   try{applySnapshot(JSON.parse(e.data).states)}catch{return fail()}
+   stopFallback();state.liveOnline=true;state.liveError='';state.liveUpdatedAt=Date.now();
+   if(!done){done=true;resolve(true)}
+   onChange();
+  });
+  source.addEventListener('patch',e=>{
+   try{for(const s of JSON.parse(e.data))state.entityStates[s.entity_id]=s;applySnapshot(Object.values(state.entityStates))}catch{return}
+   stopFallback();state.liveOnline=true;state.liveError='';state.liveUpdatedAt=Date.now();onChange();
+  });
+  source.addEventListener('error',e=>{
+   if(e.data){try{state.liveError=JSON.parse(e.data).message}catch{}state.liveOnline=false;onChange()}
+   else fail();
+  });
+ });
+}
 export function startLive(onChange=()=>{}){
- clearInterval(timer);revision++;state.liveOnline=false;state.entityStates={};
+ clearInterval(timer);closeSSE();revision++;state.liveOnline=false;state.entityStates={};
  if(isLive()){
   for(const r of rooms)for(const c of r.channels)c.on=false;
   for(const id of Object.keys(sensors))sensors[id]={value:0,humidity:null,receivedAt:0,quality:'unavailable'};
-  pollLive(onChange);timer=setInterval(()=>{if(!document.hidden)pollLive(onChange)},5000);
+  startSSE(onChange);
  }else{
   for(const r of rooms)for(const c of r.channels)c.on=!c.planned&&!!c.demoOn;
   for(const id of Object.keys(sensors)){

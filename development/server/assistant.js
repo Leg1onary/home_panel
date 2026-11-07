@@ -1,4 +1,6 @@
-import {createHash} from 'node:crypto';
+import {PANEL_TIMEZONE} from '../src/dom.js';
+
+﻿import {createHash} from 'node:crypto';
 import {stationAvailable,stationSupports} from '../src/station.js';
 import {binaryValue} from '../src/sensor-state.js';
 import {numericReading} from '../src/readings.js';
@@ -161,7 +163,7 @@ export class StationAssistant{
    for(const {id,preferences:p}of profiles){
     const b=p.bindings.station;if(!b?.verified)continue;
     const f=this.features(byId.get(b.entityId)),canSpeak=f.playMedia&&f.local&&!this.ha.pending.has(b.entityId)&&p.devices.some(d=>d.id==='station'&&d.type==='station'&&d.status==='installed')&&byId.get(b.entityId).attributes.alice_state.toUpperCase()==='IDLE';
-    const s=this.settings(id),hour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Moscow',hour:'2-digit',hourCycle:'h23'}).format(now));
+    const s=this.settings(id),hour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:PANEL_TIMEZONE,hour:'2-digit',hourCycle:'h23'}).format(now));
     for(const d of p.devices.filter(d=>d.status==='installed'&&['leak','door'].includes(d.type)).sort((a,b)=>(a.type==='leak'?0:1)-(b.type==='leak'?0:1))){
      const binding=p.bindings[d.id];if(!binding?.verified)continue;
      const e=byId.get(binding.entityId),value=binaryValue(d.type,e?.state);if(value===null)continue;

@@ -1,6 +1,6 @@
-import {areaName} from './catalog.js';
+﻿import {areaName} from './catalog.js';
 export const duoUI={tab:'home',tool:null,status:null,loading:false,busy:false,error:'',statusError:'',message:'',phase:'',draft:'',timer:15,item:'',items:[],listLoaded:false,listError:'',confirm:null,settingsDraft:null};
-const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+import {esc,PANEL_TIMEZONE} from './dom.js';
 const disabled=value=>value?'disabled':'';
 export function assistantView(room,musicHTML,{live,online}){
  const u=duoUI,s=u.status,blocked=!live||!online||u.busy||u.loading,voiceBlocked=blocked||!s?.playMedia;
@@ -33,7 +33,7 @@ export function assistantView(room,musicHTML,{live,online}){
   <div class="duo-shopping-list">${u.items.length?u.items.map(i=>`<button class="duo-shopping-item" data-duo-complete="${esc(i.uid)}" aria-label="Отметить выполненной: ${esc(i.summary)}" ${disabled(blocked)}><span class="duo-checkbox"></span><span>${esc(i.summary)}</span></button>`).join(''):`<p class="duo-note">${u.listLoaded?'Список пуст.':live?'Читаем список…':'Список доступен только с подключённым HA.'}</p>`}</div>
   <div class="duo-sync"><strong>Связать с голосовым списком Алисы</strong><p class="duo-note">Добавление выше меняет только список HA. Двусторонний обмен запускается отдельно, только локально и с подтверждением.</p><button class="secondary" data-duo-action="shoppingSync" data-duo-confirm="true" ${disabled(voiceBlocked||!s?.local)}>Синхронизировать с Алисой</button></div>`;
  }else{
-  content=`<h3>Оповещения без открытой панели</h3><p class="duo-note">Работают на сервере надстройки при проверенной локальной связи со станцией. Один запрос на событие, без повторного крика при каждом опросе или перезапуске.</p><p class="duo-note">${s?.automation?.lastPollAt?'Фоновый опрос надстройки: '+new Date(s.automation.lastPollAt).toLocaleTimeString('ru-RU',{timeZone:'Europe/Moscow'})+' МСК.':'Первый фоновый опрос ещё не подтверждён.'} ${s?.automation?.lastError?esc(s.automation.lastError):''}</p>
+  content=`<h3>Оповещения без открытой панели</h3><p class="duo-note">Работают на сервере надстройки при проверенной локальной связи со станцией. Один запрос на событие, без повторного крика при каждом опросе или перезапуске.</p><p class="duo-note">${s?.automation?.lastPollAt?'Фоновый опрос надстройки: '+new Date(s.automation.lastPollAt).toLocaleTimeString('ru-RU',{timeZone:PANEL_TIMEZONE})+' МСК.':'Первый фоновый опрос ещё не подтверждён.'} ${s?.automation?.lastError?esc(s.automation.lastError):''}</p>
   <label class="duo-setting"><input id="duo-leaks" type="checkbox" ${settings.leakAlerts?'checked':''} ${disabled(blocked)}/><span>Сообщать о протечке</span></label>
   <label class="duo-setting"><input id="duo-doors" type="checkbox" ${settings.doorAlerts?'checked':''} ${disabled(blocked)}/><span>Напоминать об открытой двери</span></label>
   <label class="duo-setting"><span>Через сколько минут</span><input id="duo-door-minutes" type="number" min="5" max="60" value="${settings.doorMinutes}" ${disabled(blocked)}/></label>
@@ -49,5 +49,5 @@ export function assistantView(room,musicHTML,{live,online}){
  <div class="duo-tabs" role="tablist" aria-label="Раздел станции">${[['home','Дом'],['music','Музыка'],['shopping','Покупки'],['settings','Сигналы']].map(([id,label])=>`<button role="tab" aria-selected="${u.tab===id}" data-duo-tab="${id}" ${disabled(u.busy)}>${label}</button>`).join('')}</div>
  <div class="duo-result ${esc(u.phase)}" role="status" aria-live="polite" ${!u.message&&!u.error&&!u.statusError&&!u.busy?'hidden':''}>${esc(u.busy?'Действие выполняется. Не повторяй запрос.':u.error||u.statusError||u.message)}</div>
  <div class="duo-content">${content}</div>
- ${activity.length?`<details class="duo-activity"><summary>Последние запросы</summary>${activity.map(a=>`<p><time>${new Date(a.created_at).toLocaleTimeString('ru-RU',{timeZone:'Europe/Moscow',hour:'2-digit',minute:'2-digit'})}</time><span>${esc(a.label)}</span><small>${esc(({accepted:'Принят HA',confirmed:'Подтверждён',partial:'Частично',unknown:'Результат неизвестен',running:'В обработке'})[a.status]||a.status)}</small></p>`).join('')}</details>`:''}</div>`;
+ ${activity.length?`<details class="duo-activity"><summary>Последние запросы</summary>${activity.map(a=>`<p><time>${new Date(a.created_at).toLocaleTimeString('ru-RU',{timeZone:PANEL_TIMEZONE,hour:'2-digit',minute:'2-digit'})}</time><span>${esc(a.label)}</span><small>${esc(({accepted:'Принят HA',confirmed:'Подтверждён',partial:'Частично',unknown:'Результат неизвестен',running:'В обработке'})[a.status]||a.status)}</small></p>`).join('')}</details>`:''}</div>`;
 }
