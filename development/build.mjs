@@ -21,4 +21,10 @@ await cp('dist','release/dist',{recursive:true});
 await cp('runtime','release',{recursive:true});
 await copyFile('README.md','release/README.md');
 await writeFile('release/package.json',JSON.stringify({name:'home-panel-runtime',private:true,version:'3.0.0',scripts:{start:'node server.mjs'},dependencies:{'better-sqlite3':'11.10.0',ws:'8.18.3'}},null,2));
-console.log('Ready: dist (preview), release (local server, launcher, SQLite).');
+// Keep the add-on bundle (home_panel/) in sync with the freshly built dist/server.
+const addon='../home_panel';
+await copyFile('release/server.mjs',addon+'/server.mjs');
+await copyFile('release/package.json',addon+'/package.json');
+await rm(addon+'/dist',{recursive:true,force:true});
+await cp('dist',addon+'/dist',{recursive:true});
+console.log('Ready: dist (preview), release (local server, launcher, SQLite), home_panel (add-on).');

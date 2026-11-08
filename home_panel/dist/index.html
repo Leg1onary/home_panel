@@ -8,6 +8,12 @@
   <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
+  <div class="aurora-layer" aria-hidden="true">
+    <span class="aurora-blob aurora-blob--amber"></span>
+    <span class="aurora-blob aurora-blob--teal"></span>
+    <span class="aurora-blob aurora-blob--violet"></span>
+    <span class="aurora-blob aurora-blob--indigo"></span>
+  </div>
   <div class="shell">
     <a class="skip-link" href="#main">К управлению домом</a>
     <aside class="app-rail" aria-label="Навигация панели">
@@ -66,6 +72,9 @@
       if(!('noModule' in document.createElement('script')))failed('Этот WebView не поддерживает JavaScript modules. Обнови Android WebView.');
     })();
     if(location.protocol==='file:')document.getElementById('main').innerHTML='<section class="boot-state"><h1>Запусти панель через сервер</h1><p>Открой «Запустить.cmd» из полного архива, затем «Открыть.cmd». Двойной клик по index.html не поддерживается браузером.</p></section>';
+  </script>
+  <script>
+  if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('sw.js').catch(function(){});
   </script>
 </body>
 </html>

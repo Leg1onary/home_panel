@@ -319,8 +319,43 @@ var defaultPreferences = () => ({
   kiosk: false,
   mode: "demo",
   devices: defaultDevices(),
-  bindings: Object.fromEntries(defaultDevices().map((d) => [d.id, { entityId: "", verified: false }]))
+  bindings: Object.fromEntries(defaultDevices().map((d) => [d.id, { entityId: "", verified: false }])),
+  userScenarios: []
 });
+var USER_SCENARIO_LIMITS = { max: 8, maxSteps: 12, minBrightness: 30, maxBrightness: 100 };
+var scenarioIdOk = (id) => typeof id === "string" && /^[a-z0-9-]{1,40}$/.test(id);
+function sanitizeUserScenarios(raw, devices) {
+  if (!Array.isArray(raw)) return [];
+  const ids = /* @__PURE__ */ new Set(), out = [];
+  for (const s of raw) {
+    const name = typeof s?.name === "string" ? s.name.trim() : "";
+    if (!scenarioIdOk(s?.id) || ids.has(s.id) || name.length < 1 || name.length > 30 || !Array.isArray(s.steps)) continue;
+    const steps = [];
+    let ok = s.steps.length <= USER_SCENARIO_LIMITS.maxSteps && s.steps.length > 0;
+    for (const st of s.steps) {
+      if (!ok) break;
+      const target = devices.find((d) => d.id === st?.deviceId), type = target && deviceTypes[target.type];
+      if (!target || !type || type.module !== "lights" || !type.controllable || !["on", "off", "brightness"].includes(st?.action) || st.action !== "brightness" && st.value !== void 0) {
+        ok = false;
+        break;
+      }
+      const step = { deviceId: st.deviceId, action: st.action };
+      if (st.action === "brightness") {
+        if (!Number.isInteger(st.value) || st.value < 1 || st.value > 100) {
+          ok = false;
+          break;
+        }
+        step.value = st.value;
+      }
+      steps.push(step);
+    }
+    if (!ok) continue;
+    ids.add(s.id);
+    out.push({ id: s.id, name, steps });
+    if (out.length >= USER_SCENARIO_LIMITS.max) break;
+  }
+  return out;
+}
 function validatePreferences(input, { importing = false } = {}) {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("\u041D\u0443\u0436\u0435\u043D \u043E\u0431\u044A\u0435\u043A\u0442 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043A.");
   if (input.version !== 3) throw new Error("\u0412\u0435\u0440\u0441\u0438\u044F \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043A \u043D\u0435 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u0441\u044F. \u041D\u0443\u0436\u043D\u0430 \u043A\u043E\u043F\u0438\u044F v3.");
@@ -344,6 +379,7 @@ function validatePreferences(input, { importing = false } = {}) {
     if (definition.device.status === "planned" && b.verified && !importing) throw new Error("\u041F\u043B\u0430\u043D\u0438\u0440\u0443\u0435\u043C\u043E\u0435 \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E \u043D\u0435\u043B\u044C\u0437\u044F \u043E\u0442\u043C\u0435\u0447\u0430\u0442\u044C \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u043D\u044B\u043C.");
     p.bindings[definition.id] = { entityId, verified: !importing && definition.device.status === "installed" && !!entityId && b.verified === true };
   }
+  p.userScenarios = sanitizeUserScenarios(raw.userScenarios, p.devices);
   return p;
 }
 
@@ -388,7 +424,7 @@ var HomeAssistant = class {
     }
   }
   sanitize(e) {
-    const keys = ["friendly_name", "device_class", "unit_of_measurement", "temperature_unit", "brightness", "rgb_color", "supported_color_modes", "current_position", "battery_level", "current_temperature", "temperature", "hvac_action", "supported_features", "volume_level", "media_title", "media_artist", "alice_state", "assumed_state"];
+    const keys = ["friendly_name", "device_class", "unit_of_measurement", "temperature_unit", "brightness", "rgb_color", "supported_color_modes", "current_position", "battery_level", "current_temperature", "temperature", "hvac_action", "supported_features", "volume_level", "media_title", "media_artist", "alice_state", "assumed_state", "humidity", "wind_speed", "wind_bearing", "pressure", "carbon_intensity", "fossil_fuel_percentage", "fossil_percentage", "code_format", "changed_by"];
     return {
       entity_id: e.entity_id,
       state: e.state,
@@ -401,7 +437,21 @@ var HomeAssistant = class {
   async states() {
     const all = await this.request("/api/states");
     if (!Array.isArray(all)) throw new Error("\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u0441\u043F\u0438\u0441\u043E\u043A \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u0435\u0439.");
-    return all.filter((e) => /^(light|switch|sensor|binary_sensor|camera|cover|climate|media_player|vacuum)\.[a-z0-9_]+$/.test(e.entity_id)).map((e) => this.sanitize(e));
+    return all.filter((e) => /^(light|switch|sensor|binary_sensor|camera|cover|climate|media_player|vacuum|weather|todo|alarm_control_panel|update)\.[a-z0-9_]+$/.test(e.entity_id)).map((e) => this.sanitize(e));
+  }
+  async weatherForecast(entityId) {
+    if (!/^weather\.[a-z0-9_]+$/.test(entityId)) throw new Error("\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u0430\u044F \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u044C \u043F\u043E\u0433\u043E\u0434\u044B.");
+    if (!this.enabled) throw new Error("Home Assistant \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D. \u041F\u0440\u043E\u0433\u043D\u043E\u0437 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D.");
+    const result = await this.request("/api/services/weather/get_forecasts", { entity_id: [entityId] });
+    const raw = !Array.isArray(result) && (result?.[entityId] || result?.service_response?.[entityId])?.forecast;
+    if (!Array.isArray(raw)) throw new Error("Home Assistant \u043D\u0435 \u0432\u0435\u0440\u043D\u0443\u043B \u043F\u0440\u043E\u0433\u043D\u043E\u0437 \u043F\u043E\u0433\u043E\u0434\u044B.");
+    return raw.filter((p) => p && typeof p.datetime === "string" && Number.isFinite(Date.parse(p.datetime)) && Number.isFinite(Number(p.temperature))).sort((a, b) => Date.parse(a.datetime) - Date.parse(b.datetime)).slice(0, 8).map((p) => {
+      const item = { datetime: p.datetime, condition: p.condition, temperature: Number(p.temperature) };
+      if (Number.isFinite(Number(p.templow))) item.templow = Number(p.templow);
+      if (Number.isFinite(Number(p.precipitation_probability))) item.precipitationProbability = Math.round(Number(p.precipitation_probability));
+      if (Number.isFinite(Number(p.precipitation))) item.precipitation = Number(p.precipitation);
+      return item;
+    });
   }
   cameraEntity(id, p) {
     const d = p.devices.find((d2) => d2.id === id), b = p.bindings[id];
@@ -482,6 +532,108 @@ var HomeAssistant = class {
         await new Promise((r) => setTimeout(r, 350));
       } while (Date.now() < deadline);
       throw new Error("\u0421\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u0435 \u043D\u0435 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u043E. \u041A\u043E\u043C\u0430\u043D\u0434\u0430 \u043C\u043E\u0433\u043B\u0430 \u0432\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u044C\u0441\u044F; \u043F\u0440\u043E\u0432\u0435\u0440\u044C \u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u043E \u043F\u0435\u0440\u0435\u0434 \u043F\u043E\u0432\u0442\u043E\u0440\u043E\u043C.");
+    } finally {
+      this.pending.delete(entity);
+    }
+  }
+  // Список покупок: позиции не приходят в /api/states, читаем ответом сервиса todo/get_items.
+  async shoppingItems() {
+    const entity = "todo.shopping_list";
+    if (!this.enabled) throw new Error("Home Assistant \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D. \u0421\u043F\u0438\u0441\u043E\u043A \u043F\u043E\u043A\u0443\u043F\u043E\u043A \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D.");
+    const e = await this.request("/api/states/" + entity);
+    if (e.entity_id !== entity || ["unknown", "unavailable"].includes(e.state)) throw new Error("\u0421\u043F\u0438\u0441\u043E\u043A \u043F\u043E\u043A\u0443\u043F\u043E\u043A todo.shopping_list \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D. \u041F\u0440\u043E\u0432\u0435\u0440\u044C \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u044B\u0439 \u0441\u043F\u0438\u0441\u043E\u043A \u0432 HA.");
+    const result = await this.request("/api/services/todo/get_items?return_response", { entity_id: [entity], status: "needs_action" });
+    const raw = !Array.isArray(result) && (result?.[entity] || result?.service_response?.[entity])?.items;
+    if (!Array.isArray(raw)) throw new Error("HA \u043D\u0435 \u0432\u0435\u0440\u043D\u0443\u043B \u0441\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0435 \u0441\u043F\u0438\u0441\u043A\u0430 \u043F\u043E\u043A\u0443\u043F\u043E\u043A.");
+    const items = raw.filter((i) => i && typeof i.uid === "string" && typeof i.summary === "string").map((i) => ({ uid: i.uid, summary: i.summary, status: i.status === "completed" ? "completed" : "needs_action" }));
+    return { entity, count: items.length, items: items.slice(0, 50), truncated: raw.length > 50 };
+  }
+  async shoppingMutate(action, target) {
+    if (!["add", "complete"].includes(action)) throw new Error("\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u0435 \u0441\u043F\u0438\u0441\u043A\u0430 \u0437\u0430\u043F\u0440\u0435\u0449\u0435\u043D\u043E.");
+    const t = String(target ?? "").trim();
+    if (!t || t.length > 80) throw new Error("\u041F\u043E\u0437\u0438\u0446\u0438\u044F \u0441\u043F\u0438\u0441\u043A\u0430: \u043E\u0442 1 \u0434\u043E 80 \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432.");
+    const entity = "todo.shopping_list";
+    if (this.pending.has(entity)) throw new Error("\u0414\u043E\u0436\u0434\u0438\u0441\u044C \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u044F \u043F\u0440\u0435\u0434\u044B\u0434\u0443\u0449\u0435\u0433\u043E \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u044F \u0441\u043F\u0438\u0441\u043A\u0430.");
+    this.pending.add(entity);
+    try {
+      const before = await this.shoppingItems();
+      if (action === "add" && before.items.some((i) => i.summary.toLowerCase() === t.toLowerCase())) throw new Error("\u0422\u0430\u043A\u0430\u044F \u043F\u043E\u0437\u0438\u0446\u0438\u044F \u0443\u0436\u0435 \u0435\u0441\u0442\u044C \u0432 \u0441\u043F\u0438\u0441\u043A\u0435.");
+      const found = action === "complete" ? before.items.find((i) => i.uid === t || i.summary.toLowerCase() === t.toLowerCase()) : null;
+      if (action === "complete" && !found) throw new Error("\u041F\u043E\u0437\u0438\u0446\u0438\u044F \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u0430. \u041E\u0431\u043D\u043E\u0432\u0438 \u0441\u043F\u0438\u0441\u043E\u043A \u0438 \u043F\u043E\u043F\u0440\u043E\u0431\u0443\u0439 \u0441\u043D\u043E\u0432\u0430.");
+      await this.request("/api/services/todo/" + (action === "add" ? "add_item" : "update_item"), { entity_id: entity, ...action === "add" ? { item: t } : { item: found.uid || t, status: "completed" } });
+      let after;
+      try {
+        after = await this.shoppingItems();
+      } catch {
+        return { action, confirmed: false, items: before.items, message: "HA \u043F\u0440\u0438\u043D\u044F\u043B \u0437\u0430\u043F\u0440\u043E\u0441, \u043D\u043E \u043F\u043E\u0432\u0442\u043E\u0440\u043D\u043E\u0435 \u0447\u0442\u0435\u043D\u0438\u0435 \u0441\u043F\u0438\u0441\u043A\u0430 \u043D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C. \u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 \u043D\u0435 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0451\u043D; \u043F\u0440\u043E\u0432\u0435\u0440\u044C \u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u0435\u043C." };
+      }
+      const confirmed = action === "add" ? after.items.some((i) => i.summary === t && !before.items.some((b) => b.uid === i.uid)) : !after.items.some((i) => i.uid === found.uid);
+      return {
+        action,
+        confirmed,
+        items: after.items,
+        message: confirmed ? action === "add" ? "\u041F\u043E\u0437\u0438\u0446\u0438\u044F \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u0430, \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u043E \u0447\u0442\u0435\u043D\u0438\u0435\u043C \u0441\u043F\u0438\u0441\u043A\u0430." : "\u041F\u043E\u0437\u0438\u0446\u0438\u044F \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0430, \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u043E \u0447\u0442\u0435\u043D\u0438\u0435\u043C \u0441\u043F\u0438\u0441\u043A\u0430." : action === "add" ? "HA \u043F\u0440\u0438\u043D\u044F\u043B \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u0438\u0435; \u0444\u0430\u043A\u0442\u0430 \u0432 \u0441\u043F\u0438\u0441\u043A\u0435 \u043F\u043E\u043A\u0430 \u043D\u0435\u0442, \u043F\u0440\u043E\u0432\u0435\u0440\u044C \u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u0435\u043C." : "HA \u043F\u0440\u0438\u043D\u044F\u043B \u043E\u0442\u043C\u0435\u0442\u043A\u0443; \u043F\u043E\u0437\u0438\u0446\u0438\u044F \u043F\u043E\u043A\u0430 \u0432\u0438\u0434\u043D\u0430, \u043F\u0440\u043E\u0432\u0435\u0440\u044C \u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u0435\u043C."
+      };
+    } finally {
+      this.pending.delete(entity);
+    }
+  }
+  // Охрана: статус для клиента и подтверждаемые команды постановки/снятия.
+  // Код охраны никогда не попадает в логи, ответы и тексты ошибок.
+  async alarmState() {
+    if (!this.enabled) throw new Error("Home Assistant \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D. \u041E\u0445\u0440\u0430\u043D\u0430 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430.");
+    const all = await this.request("/api/states");
+    const e = Array.isArray(all) ? all.find((e2) => /^alarm_control_panel\.[a-z0-9_]+$/.test(e2.entity_id)) : null;
+    if (!e) throw new Error("\u0421\u0443\u0449\u043D\u043E\u0441\u0442\u044C \u043E\u0445\u0440\u0430\u043D\u044B \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u0430 \u0432 Home Assistant.");
+    return this.sanitize(e);
+  }
+  async alarmService(service, code) {
+    const names = { arm_away: "alarm_arm_away", arm_home: "alarm_arm_home", disarm: "alarm_disarm" };
+    if (!Object.keys(names).includes(service)) throw new Error("\u041A\u043E\u043C\u0430\u043D\u0434\u0430 \u043E\u0445\u0440\u0430\u043D\u044B \u043D\u0435 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u0441\u044F.");
+    const current = await this.alarmState(), entity = current.entity_id, format = current.attributes?.code_format;
+    let clean = "";
+    if (format && format !== "None") {
+      clean = String(code ?? "").trim();
+      if (!clean) throw new Error("\u0412\u0432\u0435\u0434\u0438 \u043A\u043E\u0434 \u043E\u0445\u0440\u0430\u043D\u044B.");
+      if (clean.length > 16) throw new Error("\u041A\u043E\u0434 \u043E\u0445\u0440\u0430\u043D\u044B: \u043D\u0435 \u0431\u043E\u043B\u044C\u0448\u0435 16 \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432.");
+      if (format === "Number" && !/^[0-9]+$/.test(clean)) throw new Error("\u041A\u043E\u0434 \u043E\u0445\u0440\u0430\u043D\u044B: \u0442\u043E\u043B\u044C\u043A\u043E \u0446\u0438\u0444\u0440\u044B.");
+    } else if (typeof code === "string") clean = code.slice(0, 16);
+    const target = { arm_away: "armed_away", arm_home: "armed_home", disarm: "disarmed" }[service];
+    const done = service === "disarm" ? "\u041E\u0445\u0440\u0430\u043D\u0430 \u0441\u043D\u044F\u0442\u0430, \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u043E Home Assistant." : "\u041F\u043E\u0441\u0442\u0430\u043D\u043E\u0432\u043A\u0430 \u043F\u043E\u0434 \u043E\u0445\u0440\u0430\u043D\u0443 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430.";
+    this.pending.add(entity);
+    try {
+      if (current.state === target) return { service, confirmed: true, state: target, message: done };
+      await this.request(`/api/services/alarm_control_panel/${names[service]}`, { entity_id: entity, ...clean ? { code: clean } : {} });
+      const deadline = Date.now() + 15e3;
+      let last = current.state;
+      do {
+        await new Promise((r) => setTimeout(r, 500));
+        const e = await this.request("/api/states/" + entity);
+        last = e.state;
+        if (last === target) return { service, confirmed: true, state: target, message: done };
+        if (["triggered", "unavailable", "unknown"].includes(last)) break;
+      } while (Date.now() < deadline);
+      if (["arming", "pending"].includes(last)) return { service, confirmed: false, state: last, message: "\u0412 \u043F\u0440\u043E\u0446\u0435\u0441\u0441\u0435; \u043F\u0440\u043E\u0432\u0435\u0440\u044C \u0441\u0442\u0430\u0442\u0443\u0441 \u0447\u0435\u0440\u0435\u0437 \u043C\u0438\u043D\u0443\u0442\u0443." };
+      throw new Error("\u041E\u0445\u0440\u0430\u043D\u0430 \u043D\u0435 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u043B\u0430 \u0441\u043C\u0435\u043D\u0443 \u0440\u0435\u0436\u0438\u043C\u0430. \u041A\u043E\u043C\u0430\u043D\u0434\u0430 \u043C\u043E\u0433\u043B\u0430 \u0432\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u044C\u0441\u044F; \u043F\u0440\u043E\u0432\u0435\u0440\u044C \u0441\u0442\u0430\u0442\u0443\u0441.");
+    } finally {
+      this.pending.delete(entity);
+    }
+  }
+  // TTS-фраза на станцию. Формат как в assistant.sendMedia: play_media c media_content_type 'text'.
+  // media_player не отдаёт результат озвучивания — честно возвращаем «принято, не подтверждено».
+  async announce(text, p) {
+    const t = String(text ?? "").trim();
+    if (!t || t.length > 100) throw new Error("\u0422\u0435\u043A\u0441\u0442 \u0444\u0440\u0430\u0437\u044B: \u043E\u0442 1 \u0434\u043E 100 \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432.");
+    const d = p.devices.find((d2) => d2.id === "station"), b = p.bindings.station;
+    if (d?.type !== "station" || d.status !== "installed" || !b?.verified || !/^media_player\.[a-z0-9_]+$/.test(b.entityId)) throw new Error("\u0421\u0442\u0430\u043D\u0446\u0438\u044F \u043D\u0435 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0430 \u0438\u043B\u0438 \u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u0430.");
+    const entity = b.entityId;
+    if (this.pending.has(entity)) throw new Error("\u0421\u0442\u0430\u043D\u0446\u0438\u044F \u0437\u0430\u043D\u044F\u0442\u0430 \u043F\u0440\u0435\u0434\u044B\u0434\u0443\u0449\u0435\u0439 \u043A\u043E\u043C\u0430\u043D\u0434\u043E\u0439.");
+    this.pending.add(entity);
+    try {
+      const e = await this.request("/api/states/" + entity);
+      if (!stationAvailable(e) || !(Number(e.attributes?.supported_features) & 512)) throw new Error("\u0421\u0442\u0430\u043D\u0446\u0438\u044F \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430 \u0438\u043B\u0438 play_media \u043D\u0435 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u0441\u044F.");
+      await this.request("/api/services/media_player/play_media", { entity_id: entity, media_content_type: "text", media_content_id: t });
+      return { accepted: true, message: "HA \u043F\u0440\u0438\u043D\u044F\u043B \u0437\u0430\u043F\u0440\u043E\u0441. \u041F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u0435 \u043E\u0437\u0432\u0443\u0447\u0438\u0432\u0430\u043D\u0438\u044F \u043D\u0435\u0432\u043E\u0437\u043C\u043E\u0436\u043D\u043E: media_player \u043D\u0435 \u043E\u0442\u0434\u0430\u0451\u0442 \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 TTS." };
     } finally {
       this.pending.delete(entity);
     }
@@ -837,6 +989,80 @@ var CameraRTC = class {
   }
 };
 
+// server/live-stream.js
+var LiveFeed = class {
+  constructor({ ha: ha2 }) {
+    this.ha = ha2;
+    this.clients = /* @__PURE__ */ new Set();
+    this.last = /* @__PURE__ */ new Map();
+    this.states = [];
+    this.timer = null;
+    this.hb = null;
+    if (ha2.enabled) {
+      this.poll();
+      this.timer = setInterval(() => this.poll(), 5e3);
+      this.timer.unref();
+      this.hb = setInterval(() => this.tick(), 15e3);
+      this.hb.unref();
+    }
+  }
+  send(client, event, data2) {
+    if (client.res.destroyed || client.res.writableEnded) return this.clients.delete(client);
+    try {
+      client.res.write(`event: ${event}
+data: ${data2}
+
+`);
+    } catch {
+      this.clients.delete(client);
+    }
+  }
+  broadcast(event, data2) {
+    for (const client of [...this.clients]) this.send(client, event, data2);
+  }
+  async poll() {
+    if (!this.ha.enabled) return;
+    let states;
+    try {
+      states = await this.ha.states();
+    } catch (error) {
+      this.broadcast("error", JSON.stringify({ message: error.message }));
+      return;
+    }
+    const next = new Map(states.map((e) => [e.entity_id, JSON.stringify(e)]));
+    const changed = states.filter((e) => this.last.get(e.entity_id) !== next.get(e.entity_id));
+    this.last = next;
+    this.states = states;
+    if (changed.length) this.broadcast("patch", JSON.stringify(changed));
+  }
+  subscribe(res) {
+    res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-store", "Connection": "keep-alive", "X-Accel-Buffering": "no" });
+    const client = { res };
+    this.clients.add(client);
+    if (!res.writableEnded) res.write(`event: snapshot
+data: ${JSON.stringify({ states: this.states })}
+
+`);
+    res.on("close", () => this.clients.delete(client));
+    return client;
+  }
+  tick() {
+    for (const client of [...this.clients]) {
+      try {
+        client.res.write(":hb\n\n");
+      } catch {
+        this.clients.delete(client);
+      }
+    }
+  }
+  stop() {
+    clearInterval(this.timer);
+    clearInterval(this.hb);
+    this.timer = this.hb = null;
+    this.clients.clear();
+  }
+};
+
 // src/sensor-state.js
 function binaryValue(type, value) {
   const v = String(value ?? "").trim().toLowerCase();
@@ -882,7 +1108,7 @@ var houseBindings = {
   "battery:leak-utility": "sensor.kotelnaia_datchik_protechki_vody_uroven_zariada",
   "battery:leak-bath": "sensor.vannaia_datchik_protechki_vody_uroven_zariada",
   "master-event": "sensor.prikhozhaia_master_svet_knopka",
-  "station": "media_player.yandex_station_c00mp0000t4w0z",
+  "station": "media_player.yandex_station_r10c5zt00h7hek",
   "battery:living": "sensor.gostinaia_datchik_temperatury_uroven_zariada",
   "battery:well": "sensor.skvazhina_datchik_temperatury_uroven_zariada",
   "battery:attic": "sensor.cherdak_datchik_temperatury_uroven_zariada",
@@ -892,7 +1118,7 @@ var houseBindings = {
 };
 var extra = (id, type, room, name) => ({ id, type, room, name, status: "installed", masterOff: false, note: "\u041F\u043E \u0432\u044B\u0433\u0440\u0443\u0437\u043A\u0435 HA \xB7 \u0442\u043E\u043B\u044C\u043A\u043E \u043D\u0430\u0431\u043B\u044E\u0434\u0435\u043D\u0438\u0435" });
 var houseExtras = [
-  extra("station", "station", "living", "\u042F\u043D\u0434\u0435\u043A\u0441 \u0421\u0442\u0430\u043D\u0446\u0438\u044F \u0414\u0443\u043E \u041C\u0430\u043A\u0441"),
+  extra("station", "station", "living", "\u042F\u043D\u0434\u0435\u043A\u0441 \u0421\u0442\u0430\u043D\u0446\u0438\u044F \u041C\u0438\u0434\u0438"),
   extra("yard-motion", "motion", "yard", "\u0414\u0432\u0438\u0436\u0435\u043D\u0438\u0435 \xB7 \u043A\u0430\u043C\u0435\u0440\u0430 \u0434\u0432\u043E\u0440\u0430"),
   extra("master-event", "button_event", "hall", "\u041C\u0430\u0441\u0442\u0435\u0440-\u0441\u0432\u0435\u0442 \xB7 \u043F\u043E\u0441\u043B\u0435\u0434\u043D\u0435\u0435 \u0441\u043E\u0431\u044B\u0442\u0438\u0435"),
   ...[
@@ -1165,6 +1391,9 @@ async function loadHistory(ha2, p, hoursText) {
   }
 }
 
+// src/dom.js
+var PANEL_TIMEZONE = "Europe/Moscow";
+
 // server/assistant.js
 import { createHash } from "node:crypto";
 
@@ -1404,7 +1633,7 @@ var StationAssistant = class {
         const b = p.bindings.station;
         if (!b?.verified) continue;
         const f = this.features(byId.get(b.entityId)), canSpeak = f.playMedia && f.local && !this.ha.pending.has(b.entityId) && p.devices.some((d) => d.id === "station" && d.type === "station" && d.status === "installed") && byId.get(b.entityId).attributes.alice_state.toUpperCase() === "IDLE";
-        const s = this.settings(id), hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Moscow", hour: "2-digit", hourCycle: "h23" }).format(now));
+        const s = this.settings(id), hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: PANEL_TIMEZONE, hour: "2-digit", hourCycle: "h23" }).format(now));
         for (const d of p.devices.filter((d2) => d2.status === "installed" && ["leak", "door"].includes(d2.type)).sort((a, b2) => (a.type === "leak" ? 0 : 1) - (b2.type === "leak" ? 0 : 1))) {
           const binding = p.bindings[d.id];
           if (!binding?.verified) continue;
@@ -1446,6 +1675,107 @@ var StationAssistant = class {
   }
 };
 
+// server/scenarios.js
+var lightLines = (p) => {
+  const cached = p.__lightLines || (p.__lightLines = bindingDefinitions(p.devices).filter((b) => deviceTypes[b.type].module === "lights" && deviceTypes[b.type].controllable && b.device.status === "installed"));
+  return cached;
+};
+var bound = (p) => lightLines(p).filter((b) => {
+  const v = p.bindings[b.id];
+  return v?.verified && v.entityId;
+});
+var inRooms = (p, rooms) => bound(p).filter((b) => rooms.includes(b.device.room));
+var skipRest = (p, run) => lightLines(p).filter((b) => !run.some((r) => r.b === b)).map((b) => ({ b, message: "\u041D\u0435\u0442 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u043D\u043E\u0439 \u043B\u0438\u043D\u0438\u0438 \u0438\u043B\u0438 \u0441\u0446\u0435\u043D\u0430\u0440\u0438\u0439 \u043D\u0435 \u0442\u0440\u043E\u0433\u0430\u0435\u0442 \u044D\u0442\u0443 \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }));
+async function supportsDim(ha2, entity) {
+  try {
+    const e = await ha2.request("/api/states/" + entity);
+    return ["on", "off"].includes(e.state) && (e.attributes.supported_color_modes || []).some((m) => m !== "onoff");
+  } catch {
+    return false;
+  }
+}
+var scenarioRegistry = {
+  leave: { name: "\u0423\u0445\u043E\u0434", plan: async (ha2, p) => {
+    const run = bound(p).map((b) => ({ b, request: { id: b.id, value: false }, message: "\u0412\u044B\u043A\u043B\u044E\u0447\u0435\u043D\u043E" }));
+    return { run, skip: skipRest(p, run) };
+  } },
+  evening: { name: "\u0412\u0435\u0447\u0435\u0440", plan: async (ha2, p) => {
+    const lines = inRooms(p, ["living", "hall"]), run = [];
+    for (const b of lines) {
+      const entity = p.bindings[b.id].entityId;
+      if (b.type === "rgb" && await supportsDim(ha2, entity)) run.push({ b, request: { id: b.id + "/brightness", value: 100 }, message: "\u0412\u043A\u043B\u044E\u0447\u0435\u043D\u043E \xB7 100 %" });
+      else run.push({ b, request: { id: b.id, value: true }, message: "\u0412\u043A\u043B\u044E\u0447\u0435\u043D\u043E" });
+    }
+    return { run, skip: skipRest(p, run) };
+  } },
+  cinema: { name: "\u041A\u0438\u043D\u043E", plan: async (ha2, p) => {
+    const living = inRooms(p, ["living"]), run = [], skip = [];
+    for (const b of bound(p).filter((b2) => !living.includes(b2))) run.push({ b, request: { id: b.id, value: false }, message: "\u0412\u044B\u043A\u043B\u044E\u0447\u0435\u043D\u043E" });
+    const first = living[0];
+    if (first) {
+      const entity = p.bindings[first.id].entityId;
+      if (first.type === "rgb" && await supportsDim(ha2, entity)) run.push({ b: first, request: { id: first.id + "/brightness", value: 30 }, message: "\u041F\u0440\u0438\u0433\u043B\u0443\u0448\u0451\u043D\u043D\u044B\u0439 \u0441\u0432\u0435\u0442 \xB7 30 %" });
+      else run.push({ b: first, request: { id: first.id, value: true }, message: "\u042F\u0440\u043A\u043E\u0441\u0442\u044C \u043D\u0435 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430 \xB7 \u0432\u043A\u043B\u044E\u0447\u0435\u043D\u043E \u043F\u043E\u043B\u043D\u043E\u0441\u0442\u044C\u044E" });
+    } else skip.push({ b: null, message: "\u0412 \u0433\u043E\u0441\u0442\u0438\u043D\u043E\u0439 \u043D\u0435\u0442 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u043D\u043E\u0439 \u043B\u0438\u043D\u0438\u0438" });
+    for (const b of skipRest(p, run)) if (b !== first) skip.push(b);
+    return { run, skip };
+  } }
+};
+async function runScenario(id, ha2, p) {
+  const def = scenarioRegistry[String(id || "")];
+  if (!def) throw new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u0441\u0446\u0435\u043D\u0430\u0440\u0438\u0439.");
+  const { run, skip } = await def.plan(ha2, p);
+  const results = [];
+  let confirmed = 0, failed = 0;
+  for (const { b, request, message } of run) {
+    try {
+      await ha2.command(request, p);
+      confirmed++;
+      results.push({ id: b.id, name: b.name, status: "confirmed", message });
+    } catch (error) {
+      failed++;
+      results.push({ id: b.id, name: b.name, status: "failed", message: error.message });
+    }
+  }
+  for (const { b, message } of skip) results.push({ id: b?.id || "", name: b?.name || "\u041B\u0438\u043D\u0438\u044F \u0441\u0432\u0435\u0442\u0430", status: "skipped", message });
+  return { id: String(id), name: def.name, results, summary: { total: results.length, confirmed, failed, skipped: results.length - confirmed - failed } };
+}
+async function runUserScenario(id, ha2, p) {
+  const key = String(id || ""), def = (p.userScenarios || []).find((s) => s.id === key);
+  if (!def) throw new Error("\u0421\u0446\u0435\u043D\u0430\u0440\u0438\u0439 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D.");
+  const lines = new Map(bound(p).map((b) => [b.id, b])), run = [], skip = [];
+  for (const step of def.steps) {
+    const b = lines.get(step.deviceId);
+    if (!b) {
+      skip.push({ b: null, message: "\u041D\u0435\u0442 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u043D\u043E\u0439 \u043B\u0438\u043D\u0438\u0438 \u0441\u0432\u0435\u0442\u0430" });
+      continue;
+    }
+    if (step.action === "brightness" && !(b.type === "rgb" && await supportsDim(ha2, p.bindings[b.id].entityId))) {
+      run.push({ b, request: { id: b.id, value: true }, message: "\u042F\u0440\u043A\u043E\u0441\u0442\u044C \u043D\u0435 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430 \xB7 \u0432\u043A\u043B\u044E\u0447\u0435\u043D\u043E \u043F\u043E\u043B\u043D\u043E\u0441\u0442\u044C\u044E" });
+      continue;
+    }
+    run.push({
+      b,
+      request: step.action === "brightness" ? { id: b.id + "/brightness", value: step.value } : { id: b.id, value: step.action === "on" },
+      message: step.action === "brightness" ? `\u042F\u0440\u043A\u043E\u0441\u0442\u044C ${step.value} %` : step.action === "on" ? "\u0412\u043A\u043B\u044E\u0447\u0435\u043D\u043E" : "\u0412\u044B\u043A\u043B\u044E\u0447\u0435\u043D\u043E"
+    });
+  }
+  const results = [];
+  let confirmed = 0, failed = 0;
+  for (const { b, request, message } of run) {
+    try {
+      await ha2.command(request, p);
+      confirmed++;
+      results.push({ id: b.id, name: b.name, status: "confirmed", message });
+    } catch (error) {
+      failed++;
+      results.push({ id: b.id, name: b.name, status: "failed", message: error.message });
+    }
+  }
+  for (const { b, message } of skip) results.push({ id: b?.id || "", name: b?.name || "\u041B\u0438\u043D\u0438\u044F \u0441\u0432\u0435\u0442\u0430", status: "skipped", message });
+  return { id: key, name: def.name, results, summary: { total: results.length, confirmed, failed, skipped: results.length - confirmed - failed } };
+}
+
 // server/index.js
 var port = Number(process.env.PORT || 8080);
 var preview = process.env.PANEL_PREVIEW === "1";
@@ -1465,6 +1795,11 @@ setInterval(() => streams.prune(), 3e4).unref();
 setInterval(() => rtc.prune(), 3e4).unref();
 var proofs = /* @__PURE__ */ new Map();
 var pendingScopes = /* @__PURE__ */ new Map();
+var live = new LiveFeed({ ha });
+var liveIds = /* @__PURE__ */ new Map();
+var forecastCache = null;
+var forecastKey = "";
+var shoppingCache = null;
 var getProfile = (id) => {
   let row = db.prepare("SELECT * FROM profiles WHERE id=?").get(id);
   if (!row) {
@@ -1540,6 +1875,11 @@ var server = http.createServer(async (req, res) => {
       if (req.method === "GET" && route === "bootstrap") {
         if (!proofs.has(id)) proofs.set(id, randomBytes3(32).toString("hex"));
         return json(res, 200, { preferences: p.preferences, photo: !!p.photo, proof: proofs.get(id), preview, addon, haConfigured: ha.enabled });
+      }
+      if (req.method === "GET" && route === "profile/export") {
+        const data2 = Buffer.from(JSON.stringify({ exportedAt: (/* @__PURE__ */ new Date()).toISOString(), version: 3, preferences: p.preferences }, null, 2));
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Content-Disposition": 'attachment; filename="home-panel-profile.json"', "Cache-Control": "no-store" });
+        return res.end(data2);
       }
       if (req.method !== "GET") authorize(req, id);
       if (route === "assistant/status" && req.method === "GET") return json(res, 200, await assistant.status(id, p.preferences));
@@ -1632,6 +1972,30 @@ var server = http.createServer(async (req, res) => {
         }
       }
       if (route === "ha/states" && req.method === "GET") return json(res, 200, { states: await ha.states(), receivedAt: Date.now() });
+      if (route === "ha/weather-forecast" && req.method === "GET") {
+        const asked = url.searchParams.get("entity") || "", entityId = /^weather\.[a-z0-9_]+$/.test(asked) ? asked : (await ha.states()).find((e) => e.entity_id.startsWith("weather."))?.entity_id || "";
+        if (!entityId) return json(res, 400, { error: "\u0421\u0443\u0449\u043D\u043E\u0441\u0442\u044C \u043F\u043E\u0433\u043E\u0434\u044B \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u0430 \u0432 Home Assistant." });
+        if (forecastCache && forecastKey === entityId && Date.now() - forecastCache.at < 15 * 60 * 1e3) return json(res, 200, { ...forecastCache.data, cached: true });
+        const data2 = { entityId, forecast: await ha.weatherForecast(entityId) };
+        forecastCache = { at: Date.now(), data: data2 };
+        forecastKey = entityId;
+        return json(res, 200, data2);
+      }
+      if (route === "ha/stream" && req.method === "GET") {
+        if (req.headers["sec-fetch-site"] === "cross-site") return json(res, 403, { error: "\u041C\u0435\u0436\u0441\u0430\u0439\u0442\u043E\u0432\u044B\u0439 \u0437\u0430\u043F\u0440\u043E\u0441 \u0437\u0430\u043F\u0440\u0435\u0449\u0451\u043D." });
+        if (!ha.enabled) return json(res, 400, { error: "Home Assistant \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D." });
+        req.socket.setNoDelay(true);
+        req.socket.setTimeout(0);
+        req.setTimeout(0);
+        const pid = req.headers["x-panel-id"] || "", old = liveIds.get(pid);
+        if (old && !old.writableEnded) old.end();
+        if (pid) liveIds.set(pid, res);
+        res.on("close", () => {
+          if (liveIds.get(pid) === res) liveIds.delete(pid);
+        });
+        live.subscribe(res);
+        return;
+      }
       if (route === "device-model" && req.method === "GET") return json(res, 200, { version: 1, devices: buildDeviceModel(p.preferences) });
       if (route === "ha/stream/start" && req.method === "POST") {
         const request = JSON.parse((await body(req)).toString());
@@ -1689,11 +2053,45 @@ var server = http.createServer(async (req, res) => {
           else pendingScopes.delete(id);
         }
       }
+      if (route === "ha/alarm" && req.method === "POST") {
+        const request = JSON.parse((await body(req)).toString());
+        return json(res, 200, await ha.alarmService(request?.service, request?.code));
+      }
+      if (route === "ha/shopping" && req.method === "GET") {
+        if (shoppingCache && Date.now() - shoppingCache.at < 1e4) return json(res, 200, { ...shoppingCache.data, cached: true });
+        const data2 = await ha.shoppingItems();
+        shoppingCache = { at: Date.now(), data: data2 };
+        return json(res, 200, data2);
+      }
+      if (route === "ha/shopping" && req.method === "POST") {
+        const request = JSON.parse((await body(req)).toString());
+        const result = await ha.shoppingMutate(request?.action === "complete" ? "complete" : "add", request?.target);
+        if (Array.isArray(result.items)) shoppingCache = { at: Date.now(), data: { entity: "todo.shopping_list", count: result.items.length, items: result.items } };
+        return json(res, 200, { action: result.action, confirmed: result.confirmed, message: result.message, items: result.items });
+      }
+      if (route === "ha/announce" && req.method === "POST") {
+        const request = JSON.parse((await body(req)).toString());
+        return json(res, 200, await ha.announce(request?.text, p.preferences));
+      }
+      if (route === "ha/scenario" && req.method === "POST") {
+        if (assistantScopes.has(id)) throw new Error("\u0414\u043E\u0436\u0434\u0438\u0441\u044C \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u044F \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F \u0441\u0442\u0430\u043D\u0446\u0438\u0438.");
+        const request = JSON.parse((await body(req)).toString());
+        pendingScopes.set(id, (pendingScopes.get(id) || 0) + 1);
+        const scenarioId = String(request?.id || "");
+        try {
+          const result = scenarioId.startsWith("user-") ? await runUserScenario(scenarioId, ha, p.preferences) : await runScenario(scenarioId, ha, p.preferences);
+          return json(res, 200, result);
+        } finally {
+          const n = pendingScopes.get(id) - 1;
+          if (n) pendingScopes.set(id, n);
+          else pendingScopes.delete(id);
+        }
+      }
       return json(res, 404, { error: "\u041C\u0430\u0440\u0448\u0440\u0443\u0442 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D." });
     }
     if (req.method !== "GET" && req.method !== "HEAD") return json(res, 405, { error: "\u041C\u0435\u0442\u043E\u0434 \u0437\u0430\u043F\u0440\u0435\u0449\u0451\u043D." });
     const relative = path === "/" ? "index.html" : path.slice(1);
-    if (!/^(index\.html|style\.css|app\.js|(?:model|chunk)-[A-Za-z0-9_-]+\.js|assets\/[A-Za-z0-9_./-]+\.(webp|woff2|ttf|txt|js))$/.test(relative) || relative.includes("..")) return json(res, 404, { error: "\u0424\u0430\u0439\u043B \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D." });
+    if (!/^(index\.html|sw\.js|style\.css|app\.js|(?:model|chunk)-[A-Za-z0-9_-]+\.js|assets\/[A-Za-z0-9_./-]+\.(webp|woff2|ttf|txt|js))$/.test(relative) || relative.includes("..")) return json(res, 404, { error: "\u0424\u0430\u0439\u043B \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D." });
     const file = resolve(root, relative);
     await stat(file);
     const type = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".webp": "image/webp", ".woff2": "font/woff2", ".ttf": "font/ttf", ".txt": "text/plain; charset=utf-8" }[extname(file)];
@@ -1716,6 +2114,7 @@ server.on("error", (error) => {
   process.exitCode = 1;
 });
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => server.close(() => {
+  live.stop();
   db.close();
   process.exit(0);
 }));
