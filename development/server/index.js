@@ -15,7 +15,7 @@ import {migrateHouseProfile,activateHouseProfile,bindingProblem} from '../src/ho
 import {seedDeviceModel,buildDeviceModel} from '../src/device-model.js';
 import {loadHistory} from './history.js';
 import {StationAssistant} from './assistant.js';
-import {runScenario} from './scenarios.js';
+import {runScenario,runUserScenario} from './scenarios.js';
 
 const port=Number(process.env.PORT||8080),preview=process.env.PANEL_PREVIEW==='1';
 const addon=process.env.PANEL_ADDON==='1';
@@ -33,6 +33,7 @@ setInterval(()=>streams.prune(),30000).unref();
 setInterval(()=>rtc.prune(),30000).unref();
 const proofs=new Map(),pendingScopes=new Map();
 const live=new LiveFeed({ha}),liveIds=new Map();
+let forecastCache=null,forecastKey='',shoppingCache=null;
 const getProfile=id=>{
  let row=db.prepare('SELECT * FROM profiles WHERE id=?').get(id);
  if(!row){db.prepare('INSERT INTO profiles(id,preferences) VALUES(?,?)').run(id,JSON.stringify(defaultPreferences()));row=db.prepare('SELECT * FROM profiles WHERE id=?').get(id)}
@@ -98,6 +99,11 @@ const server=http.createServer(async(req,res)=>{
    if(req.method==='GET'&&route==='bootstrap'){
     if(!proofs.has(id))proofs.set(id,randomBytes(32).toString('hex'));
     return json(res,200,{preferences:p.preferences,photo:!!p.photo,proof:proofs.get(id),preview,addon,haConfigured:ha.enabled});
+   }
+   if(req.method==='GET'&&route==='profile/export'){
+    const data=Buffer.from(JSON.stringify({exportedAt:new Date().toISOString(),version:3,preferences:p.preferences},null,2));
+    res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Content-Disposition':'attachment; filename="home-panel-profile.json"','Cache-Control':'no-store'});
+    return res.end(data);
    }
    if(req.method!=='GET')authorize(req,id);
    if(route==='assistant/status'&&req.method==='GET')return json(res,200,await assistant.status(id,p.preferences));
@@ -173,6 +179,14 @@ const server=http.createServer(async(req,res)=>{
     if(req.method==='DELETE'){db.prepare('UPDATE profiles SET photo=NULL WHERE id=?').run(id);return json(res,200,{saved:true})}
    }
    if(route==='ha/states'&&req.method==='GET')return json(res,200,{states:await ha.states(),receivedAt:Date.now()});
+   if(route==='ha/weather-forecast'&&req.method==='GET'){
+    const asked=url.searchParams.get('entity')||'',entityId=/^weather\.[a-z0-9_]+$/.test(asked)?asked:(await ha.states()).find(e=>e.entity_id.startsWith('weather.'))?.entity_id||'';
+    if(!entityId)return json(res,400,{error:'Сущность погоды не найдена в Home Assistant.'});
+    if(forecastCache&&forecastKey===entityId&&Date.now()-forecastCache.at<15*60*1000)return json(res,200,{...forecastCache.data,cached:true});
+    const data={entityId,forecast:await ha.weatherForecast(entityId)};
+    forecastCache={at:Date.now(),data};forecastKey=entityId;
+    return json(res,200,data);
+   }
    if(route==='ha/stream'&&req.method==='GET'){
     if(req.headers['sec-fetch-site']==='cross-site')return json(res,403,{error:'Межсайтовый запрос запрещён.'});
     if(!ha.enabled)return json(res,400,{error:'Home Assistant не настроен.'});
@@ -226,11 +240,34 @@ const server=http.createServer(async(req,res)=>{
     try{return json(res,200,await ha.command(request,p.preferences))}
     finally{const n=pendingScopes.get(id)-1;if(n)pendingScopes.set(id,n);else pendingScopes.delete(id)}
    }
+   // Код охраны валидируется в ha.alarmService и никогда не возвращается в ответах/ошибках.
+   if(route==='ha/alarm'&&req.method==='POST'){
+    const request=JSON.parse((await body(req)).toString());
+    return json(res,200,await ha.alarmService(request?.service,request?.code));
+   }
+   if(route==='ha/shopping'&&req.method==='GET'){
+    if(shoppingCache&&Date.now()-shoppingCache.at<10000)return json(res,200,{...shoppingCache.data,cached:true});
+    const data=await ha.shoppingItems();shoppingCache={at:Date.now(),data};return json(res,200,data);
+   }
+   if(route==='ha/shopping'&&req.method==='POST'){
+    const request=JSON.parse((await body(req)).toString());
+    const result=await ha.shoppingMutate(request?.action==='complete'?'complete':'add',request?.target);
+    if(Array.isArray(result.items))shoppingCache={at:Date.now(),data:{entity:'todo.shopping_list',count:result.items.length,items:result.items}};
+    return json(res,200,{action:result.action,confirmed:result.confirmed,message:result.message,items:result.items});
+   }
+   if(route==='ha/announce'&&req.method==='POST'){
+    const request=JSON.parse((await body(req)).toString());
+    return json(res,200,await ha.announce(request?.text,p.preferences));
+   }
    if(route==='ha/scenario'&&req.method==='POST'){
     if(assistantScopes.has(id))throw new Error('Дождись завершения действия станции.');
     const request=JSON.parse((await body(req)).toString());
     pendingScopes.set(id,(pendingScopes.get(id)||0)+1);
-    try{return json(res,200,await runScenario(request?.id,ha,p.preferences))}
+    const scenarioId=String(request?.id||'');
+    try{
+     const result=scenarioId.startsWith('user-')?await runUserScenario(scenarioId,ha,p.preferences):await runScenario(scenarioId,ha,p.preferences);
+     return json(res,200,result);
+    }
     finally{const n=pendingScopes.get(id)-1;if(n)pendingScopes.set(id,n);else pendingScopes.delete(id)}
    }
    return json(res,404,{error:'Маршрут не найден.'});
@@ -238,7 +275,7 @@ const server=http.createServer(async(req,res)=>{
   if(req.method!=='GET'&&req.method!=='HEAD')return json(res,405,{error:'Метод запрещён.'});
   const relative=path==='/'?'index.html':path.slice(1);
   // Explicit allowlist: no SQLite database, secrets, server code or arbitrary file access.
-  if(!/^(index\.html|style\.css|app\.js|(?:model|chunk)-[A-Za-z0-9_-]+\.js|assets\/[A-Za-z0-9_./-]+\.(webp|woff2|ttf|txt|js))$/.test(relative)||relative.includes('..'))return json(res,404,{error:'Файл не найден.'});
+  if(!/^(index\.html|sw\.js|style\.css|app\.js|(?:model|chunk)-[A-Za-z0-9_-]+\.js|assets\/[A-Za-z0-9_./-]+\.(webp|woff2|ttf|txt|js))$/.test(relative)||relative.includes('..'))return json(res,404,{error:'Файл не найден.'});
   const file=resolve(root,relative);
   await stat(file);
   const type={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.webp':'image/webp','.woff2':'font/woff2','.ttf':'font/ttf','.txt':'text/plain; charset=utf-8'}[extname(file)];

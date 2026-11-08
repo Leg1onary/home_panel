@@ -1,6 +1,6 @@
 import {bindingDefinitions} from '../src/preferences.js';
 import {resolveAction} from '../src/catalog.js';
-import {stationSupports} from '../src/station.js';
+import {stationAvailable,stationSupports} from '../src/station.js';
 
 export class HomeAssistant {
  constructor({url='',token='',preview=false}={}){
@@ -26,14 +26,31 @@ export class HomeAssistant {
   try{return await response.json()}catch{throw new Error('Некорректный ответ Home Assistant.')}
  }
  sanitize(e){
-  const keys=['friendly_name','device_class','unit_of_measurement','temperature_unit','brightness','rgb_color','supported_color_modes','current_position','battery_level','current_temperature','temperature','hvac_action','supported_features','volume_level','media_title','media_artist','alice_state','assumed_state','humidity','wind_speed','wind_bearing','pressure'];
+  const keys=['friendly_name','device_class','unit_of_measurement','temperature_unit','brightness','rgb_color','supported_color_modes','current_position','battery_level','current_temperature','temperature','hvac_action','supported_features','volume_level','media_title','media_artist','alice_state','assumed_state','humidity','wind_speed','wind_bearing','pressure','carbon_intensity','fossil_fuel_percentage','fossil_percentage','code_format','changed_by'];
   return {entity_id:e.entity_id,state:e.state,last_changed:e.last_changed,last_updated:e.last_updated,last_reported:e.last_reported,
    attributes:Object.fromEntries(keys.filter(k=>e.attributes?.[k]!==undefined).map(k=>[k,e.attributes[k]]))};
  }
  async states(){
   const all=await this.request('/api/states');
   if(!Array.isArray(all))throw new Error('Некорректный список сущностей.');
-  return all.filter(e=>/^(light|switch|sensor|binary_sensor|camera|cover|climate|media_player|vacuum|weather)\.[a-z0-9_]+$/.test(e.entity_id)).map(e=>this.sanitize(e));
+  return all.filter(e=>/^(light|switch|sensor|binary_sensor|camera|cover|climate|media_player|vacuum|weather|todo|alarm_control_panel|update)\.[a-z0-9_]+$/.test(e.entity_id)).map(e=>this.sanitize(e));
+ }
+ async weatherForecast(entityId){
+  if(!/^weather\.[a-z0-9_]+$/.test(entityId))throw new Error('Некорректная сущность погоды.');
+  if(!this.enabled)throw new Error('Home Assistant не настроен. Прогноз недоступен.');
+  // HA 2026.10: прогноз отдаёт сервис weather.get_forecasts (service response),
+  // атрибут forecast в состоянии в новых версиях пуст.
+  const result=await this.request('/api/services/weather/get_forecasts',{entity_id:[entityId]});
+  const raw=!Array.isArray(result)&&(result?.[entityId]||result?.service_response?.[entityId])?.forecast;
+  if(!Array.isArray(raw))throw new Error('Home Assistant не вернул прогноз погоды.');
+  return raw.filter(p=>p&&typeof p.datetime==='string'&&Number.isFinite(Date.parse(p.datetime))&&Number.isFinite(Number(p.temperature)))
+   .sort((a,b)=>Date.parse(a.datetime)-Date.parse(b.datetime)).slice(0,8)
+   .map(p=>{
+    const item={datetime:p.datetime,condition:p.condition,temperature:Number(p.temperature)};
+    if(Number.isFinite(Number(p.templow)))item.templow=Number(p.templow);
+    if(Number.isFinite(Number(p.precipitation_probability)))item.precipitationProbability=Math.round(Number(p.precipitation_probability));
+    if(Number.isFinite(Number(p.precipitation)))item.precipitation=Number(p.precipitation);
+    return item});
  }
  cameraEntity(id,p){
   const d=p.devices.find(d=>d.id===id),b=p.bindings[id];
@@ -96,6 +113,96 @@ export class HomeAssistant {
     await new Promise(r=>setTimeout(r,350));
    }while(Date.now()<deadline);
    throw new Error('Состояние не подтверждено. Команда могла выполниться; проверь устройство перед повтором.');
+  }finally{this.pending.delete(entity)}
+ }
+ // Список покупок: позиции не приходят в /api/states, читаем ответом сервиса todo/get_items.
+ async shoppingItems(){
+  const entity='todo.shopping_list';
+  if(!this.enabled)throw new Error('Home Assistant не настроен. Список покупок недоступен.');
+  const e=await this.request('/api/states/'+entity);
+  if(e.entity_id!==entity||['unknown','unavailable'].includes(e.state))throw new Error('Список покупок todo.shopping_list недоступен. Проверь стандартный список в HA.');
+  const result=await this.request('/api/services/todo/get_items?return_response',{entity_id:[entity],status:'needs_action'});
+  const raw=!Array.isArray(result)&&(result?.[entity]||result?.service_response?.[entity])?.items;
+  if(!Array.isArray(raw))throw new Error('HA не вернул содержимое списка покупок.');
+  const items=raw.filter(i=>i&&typeof i.uid==='string'&&typeof i.summary==='string').map(i=>({uid:i.uid,summary:i.summary,status:i.status==='completed'?'completed':'needs_action'}));
+  return {entity,count:items.length,items:items.slice(0,50),truncated:raw.length>50};
+ }
+ async shoppingMutate(action,target){
+  if(!['add','complete'].includes(action))throw new Error('Действие списка запрещено.');
+  const t=String(target??'').trim();
+  if(!t||t.length>80)throw new Error('Позиция списка: от 1 до 80 символов.');
+  const entity='todo.shopping_list';
+  if(this.pending.has(entity))throw new Error('Дождись завершения предыдущего изменения списка.');
+  this.pending.add(entity);
+  try{
+   const before=await this.shoppingItems();
+   if(action==='add'&&before.items.some(i=>i.summary.toLowerCase()===t.toLowerCase()))throw new Error('Такая позиция уже есть в списке.');
+   const found=action==='complete'?before.items.find(i=>i.uid===t||i.summary.toLowerCase()===t.toLowerCase()):null;
+   if(action==='complete'&&!found)throw new Error('Позиция не найдена. Обнови список и попробуй снова.');
+   await this.request('/api/services/todo/'+(action==='add'?'add_item':'update_item'),{entity_id:entity,...(action==='add'?{item:t}:{item:found.uid||t,status:'completed'})});
+   let after;
+   try{after=await this.shoppingItems()}
+   catch{return {action,confirmed:false,items:before.items,message:'HA принял запрос, но повторное чтение списка не удалось. Результат не подтверждён; проверь обновлением.'}}
+   const confirmed=action==='add'?after.items.some(i=>i.summary===t&&!before.items.some(b=>b.uid===i.uid)):!after.items.some(i=>i.uid===found.uid);
+   return {action,confirmed,items:after.items,
+    message:confirmed?(action==='add'?'Позиция добавлена, подтверждено чтением списка.':'Позиция выполнена, подтверждено чтением списка.'):action==='add'?'HA принял добавление; факта в списке пока нет, проверь обновлением.':'HA принял отметку; позиция пока видна, проверь обновлением.'};
+  }finally{this.pending.delete(entity)}
+ }
+ // Охрана: статус для клиента и подтверждаемые команды постановки/снятия.
+ // Код охраны никогда не попадает в логи, ответы и тексты ошибок.
+ async alarmState(){
+  if(!this.enabled)throw new Error('Home Assistant не настроен. Охрана недоступна.');
+  const all=await this.request('/api/states');
+  const e=Array.isArray(all)?all.find(e=>/^alarm_control_panel\.[a-z0-9_]+$/.test(e.entity_id)):null;
+  if(!e)throw new Error('Сущность охраны не найдена в Home Assistant.');
+  return this.sanitize(e);
+ }
+ async alarmService(service,code){
+  const names={arm_away:'alarm_arm_away',arm_home:'alarm_arm_home',disarm:'alarm_disarm'};
+  if(!Object.keys(names).includes(service))throw new Error('Команда охраны не поддерживается.');
+  const current=await this.alarmState(),entity=current.entity_id,format=current.attributes?.code_format;
+  let clean='';
+  if(format&&format!=='None'){
+   clean=String(code??'').trim();
+   if(!clean)throw new Error('Введи код охраны.');
+   if(clean.length>16)throw new Error('Код охраны: не больше 16 символов.');
+   if(format==='Number'&&!/^[0-9]+$/.test(clean))throw new Error('Код охраны: только цифры.');
+  }else if(typeof code==='string')clean=code.slice(0,16);
+  const target={arm_away:'armed_away',arm_home:'armed_home',disarm:'disarmed'}[service];
+  const done=service==='disarm'?'Охрана снята, подтверждено Home Assistant.':'Постановка под охрану подтверждена.';
+  this.pending.add(entity);
+  try{
+   if(current.state===target)return {service,confirmed:true,state:target,message:done};
+   await this.request(`/api/services/alarm_control_panel/${names[service]}`,{entity_id:entity,...(clean?{code:clean}:{})});
+   const deadline=Date.now()+15000;
+   let last=current.state;
+   do{
+    await new Promise(r=>setTimeout(r,500));
+    const e=await this.request('/api/states/'+entity);
+    last=e.state;
+    if(last===target)return {service,confirmed:true,state:target,message:done};
+    if(['triggered','unavailable','unknown'].includes(last))break;
+   }while(Date.now()<deadline);
+   if(['arming','pending'].includes(last))return {service,confirmed:false,state:last,message:'В процессе; проверь статус через минуту.'};
+   throw new Error('Охрана не подтвердила смену режима. Команда могла выполниться; проверь статус.');
+  }finally{this.pending.delete(entity)}
+ }
+
+ // TTS-фраза на станцию. Формат как в assistant.sendMedia: play_media c media_content_type 'text'.
+ // media_player не отдаёт результат озвучивания — честно возвращаем «принято, не подтверждено».
+ async announce(text,p){
+  const t=String(text??'').trim();
+  if(!t||t.length>100)throw new Error('Текст фразы: от 1 до 100 символов.');
+  const d=p.devices.find(d=>d.id==='station'),b=p.bindings.station;
+  if(d?.type!=='station'||d.status!=='installed'||!b?.verified||!/^media_player\.[a-z0-9_]+$/.test(b.entityId))throw new Error('Станция не подключена или не проверена.');
+  const entity=b.entityId;
+  if(this.pending.has(entity))throw new Error('Станция занята предыдущей командой.');
+  this.pending.add(entity);
+  try{
+   const e=await this.request('/api/states/'+entity);
+   if(!stationAvailable(e)||!(Number(e.attributes?.supported_features)&512))throw new Error('Станция недоступна или play_media не поддерживается.');
+   await this.request('/api/services/media_player/play_media',{entity_id:entity,media_content_type:'text',media_content_id:t});
+   return {accepted:true,message:'HA принял запрос. Подтверждение озвучивания невозможно: media_player не отдаёт результат TTS.'};
   }finally{this.pending.delete(entity)}
  }
  async stationCommand(request,p){

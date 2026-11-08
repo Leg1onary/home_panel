@@ -52,3 +52,26 @@ export async function runScenario(id,ha,p){
  for(const {b,message} of skip)results.push({id:b?.id||'',name:b?.name||'Линия света',status:'skipped',message});
  return {id:String(id),name:def.name,results,summary:{total:results.length,confirmed,failed,skipped:results.length-confirmed-failed}};
 }
+// Пользовательский сценарий: шаги строго по порядку, тот же ha.command() с readback.
+// Линия без проверенной привязки — skipped; недоступная сущность — failed только своей строки.
+export async function runUserScenario(id,ha,p){
+ const key=String(id||''),def=(p.userScenarios||[]).find(s=>s.id===key);
+ if(!def)throw new Error('Сценарий не найден.');
+ const lines=new Map(bound(p).map(b=>[b.id,b])),run=[],skip=[];
+ for(const step of def.steps){
+  const b=lines.get(step.deviceId);
+  if(!b){skip.push({b:null,message:'Нет проверенной линии света'});continue}
+  if(step.action==='brightness'&&!(b.type==='rgb'&&await supportsDim(ha,p.bindings[b.id].entityId))){
+   run.push({b,request:{id:b.id,value:true},message:'Яркость не подтверждена · включено полностью'});continue;
+  }
+  run.push({b,request:step.action==='brightness'?{id:b.id+'/brightness',value:step.value}:{id:b.id,value:step.action==='on'},
+   message:step.action==='brightness'?`Яркость ${step.value} %`:step.action==='on'?'Включено':'Выключено'});
+ }
+ const results=[];let confirmed=0,failed=0;
+ for(const {b,request,message} of run){
+  try{await ha.command(request,p);confirmed++;results.push({id:b.id,name:b.name,status:'confirmed',message})}
+  catch(error){failed++;results.push({id:b.id,name:b.name,status:'failed',message:error.message})}
+ }
+ for(const {b,message} of skip)results.push({id:b?.id||'',name:b?.name||'Линия света',status:'skipped',message});
+ return {id:key,name:def.name,results,summary:{total:results.length,confirmed,failed,skipped:results.length-confirmed-failed}};
+}

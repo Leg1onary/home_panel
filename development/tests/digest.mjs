@@ -48,6 +48,25 @@ s={...base,devices:[],bindings:{},entityStates:{'weather.home':ent('snowy',{temp
 items=digestItems(s);
 assert.equal(items.length,1);assert.equal(items[0].level,'info');assert.match(items[0].text,/Мороз: -8 °C/);
 assert.equal(digestItems({...s,entityStates:{'weather.home':ent('snowy',{temperature:-3},old,'weather.home')}}).length,0);
+// Тревога охраны → danger, поверх остальных (alarmState опционален).
+s={...base,devices:[{id:'battery:x',type:'battery',room:'bath',name:'B',status:'installed'}],
+ bindings:{'battery:x':{entityId:'sensor.bx',verified:true}},
+ entityStates:{'sensor.bx':ent('15',{unit_of_measurement:'%'})},alarmState:'triggered'};
+items=digestItems(s);
+assert.equal(items[0].level,'danger');assert.match(items[0].text,/Тревога: охрана сработала/);
+assert.equal(digestItems({...s,alarmState:'armed_away'}).length,1);
+assert.equal(digestItems({...s,alarmState:undefined}).length,1);
+// Обновление HA: только ядро core-update, не аддоны.
+s={...base,devices:[],bindings:{},entityStates:{'update.home_assistant_core_update':ent('on',{},old,'update.home_assistant_core_update')}};
+items=digestItems(s);
+assert.equal(items.length,1);assert.equal(items[0].level,'warn');assert.match(items[0].text,/обновление Home Assistant/);
+assert.equal(digestItems({...s,entityStates:{'update.terminal_addon':ent('on',{},old,'update.terminal_addon')}}).length,0);
+assert.equal(digestItems({...s,entityStates:{'update.home_assistant_core_update':ent('off',{},old,'update.home_assistant_core_update')}}).length,0);
+// Тревога + обновление: сортировка danger → warn.
+s.entityStates['update.home_assistant_core_update']=ent('on',{},old,'update.home_assistant_core_update');
+s.alarmState='triggered';
+items=digestItems(s);
+assert.deepEqual(items.map(i=>i.level),['danger','warn']);
 // Сортировка danger → warn → info.
 s={...base,devices:[{id:'leak:bath',type:'leak',room:'bath',name:'L',status:'installed'},
  {id:'door',type:'door',room:'hall',name:'D',status:'installed'},

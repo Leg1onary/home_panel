@@ -1,6 +1,6 @@
 {
   "name": "home-panel",
-  "version": "1.0.0",
+  "version": "1.5.0",
   "scripts": {
     "build": "node build.mjs",
     "test": "npm run build && node tests/run.mjs"
@@ -8,6 +8,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "engines": {"node": ">=20 <=22"},
   "description": "Interior smart home design prototype with honest demo states",
   "dependencies": {
     "better-sqlite3": "^11.10.0",

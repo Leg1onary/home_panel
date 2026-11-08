@@ -1,9 +1,9 @@
 ﻿import {deviceId} from './compat.js';
 import {
  createIcons,House,Box,Lightbulb,Power,ScanEye,SlidersHorizontal,Sun,Moon,X,ArrowRight,ArrowUpRight,
- AudioLines,Camera,ChevronRight,CircleCheck,DoorClosed,Droplets,Heater,Leaf,Radio,RotateCcw,Thermometer,
+ AudioLines,Camera,ChevronRight,CircleCheck,DoorClosed,Droplets,Heater,Leaf,Radio,RotateCcw,Thermometer,Shield,
  Trees,Archive,Armchair,Bath,BedDouble,Blocks,DoorOpen,MoveUpRight,Sofa,MoonStar,Star,ChevronUp,
- ChevronDown,Check,LoaderCircle,TriangleAlert,WifiOff,Play,Pause,SkipBack,SkipForward,ChartNoAxesCombined,Volume2,ImagePlus,Settings2,Info,Maximize,Minimize,Download,Upload,Cloud,Cloudy,CloudSun,CloudRain,CloudSnow,CloudFog,CloudLightning,CloudDrizzle,CloudHail,Wind,LogOut,Film
+ ChevronDown,Check,LoaderCircle,TriangleAlert,WifiOff,Play,Pause,SkipBack,SkipForward,ChartNoAxesCombined,Volume2,ImagePlus,Settings2,Info,Maximize,Minimize,Download,Upload,Cloud,Cloudy,CloudSun,CloudRain,CloudSnow,CloudFog,CloudLightning,CloudDrizzle,CloudHail,Wind,LogOut,Film,Sparkles
 } from 'lucide';
 import {rooms,state,getRoom,countLights,channelsFor,sensors} from './schema.js';
 import {sendCommand,commandFor,hasPending} from './commands.js';
@@ -24,15 +24,15 @@ import {motionObservation,elapsedLabel} from './motion.js';
 import {historyState,statisticsView,inspectHistoryChart} from './history-ui.js';
 import {numericReading,stateTimes} from './readings.js';
 import {duoUI,assistantView} from './assistant-ui.js';
-import {scenariosRow,handleScenarioClick,bindScenarioPainter} from './scenarios-ui.js';
+import {scenariosRow,handleScenarioClick,bindScenarioPainter,bindScenarioHost} from './scenarios-ui.js';
 
 import {esc,disabled,timeOf,clock,date,scheduleMinute,PANEL_TIMEZONE} from './dom.js';
 const $=s=>document.querySelector(s);
 const I=name=>`<i data-lucide="${name}"></i>`;
 const iconSet={House,Box,Lightbulb,Power,ScanEye,SlidersHorizontal,Sun,Moon,X,ArrowRight,ArrowUpRight,
- AudioLines,Camera,ChevronRight,CircleCheck,DoorClosed,Droplets,Heater,Leaf,Radio,RotateCcw,Thermometer,
+ AudioLines,Camera,ChevronRight,CircleCheck,DoorClosed,Droplets,Heater,Leaf,Radio,RotateCcw,Thermometer,Shield,
  Trees,Archive,Armchair,Bath,BedDouble,Blocks,DoorOpen,MoveUpRight,Sofa,MoonStar,Star,ChevronUp,
- ChevronDown,Check,LoaderCircle,TriangleAlert,WifiOff,Play,Pause,SkipBack,SkipForward,ChartNoAxesCombined,Volume2,ImagePlus,Settings2,Info,Maximize,Minimize,Download,Upload,Cloud,Cloudy,CloudSun,CloudRain,CloudSnow,CloudFog,CloudLightning,CloudDrizzle,CloudHail,Wind,LogOut,Film};
+ ChevronDown,Check,LoaderCircle,TriangleAlert,WifiOff,Play,Pause,SkipBack,SkipForward,ChartNoAxesCombined,Volume2,ImagePlus,Settings2,Info,Maximize,Minimize,Download,Upload,Cloud,Cloudy,CloudSun,CloudRain,CloudSnow,CloudFog,CloudLightning,CloudDrizzle,CloudHail,Wind,LogOut,Film,Sparkles};
 const icons=()=>{
  createIcons({icons:iconSet,attrs:{'stroke-width':1.6}});
  const title=$('.sheet h2');if(title)title.id='sheet-title';
@@ -161,6 +161,9 @@ function home(){
  <div class="context-heading quick-heading"><h2>Под рукой</h2><span id="home-light-overview">${lightOverviewBadge()}</span></div>
  <div id="home-quick">${homeQuick()}</div>
  <div id="home-scenarios">${scenariosRow()}</div>
+ <div id="home-green">${greenChip()}</div>
+ <div id="home-shopping" hidden></div>
+ <div id="home-alarm" hidden></div>
  <div class="context-heading rooms-heading"><h2>Комнаты</h2><button class="text-button" data-action="favorites" aria-label="Настроить избранные комнаты">${I('sliders-horizontal')}</button></div>
  <div class="favorite-rooms" id="home-favorites">${favoriteRooms()}</div>
  <button class="all-zones-link text-button" data-action="allrooms">Все комнаты и зоны ${I('arrow-up-right')}</button>
@@ -188,16 +191,60 @@ function homeLightSummary(){
  const channels=rooms.flatMap(r=>r.channels.filter(c=>!c.planned));
  return homeSummary({live:isLive(),online:!noConnection(),total:channels.length,unknown:channels.filter(c=>!canControl(c.id)).length,on:countLights()});
 }
+const WEATHER_LABEL={clear:'Ясно',sunny:'Солнечно',cloudy:'Облачно',partlycloudy:'Переменная облачность',rainy:'Дождь',snowy:'Снег',fog:'Туман',windy:'Ветрено',lightning:'Гроза',hail:'Град',drizzle:'Морось',exceptional:'Пасмурно'};
+const WEATHER_ICON={clear:'sun',sunny:'sun',partlycloudy:'cloud-sun',cloudy:'cloudy',rainy:'cloud-rain',snowy:'cloud-snow',fog:'cloud-fog',windy:'wind',lightning:'cloud-lightning',hail:'cloud-hail',drizzle:'cloud-drizzle',exceptional:'cloudy'};
+const WEATHER_DATA={clear:'sunny',sunny:'sunny',partlycloudy:'cloudy',cloudy:'cloudy',rainy:'rain',snowy:'snow',fog:'fog',windy:'cloudy',lightning:'rain',hail:'rain',drizzle:'rain',exceptional:'cloudy'};
 function weatherCard(){
  if(!isLive())return '';
  const e=Object.values(state.entityStates||{}).find(e=>e.entity_id?.startsWith('weather.'));
  if(!e||['unknown','unavailable',''].includes(e.state))return '';
- const label=({clear:'Ясно',sunny:'Солнечно',cloudy:'Облачно',partlycloudy:'Переменная облачность',rainy:'Дождь',snowy:'Снег',fog:'Туман',windy:'Ветрено',lightning:'Гроза',hail:'Град',drizzle:'Морось',exceptional:'Пасмурно'})[e.state];
+ const label=WEATHER_LABEL[e.state];
  const t=e.attributes?.temperature,h=e.attributes?.humidity;
  if(!label||!Number.isFinite(t))return '';
- const icon={clear:'sun',sunny:'sun',partlycloudy:'cloud-sun',cloudy:'cloudy',rainy:'cloud-rain',snowy:'cloud-snow',fog:'cloud-fog',windy:'wind',lightning:'cloud-lightning',hail:'cloud-hail',drizzle:'cloud-drizzle',exceptional:'cloudy'}[e.state]||'cloudy';
+ const icon=WEATHER_ICON[e.state]||'cloudy';
  const temp=t.toFixed(1).replace('.',','),aria=`Погода: ${label}, температура ${temp} °C${Number.isFinite(h)?', влажность '+Math.round(h)+' %':''}`;
- return `<div class="home-fact weather-chip" data-weather="${({clear:'sunny',sunny:'sunny',partlycloudy:'cloudy',cloudy:'cloudy',rainy:'rain',snowy:'snow',fog:'fog',windy:'cloudy',lightning:'rain',hail:'rain',drizzle:'rain',exceptional:'cloudy'})[e.state]||'cloudy'}" role="img" aria-label="${esc(aria)}"><span>${I(icon)}Погода</span><strong>${esc(label)} · ${temp} °C${Number.isFinite(h)?' · '+Math.round(h)+' %':''}</strong></div>`;
+ return `<button class="home-fact weather-chip" data-weather="${WEATHER_DATA[e.state]||'cloudy'}" data-action="weather-forecast" role="img" aria-label="${esc(aria)}. Открыть прогноз" title="Открыть прогноз погоды"><span>${I(icon)}Погода</span><strong>${esc(label)} · ${temp} °C${Number.isFinite(h)?' · '+Math.round(h)+' %':''}</strong></button>`;
+}
+let forecastCache=null,forecastEntity='';
+const forecastWeek=t=>new Intl.DateTimeFormat('ru-RU',{weekday:'short',day:'numeric',month:'short',timeZone:PANEL_TIMEZONE}).format(new Date(t));
+function forecastMarkup(list,error,busy){
+ const retry=`<div class="sheet-actions"><button class="secondary" data-forecast-reload>${I('rotate-ccw')}Обновить</button></div>`;
+ if(error)return `<p class="description forecast-error">Прогноз недоступен: ${esc(error)}</p>${retry}`;
+ if(!list)return `<div class="forecast-status" aria-busy="true"><i data-lucide="loader-circle" class="spin"></i>Загружаем прогноз…</div>`;
+ if(!list.length)return `<p class="description forecast-error">Прогноз недоступен: Home Assistant не вернул пункты прогноза.</p>${retry}`;
+ return `<ul class="forecast-list">${list.map(f=>`<li class="forecast-row"><span class="forecast-day">${esc(forecastWeek(f.datetime))}</span>${I(WEATHER_ICON[f.condition]||'cloudy')}<b>${Math.round(f.temperature)}°${Number.isFinite(f.templow)?' / '+Math.round(f.templow)+'°':''}</b>${Number.isFinite(f.precipitationProbability)?`<span class="forecast-prec" title="Вероятность осадков">${I('droplets')}${f.precipitationProbability} %</span>`:''}</li>`).join('')}</ul>${retry}`;
+}
+function paintForecast(list,error,busy){
+ const node=$('[data-forecast-sheet]');
+ if(node){node.innerHTML=forecastMarkup(list,error,busy);icons()}
+}
+async function loadForecast(force=false){
+ if(force)forecastCache=null;
+ if(!forecastEntity)return paintForecast(null,'Нет сущности погоды.');
+ if(forecastCache&&!force&&Date.now()-forecastCache.at<15*60*1000)return paintForecast(forecastCache.data);
+ paintForecast(null,null,true);
+ try{
+  const result=await api('ha/weather-forecast'+(forecastEntity?`?entity=${encodeURIComponent(forecastEntity)}`:''));
+  forecastCache={at:Date.now(),data:result.forecast};
+  paintForecast(result.forecast);
+ }catch(error){paintForecast(null,error.message)}
+}
+function forecastSheet(){
+ const e=Object.values(state.entityStates||{}).find(e=>e.entity_id?.startsWith('weather.'));
+ forecastEntity=e?.entity_id||'';
+ simpleSheet(`<h2>Прогноз погоды</h2><div data-forecast-sheet>${forecastMarkup(null,null,true)}</div>`);
+ if(!isLive()||!forecastEntity)return paintForecast(null,'Home Assistant не настроен.');
+ loadForecast();
+}
+function greenChip(){
+ if(!isLive()||!state.liveOnline)return '';
+ const e=Object.values(state.entityStates||{}).find(e=>e.entity_id?.startsWith('sensor.')&&/co2|carbon/i.test(e.entity_id)&&Number.isFinite(Number(e.state))&&!['unknown','unavailable',''].includes(e.state));
+ if(!e)return '';
+ const co2=Math.round(Number(e.state));
+ const fossil=[e.attributes?.fossil_fuel_percentage,e.attributes?.fossil_percentage,e.attributes?.carbon_intensity].map(Number).find(Number.isFinite);
+ const green=Number.isFinite(fossil)?Math.max(0,Math.min(100,Math.round(100-fossil))):null;
+ const level=co2<200?'green':co2<350?'neutral':'warm';
+ return `<div class="green-chip is-${level}" role="img" aria-label="Энергосеть: ${co2} г CO2 на киловатт-час${green!==null?`, зелёная генерация ${green} %`:''}"><span>${I('leaf')}</span><strong>Сеть: ${co2} г${green!==null?` · ${green} % зелёная`:''}</strong></div>`;
 }
 function homeStatus(){
  const terraceDoor=state.devices.find(d=>d.id==='terrace-door'&&d.status==='installed');
@@ -237,9 +284,87 @@ function houseAlerts(){
   .map(d=>`<button class="house-alert ${d.alarm?'is-alarm':'is-unavailable'}" data-action="leak" data-leak-id="${esc(d.id)}" ${d.alarm?'role="alert"':''}>${I(d.alarm?'triangle-alert':'wifi-off')}<span><strong>${esc(d.alarm?d.name+'!':'Нет данных · '+d.name)}</strong><small>${d.alarm?'Проверь воду и источник протечки':'Датчик недоступен или его состояние неизвестно'}</small></span>${I('chevron-right')}</button>`).join('');
 }
 function digestCard(){
- const items=digestItems({mode:state.mode,liveOnline:state.liveOnline,devices:state.devices,bindings:state.bindings,entityStates:state.entityStates||{},now:Date.now()});
+ const items=digestItems({mode:state.mode,liveOnline:state.liveOnline,devices:state.devices,bindings:state.bindings,entityStates:state.entityStates||{},now:Date.now(),alarmState:alarmEntity()?.state});
  if(!items.length)return '';
  return `<div class="digest-card ${items[0].level==='danger'?'is-danger':''}"><h3>${I('info')}Дайджест дома</h3><ul>${items.map(it=>`<li class="digest-item digest-${it.level}">${I(it.icon)}<span>${esc(it.text)}</span></li>`).join('')}</ul></div>`;
+}
+// Список покупок: данные только с сервера (todo/get_items), без опроса каждые 5 секунд.
+let shoppingState={loaded:false,items:[],busy:false,error:'',note:'',truncated:false};
+function shoppingMarkup(){
+ const items=shoppingState.items.slice(0,5);
+ return `<div class="digest-card shopping-card"><div class="title-line"><h3>${I('box')}Покупки${shoppingState.truncated?' · первые 5':''}</h3><button class="text-button" data-action="shopping-refresh" aria-label="Обновить список покупок" ${disabled(shoppingState.busy||!isLive())}>${I('rotate-ccw')}Обновить</button></div>
+ <ul class="shopping-list">${shoppingState.error?`<li class="shopping-empty">${esc(shoppingState.error)}</li>`:items.length?items.map(i=>`<li><button class="shopping-check" data-shopping-complete="${esc(i.uid)}" aria-label="Отметить купленным: ${esc(i.summary)}" ${disabled(shoppingState.busy||!isLive())}></button><span class="shopping-text">${esc(i.summary)}</span></li>`).join(''):'<li class="shopping-empty">Список пуст</li>'}</ul>
+ <div class="shopping-add"><input id="shopping-input" maxlength="80" placeholder="Добавить покупку" aria-label="Новая позиция списка покупок" ${disabled(shoppingState.busy||!isLive())}/><button class="secondary" data-action="shopping-add" ${disabled(shoppingState.busy||!isLive())}>Добавить</button></div>
+ ${shoppingState.note?`<p class="description">${esc(shoppingState.note)}</p>`:''}</div>`;
+}
+function paintShopping(){
+ const node=$('#home-shopping');if(!node)return;
+ const markup=shoppingState.loaded?shoppingMarkup():'';
+ if(markup){updateRegion('#home-shopping',markup);node.hidden=false}else node.hidden=true;
+}
+async function loadShopping(){
+ if(!isLive()){shoppingState={...shoppingState,loaded:true,error:'Список покупок работает в рабочем режиме с подключённым Home Assistant.',note:''};paintShopping();return}
+ if(shoppingState.busy)return;
+ shoppingState.busy=true;paintShopping();
+ try{const d=await api('ha/shopping');shoppingState={...shoppingState,loaded:true,items:d.items||[],truncated:!!d.truncated,error:'',note:''}}
+ catch(error){shoppingState={...shoppingState,loaded:true,error:error.message,note:''}}
+ finally{shoppingState.busy=false;paintShopping()}
+}
+async function shoppingMutate(action,target){
+ const input=$('#shopping-input'),draft=input?.value||'';
+ shoppingState.busy=true;paintShopping();
+ try{
+  const r=await api('ha/shopping',{method:'POST',body:{action,target}});
+  shoppingState={...shoppingState,items:r.items||[],note:r.message,error:''};toast(r.message);
+ }catch(error){shoppingState={...shoppingState,note:error.message};toast(error.message)}
+ finally{shoppingState.busy=false;paintShopping();const i=$('#shopping-input');if(i)i.value=action==='add'?'':draft}
+}
+// Охрана (alarm_control_panel): статус и подтверждаемые команды с PIN-кодом.
+let alarmUI={askPin:false,service:'',busy:false,error:''};
+const alarmEntity=()=>Object.values(state.entityStates||{}).find(e=>e.entity_id?.startsWith('alarm_control_panel.'));
+const alarmLabels={disarmed:'Снята',armed_away:'Под охраной (вне дома)',armed_home:'Под охраной (дома)',arming:'Ставится…',pending:'Ожидание…',triggered:'ТРЕВОГА'};
+function alarmMarkup(){
+ const e=alarmEntity();
+ if(!e||!['disarmed','armed_away','armed_home','arming','pending','triggered'].includes(e.state))return '';
+ const s=e.state,needsCode=(e.attributes?.code_format||'None')!=='None';
+ const btn=(service,label)=>`<button class="secondary" data-alarm-service="${service}" ${disabled(alarmUI.busy)}>${label}</button>`;
+ const pin=alarmUI.askPin?`<div class="alarm-pin"><input id="alarm-pin" type="password" inputmode="numeric" maxlength="16" placeholder="PIN-код" aria-label="PIN-код охраны" ${disabled(alarmUI.busy)} autocomplete="off"/><button class="primary" data-alarm-service="${esc(alarmUI.service)}" data-alarm-confirm ${disabled(alarmUI.busy)}>Подтвердить</button><button class="text-button" data-alarm-cancel ${disabled(alarmUI.busy)}>Отмена</button></div>`:'';
+ return `<div class="digest-card alarm-card ${s==='triggered'?'is-danger':''}" ${s==='triggered'?'role="alert"':''}><div class="title-line"><h3>${I('shield')}Охрана</h3></div>
+ <p class="alarm-status">${esc(alarmLabels[s]||e.state)}</p>
+ ${s==='disarmed'?`<div class="alarm-actions">${btn('arm_away','Поставить (вне дома)')}${btn('arm_home','Поставить (дома)')}</div>`:s==='triggered'?'':`<div class="alarm-actions">${btn('disarm','Снять с охраны')}</div>`}
+ ${needsCode?pin:''}
+ ${alarmUI.error?`<p class="description alarm-error">${esc(alarmUI.error)}</p>`:''}
+ <p class="description">${e.attributes?.changed_by?'Изменено: '+esc(e.attributes.changed_by):'Home Assistant · alarm_control_panel'}</p></div>`;
+}
+function paintAlarm(){
+ const node=$('#home-alarm');if(!node)return;
+ const m=alarmMarkup();
+ if(m){updateRegion('#home-alarm',m);node.hidden=false}else node.hidden=true;
+}
+async function alarmCommand(service,code){
+ const draft=$('#alarm-pin')?.value||'';
+ alarmUI.busy=true;alarmUI.error='';paintAlarm();
+ try{
+  const r=await api('ha/alarm',{method:'POST',body:{service,code}});
+  alarmUI.askPin=false;alarmUI.service='';
+  toast(r.message||(r.confirmed?'Охрана: состояние подтверждено.':'Охрана: команда принята, статус не подтверждён.'));
+ }catch(error){alarmUI.error=error.message;toast(error.message)}
+ finally{
+  alarmUI.busy=false;paintAlarm();
+  // Ошибка команды не должна стирать введённый PIN: перерисовка пересоздаёт
+  // поле ввода, поэтому возвращаем черновик и возвращаем фокус.
+  const input=$('#alarm-pin');
+  if(input&&alarmUI.askPin&&!input.value&&draft){input.value=draft;input.focus()}
+ }
+}
+async function sendTTS(){
+ const input=$('#tts-text'),status=$('#tts-status'),button=$('[data-action="tts-send"]');
+ if(!input||!status)return;
+ const text=input.value.trim();status.textContent=text?'Отправляем на станцию…':'';
+ if(button)button.disabled=true;
+ try{const r=await api('ha/announce',{method:'POST',body:{text}});status.textContent=r.accepted?'Отправлено · подтверждение озвучивания невозможно':r.message||'Отправлено'}
+ catch(error){status.textContent=error.message}
+ finally{if(button)button.disabled=false}
 }
 function stationRoom(){return areaName(state.devices.find(d=>d.id==='station')?.room||'corridor')}
 function stationSkipButtons(){
@@ -367,7 +492,11 @@ function deviceReading(d){
  if(value===undefined||value===null||['unknown','unavailable',''].includes(value))return 'Нет данных';
  if(isLive()&&['temperature','humidity','illuminance'].includes(d.type)&&!numericReading(e,{unit:type.unit}).available)return 'Нет данных';
  if(type.unit)return Number.isFinite(Number(value))?`${reading(Number(value))} ${type.unit}`:'Нет данных';
- if(d.type==='button_event')return String(value);
+ if(d.type==='button_event'){
+  const label=({single:'Нажатие',double:'Двойное нажатие',triple:'Тройное нажатие',hold:'Удержание',long:'Удержание',long_press:'Удержание',release:'Отпускание'})[String(value).toLowerCase()]||String(value);
+  const at=Date.parse(e?.last_changed||'')||NaN;
+  return Number.isFinite(at)?`${label} · ${timeOf(at)}`:label;
+ }
  if(d.type==='motion'&&isLive())return motionObservation(e).text;
  const labels={door:['Открыта','Закрыта'],smoke:['Тревога','Нет тревоги'],motion:['Есть движение','Нет движения'],leak:['Протечка','Сухо'],pump:['Питание включено','Питание выключено']};
  if(labels[d.type]){const v=binaryValue(d.type,value);return v===true?labels[d.type][0]:v===false?labels[d.type][1]:'Нет данных'}
@@ -450,6 +579,7 @@ function render(animate=true){
   b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');
  });
  $('#master').disabled=masterBlocked();updateHeader();storageStatus();icons();
+ if(state.view==='home'&&!shoppingState.loaded)loadShopping();
  if(state.view==='statistics')loadStatistics();
  if($('#canvas')){
   modelPromise ||= import('./model.js');
@@ -484,8 +614,10 @@ function refresh(){
   const weatherEntity=Object.values(state.entityStates||{}).find(e=>e.entity_id?.startsWith('weather.')),weatherTemp=weatherEntity?.attributes?.temperature;
   modelAPI?.setModelWeather(weatherTemp<0&&weatherEntity?.state==='snowy'?'snow':weatherTemp<0&&weatherEntity?.state==='rainy'?'rain':null);
   if(state.view==='home'){
-   updateRegion('#home-favorites',favoriteRooms());updateRegion('#home-status',weatherCard()+homeStatus());updateRegion('#home-quick',homeQuick());updateRegion('#home-scenarios',scenariosRow());updateRegion('#home-light-overview',lightOverviewBadge());updateRegion('#hero-status',heroStatusChip());
+   updateRegion('#home-favorites',favoriteRooms());updateRegion('#home-status',weatherCard()+homeStatus());updateRegion('#home-quick',homeQuick());updateRegion('#home-scenarios',scenariosRow());updateRegion('#home-green',greenChip());updateRegion('#home-light-overview',lightOverviewBadge());updateRegion('#hero-status',heroStatusChip());
     const digest=$('#home-digest');if(digest){updateRegion('#home-digest',digestCard());digest.hidden=!digest.querySelector('.digest-card')}
+    const shop=$('#home-shopping');if(shop&&shoppingState.loaded)paintShopping();
+    const alarm=$('#home-alarm');if(alarm){updateRegion('#home-alarm',alarmMarkup());alarm.hidden=!alarm.querySelector('.alarm-card')}
   }
  }else if(state.view!=='statistics')render(false);
  if(!$('#overlay').hidden){
@@ -585,6 +717,12 @@ function stationSheet(){
  <div class="control-group"><div class="control-row"><div><h3>Воспроизведение</h3><p>Команды только через media_player в HA</p></div><button class="icon-button" data-action="station-play" aria-label="${state.stationPlaying?'Пауза':'Воспроизвести'}" ${disabled(!stationSupports(e,'playing',!state.stationPlaying)||hasPending())}>${I(state.stationPlaying?'pause':'play')}</button></div>${phaseLine('station:playing')}</div>
  <div class="rgb-control"><label for="station-volume">Громкость <span id="station-volume-label">${Number.isFinite(e?.attributes.volume_level)?state.stationVolume+' %':'Недоступна'}</span></label><input id="station-volume" type="range" min="0" max="100" value="${state.stationVolume}" ${disabled(!stationSupports(e,'volume')||hasPending())}/>${phaseLine('station:volume')}</div>
  ${stationSkipButtons()}${phaseLine('station:previous')}${phaseLine('station:next')}
+ <div class="control-group tts-block"><h3>Сказать на станции</h3>
+  <div class="tts-presets">${['Гость пришёл','Ужин готов','Пора домой'].map(t=>`<button class="tts-preset" data-tts-preset="${esc(t)}" ${disabled(!state.liveOnline)}>${esc(t)}</button>`).join('')}</div>
+  <label for="tts-text">Своя фраза · до 100 символов</label>
+  <div class="tts-row"><input id="tts-text" maxlength="100" placeholder="Текст для станции" ${disabled(!state.liveOnline)}/><span id="tts-count">0/100</span><button class="secondary" data-action="tts-send" ${disabled(!state.liveOnline)}>Сказать</button></div>
+  <p id="tts-status" class="description" role="status" aria-live="polite"></p>
+  <p class="description">Отправка через media_player.play_media. Home Assistant не подтверждает сам факт озвучивания — панель честно показывает «отправлено».</p></div>
  <p class="description">Переключение треков, пауза и громкость доступны при поддержке интеграцией. Команды выполняются станцией в коридоре, не браузером. При потере связи управление блокируется.</p>`;
  return `<h2>Станция · ${esc(stationRoom())}</h2><p class="description">Голос и музыка. Это демонстрационное управление, не настоящая станция.</p>
  <div class="inline-note">${offline?'Нет связи · демонстрация':enabled?'Демоуправление включено для проверки интерфейса. Это не связь с реальной станцией.':'Не подключена к панели. Реальный статус и возможности пока неизвестны.'}</div>
@@ -770,6 +908,7 @@ function technical(){
  if(techTab==='backup')content=`
   <div class="inline-note">Копия v3 содержит оформление, избранное, каталог, entity_id и модель устройств v1. Старые копии v3 принимаются с автоматическим созданием структуры. Без токена, фото и состояний устройств.</div>
   <button class="primary full-width" data-action="export">${I('download')}Скачать настройки JSON</button>
+  <button class="secondary full-width" data-action="profile-export">${I('download')}Скачать копию профиля</button>
   <label class="setting-field">Восстановить настройки<input id="import-settings" type="file" accept="application/json,.json" ${disabled(hasPending())}/></label>
   <p class="setting-help">Импорт всегда включает деморежим и снимает отметки проверки каналов. Перед рабочим управлением их потребуется подтвердить снова.</p>`;
  if(techTab==='checklist')content=`
@@ -887,6 +1026,13 @@ async function saveBindings(){
 function downloadSettings(){
  const blob=new Blob([JSON.stringify({format:'home-panel',version:3,preferences:preferences()},null,2)],{type:'application/json'});
  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='home-panel-settings.json';a.hidden=true;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function downloadProfile(){
+ const name='home-panel-profile-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'.json';
+ api('profile/export',{raw:true}).then(blob=>{
+  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.hidden=true;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  toast('Копия профиля сохранена.');
+ }).catch(error=>toast(error.message));
 }
 function openSettings(tab='panel'){
  state.settingsTab=tab;settingsOpen=true;$('#sheet-content').dataset.station='';
@@ -1015,6 +1161,20 @@ document.addEventListener('click',async e=>{
   const c=commandFor(b.dataset.retry);if(c)return command(c.id,c.value);return;
  }
  const a=b.dataset.action;
+ if(b.dataset.shoppingComplete)return shoppingMutate('complete',b.dataset.shoppingComplete);
+ if(b.hasAttribute('data-alarm-confirm'))return alarmCommand(b.dataset.alarmService,$('#alarm-pin')?.value||'');
+ if(b.hasAttribute('data-alarm-cancel')){alarmUI={...alarmUI,askPin:false,service:'',error:''};paintAlarm();return}
+ if(b.dataset.alarmService){
+  const needs=(alarmEntity()?.attributes?.code_format||'None')!=='None';
+  if(needs&&(!alarmUI.askPin||alarmUI.service!==b.dataset.alarmService)){alarmUI={...alarmUI,askPin:true,service:b.dataset.alarmService,error:''};paintAlarm();$('#alarm-pin')?.focus();return}
+  return alarmCommand(b.dataset.alarmService,needs?($('#alarm-pin')?.value||''):'');
+ }
+ if(a==='shopping-add')return shoppingMutate('add',$('#shopping-input')?.value||'');
+ if(a==='shopping-refresh')return loadShopping();
+ if(b.dataset.ttsPreset){const i=$('#tts-text');if(i){i.value=b.dataset.ttsPreset;const c=$('#tts-count');if(c)c.textContent=b.dataset.ttsPreset.length+'/100'}return}
+ if(a==='tts-send')return sendTTS();
+ if(a==='weather-forecast')return forecastSheet();
+ if(b.hasAttribute('data-forecast-reload'))return loadForecast(true);
  if(a==='history-reload')return loadStatistics(true);
  if(a==='history-focus-clear'){historyState.focus=null;paintStatistics();return}
  if(a==='active-lights'){simpleSheet(`<div data-lights-overview>${lightOverviewSheet()}</div>`);return}
@@ -1063,6 +1223,7 @@ document.addEventListener('click',async e=>{
  if(a==='fullscreen')return fullscreen();
  if(a==='save-bindings')return saveBindings();
  if(a==='export')return downloadSettings();
+ if(a==='profile-export')return downloadProfile();
  if(a==='discover'){
   techMessage='Загружаем список…';updateTechnical();
   captureBindingDraft();discover().then(result=>{techEntities=result.states;techMessage=`Получено ${techEntities.length} сущностей. Проверь соответствие физическим устройствам.`;updateTechnical()})
@@ -1163,7 +1324,9 @@ document.addEventListener('input',e=>{
  }
  if(e.target.id==='brightness')$('#brightness-label').textContent=e.target.value+' % · ещё не отправлено';
  if(e.target.id==='station-volume'){stationAdjusting=true;$('#station-volume-label').textContent=e.target.value+' % · ещё не отправлено'}
+ if(e.target.id==='tts-text'){const c=$('#tts-count');if(c)c.textContent=e.target.value.length+'/100'}
 });
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target?.id==='shopping-input'){e.preventDefault();shoppingMutate('add',e.target.value||'')}});
 $('.brand').onclick=e=>{e.preventDefault();navigate('home')};
 document.addEventListener('pointermove',e=>{if(state.view==='statistics')inspectHistoryChart(e)});
 document.addEventListener('keydown',e=>{
@@ -1206,6 +1369,15 @@ for(const event of ['pointerdown','keydown','wheel','input','change'])document.a
 document.addEventListener('visibilitychange',()=>{if(document.hidden){clearTimeout(idleTimer);if(cameraPlayer)cameraStop()}else armIdle()});
 window.addEventListener('pagehide',clearCamera);
 bindScenarioPainter(refresh);
+// Редактор пользовательских сценариев: тот же sheet, сохранение через preferences.
+bindScenarioHost({
+ openSheet:simpleSheet,closeSheet:closeModal,icons,
+ commit:async next=>{
+  const old=preferences();
+  try{applyPreferences(next);await flushStorage();refresh();return true}
+  catch(error){applyPreferences(old);toast('Сценарий не сохранён: '+error.message);return false}
+ }
+});
 
 setInterval(()=>{updateClocks();applyNight();if(state.view==='home'&&!state.idle&&!hasPending())refresh()},10000);
 $('#main').innerHTML='<div class="boot-state" role="status">Подготавливаем твою панель…</div>';

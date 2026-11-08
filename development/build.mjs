@@ -1,5 +1,5 @@
 import {build} from 'esbuild';
-import {mkdir,copyFile,cp,readdir,rm,writeFile} from 'node:fs/promises';
+import {mkdir,copyFile,cp,readdir,rm,writeFile,readFile} from 'node:fs/promises';
 await mkdir('dist',{recursive:true});
 for(const name of await readdir('dist'))if(name.endsWith('.js'))await rm('dist/'+name);
 await build({
@@ -8,6 +8,9 @@ await build({
 });
 await copyFile('index.html','dist/index.html');
 await copyFile('style.css','dist/style.css');
+await copyFile('sw.js','dist/sw.js');
+const pkg=JSON.parse(await readFile('package.json','utf8'));
+await writeFile('dist/sw.js',(await readFile('dist/sw.js','utf8')).replace('__PANEL_VERSION__',pkg.version));
 await cp('assets','dist/assets',{recursive:true});
 await build({entryPoints:['src/hls-player.js'],bundle:true,minify:true,format:'iife',target:'chrome64',outfile:'dist/assets/hls-player.js'});
 await build({entryPoints:['server/index.js'],bundle:true,platform:'node',format:'esm',target:'node20',external:['better-sqlite3','ws'],outfile:'release/server.mjs'});

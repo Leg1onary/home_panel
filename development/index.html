@@ -73,5 +73,8 @@
     })();
     if(location.protocol==='file:')document.getElementById('main').innerHTML='<section class="boot-state"><h1>Запусти панель через сервер</h1><p>Открой «Запустить.cmd» из полного архива, затем «Открыть.cmd». Двойной клик по index.html не поддерживается браузером.</p></section>';
   </script>
+  <script>
+  if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('sw.js').catch(function(){});
+  </script>
 </body>
 </html>

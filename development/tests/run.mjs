@@ -12,9 +12,9 @@ function run(command,args){
  if(result.error)throw result.error;
  if(result.status!==0)throw new Error(`${command} ${args.join(' ')} failed: ${result.status}`);
 }
-for(const name of ['catalog','device-model','device-model-integration','house-profile','station','assistant','model-state','interior','redesign','history','readings','digest','camera-player','rtc-player','rtc','api-session']){
+for(const name of ['catalog','device-model','device-model-integration','house-profile','station','assistant','shopping','model-state','interior','redesign','history','readings','digest','camera-player','rtc-player','rtc','api-session','sw']){
  await bundle(`tests/${name}.mjs`,`.qa/${name}.mjs`);
  run(process.execPath,[`.qa/${name}.mjs`]);
 }
-for(const name of ['integration','addon','stream','live-stream','scenarios'])run(process.execPath,[`tests/${name}.mjs`]);
-console.log('All twenty-one test suites passed.');
+for(const name of ['integration','addon','stream','live-stream','scenarios','scenarios-user'])run(process.execPath,[`tests/${name}.mjs`]);
+console.log('All twenty-four test suites passed.');

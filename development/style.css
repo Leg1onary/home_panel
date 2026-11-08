@@ -1260,3 +1260,70 @@ input[type=range]:disabled::-moz-range-thumb{background:var(--faint);border-colo
 
 /* Финал: спиннеры обязаны жить даже при reduced-motion */
 @media(prefers-reduced-motion:reduce){.command-status.pending svg,.scenario-chip.is-run svg.spin{animation:spin 1s linear infinite!important}}
+
+/* Wave 8: поповер прогноза погоды — ленивые данные, честные ошибки */
+.forecast-list{list-style:none;margin:var(--space-3) 0 0;padding:0;display:flex;flex-direction:column}
+.forecast-row{display:flex;align-items:center;gap:12px;padding:var(--space-2) 0;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums}
+.forecast-row:last-child{border-bottom:none}
+.forecast-row svg{width:18px;height:18px;flex:none;color:var(--accent-teal)}
+.forecast-day{flex:1;min-width:0;color:var(--text)}
+.forecast-row b{font-weight:500;white-space:nowrap}
+.forecast-prec{display:inline-flex;align-items:center;gap:4px;min-width:64px;justify-content:flex-end;color:var(--muted);font-size:13px}
+.forecast-prec svg{width:13px;height:13px;color:var(--muted)}
+.forecast-status{display:flex;align-items:center;gap:10px;color:var(--muted);padding:var(--space-3) 0}
+.forecast-status svg.spin,.scenario-chip svg.spin{animation:scenario-spin 1s linear infinite}
+.forecast-error{color:var(--muted)}
+
+/* Wave 8: виджет «зелёности сети» (CO₂) — только реальные данные Electricity Maps */
+.green-chip{display:flex;align-items:center;gap:10px;margin:var(--space-3) 0;padding:10px 14px;border:1px solid var(--border);border-radius:999px;background:linear-gradient(155deg,rgba(255,255,255,.07),rgba(255,255,255,.02)),var(--surface);backdrop-filter:blur(14px) saturate(1.25);-webkit-backdrop-filter:blur(14px) saturate(1.25)}
+@supports not (backdrop-filter:blur(1px)){.green-chip{background:var(--surface-solid,var(--surface))}}
+.green-chip>span{display:inline-flex;color:var(--accent-teal)}
+.green-chip svg{width:16px;height:16px;flex:none}
+.green-chip strong{font-weight:500;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.green-chip.is-green>span{color:#5ac463}
+.green-chip.is-warm>span{color:var(--warning)}
+.green-chip.is-warm{border-color:rgba(245,158,11,.5)}
+[data-theme=light] .green-chip.is-green>span{color:#42733b}
+#home-green:empty{display:none}
+
+/* ������ ������� (�������� � ������ ������� �������) */
+.shopping-card{margin-top:12px}
+.shopping-list{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.shopping-list li{display:flex;align-items:center;gap:10px}
+.shopping-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.shopping-empty{color:var(--text-dim,#8a8f98);font-size:13px}
+.shopping-check{width:22px;height:22px;flex:0 0 auto;border-radius:50%;border:1.5px solid currentColor;background:none;cursor:pointer;padding:0}
+.shopping-check:hover:not(:disabled){background:currentColor;opacity:.15}
+.shopping-check:disabled{opacity:.4;cursor:default}
+.shopping-add{display:flex;gap:8px;margin-top:10px}
+.shopping-add input{flex:1;min-width:0}
+
+/* ������� TTS-����� � �������� ������� */
+.tts-block{margin-top:14px}
+.tts-presets{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 10px}
+.tts-preset{border:1px solid var(--line,#d8dbe0);background:none;border-radius:999px;padding:6px 12px;cursor:pointer;font:inherit;font-size:13px}
+.tts-preset:hover:not(:disabled){background:rgba(127,127,127,.12)}
+.tts-preset:disabled{opacity:.4;cursor:default}
+.tts-row{display:flex;align-items:center;gap:8px;margin-top:6px}
+.tts-row input{flex:1;min-width:0}
+.tts-row span{font-size:12px;color:var(--text-dim,#8a8f98);white-space:nowrap}
+
+/* Карточка охраны (alarm_control_panel) в правой колонке главной */
+.alarm-card{margin-top:12px}
+.alarm-card.is-danger{border-color:rgba(229,99,79,.7);box-shadow:0 0 0 1px rgba(229,99,79,.35)}
+.alarm-status{margin:var(--space-2) 0 0;font-weight:600}
+.alarm-card.is-danger .alarm-status{color:var(--danger,#e5634f)}
+.alarm-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.alarm-pin{display:flex;gap:8px;margin-top:10px;align-items:center}
+.alarm-pin input{flex:1;min-width:0;max-width:180px}
+.alarm-error{color:var(--danger,#e5634f);margin:8px 0 0}
+
+.scenario-add{border-style:dashed;opacity:.9}
+.scenario-edit-button{align-self:flex-start;padding:3px 10px;border-radius:999px;border:1px solid var(--border);background:transparent;color:inherit;font:inherit;font-size:12px;cursor:pointer}
+.scenario-field{display:flex;flex-direction:column;gap:6px;margin:12px 0}
+.scenario-field input{padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:inherit;font:inherit}
+.scenario-step{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px}
+.scenario-step select{flex:1;min-width:130px;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:inherit;font:inherit}
+.scenario-step input[type=range]{flex:1;min-width:110px}
+.scenario-value{font-size:12px;color:var(--muted);min-width:150px}
+.scenario-step-order{display:flex;gap:4px}

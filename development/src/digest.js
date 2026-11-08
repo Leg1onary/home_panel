@@ -4,7 +4,7 @@ import {binaryValue} from './sensor-state.js';
 import {numericReading,stateTimes} from './readings.js';
 const plural=(n,one,few,many)=>n%10===1&&n%100!==11?one:n%10>=2&&n%10<=4&&(n%100<12||n%100>14)?few:many;
 const read=(deps,id)=>{const b=deps.bindings[id],d=deps.devices.find(x=>x.id===id);return d&&d.status==='installed'&&b?.verified&&b.entityId?deps.entityStates?.[b.entityId]:null};
-export function digestItems({mode,liveOnline=true,devices=[],bindings={},entityStates={},now=Date.now()}){
+export function digestItems({mode,liveOnline=true,devices=[],bindings={},entityStates={},now=Date.now(),alarmState}){
  const deps={devices,bindings,entityStates,now},items=[];
  const batteries=devices.filter(d=>d.type==='battery'&&d.status==='installed')
   .map(d=>({d,value:numericReading(read(deps,d.id),{online:liveOnline,unit:'%',now}).value}))
@@ -24,5 +24,10 @@ export function digestItems({mode,liveOnline=true,devices=[],bindings={},entityS
  }
  const weather=Object.values(entityStates).find(e=>e.entity_id?.startsWith('weather.')),t=weather?.attributes?.temperature;
  if(Number.isFinite(t)&&t<-5)items.push({level:'info',icon:'thermometer',text:`Мороз: ${Math.round(t)} °C`});
+ // Тревога охраны — самый приоритетный сигнал; alarmState приходит опционально.
+ if(alarmState==='triggered')items.push({level:'danger',icon:'triangle-alert',text:'Тревога: охрана сработала'});
+ // Обновление Home Assistant: только ядро (update.home_assistant_core_update), не аддоны.
+ const coreUpdate=Object.values(entityStates).find(e=>e.state==='on'&&typeof e.entity_id==='string'&&e.entity_id.startsWith('update.')&&e.entity_id.includes('home_assistant_core_update'));
+ if(coreUpdate)items.push({level:'warn',icon:'download',text:'Доступно обновление Home Assistant'});
  return items.sort((a,b)=>({danger:0,warn:1,info:2})[a.level]-({danger:0,warn:1,info:2})[b.level]);
 }
