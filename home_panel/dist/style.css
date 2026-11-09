@@ -1052,6 +1052,12 @@ html[data-view=home] .header-clock{display:block}
 [data-theme=light] .day-progress{background:rgba(20,24,44,.14)}
 .day-progress>span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--accent-teal),var(--accent))}
 .hero-top-right{display:flex;align-items:center;gap:var(--space-2);flex-shrink:0}
+.voice-button{width:38px;height:38px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:var(--text);background:linear-gradient(155deg,rgba(255,255,255,.09),rgba(255,255,255,.02)),rgba(10,12,26,.35);border:1px solid var(--border);box-shadow:var(--panel-shadow),inset 0 1px 0 rgba(255,255,255,.08);backdrop-filter:blur(14px) saturate(1.3);-webkit-backdrop-filter:blur(14px) saturate(1.3);cursor:pointer;flex-shrink:0;transition:background var(--transition-fast)}
+.voice-button:hover{background:var(--surface-2)}
+.voice-button.is-listening{color:var(--lit);border-color:var(--lit);animation:voice-pulse 1.4s ease-out infinite}
+@keyframes voice-pulse{0%{box-shadow:0 0 0 0 rgba(120,220,180,.55)}100%{box-shadow:0 0 0 14px rgba(120,220,180,0)}}
+@media(prefers-reduced-motion:reduce){.voice-button.is-listening{animation:none}}
+.voice-status{display:inline-flex;align-items:center;max-width:280px;padding:7px 14px;border-radius:999px;font-size:var(--text-xs);color:var(--text);background:linear-gradient(155deg,rgba(255,255,255,.09),rgba(255,255,255,.02)),rgba(10,12,26,.55);border:1px solid var(--border);backdrop-filter:blur(14px) saturate(1.3);-webkit-backdrop-filter:blur(14px) saturate(1.3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hero-status-chip{display:inline-flex;align-items:center;gap:var(--space-2);padding:9px 16px;border-radius:999px;font-size:var(--text-xs);color:var(--text);background:linear-gradient(155deg,rgba(255,255,255,.09),rgba(255,255,255,.02)),rgba(10,12,26,.35);border:1px solid var(--border);box-shadow:var(--panel-shadow),inset 0 1px 0 rgba(255,255,255,.08);backdrop-filter:blur(14px) saturate(1.3);-webkit-backdrop-filter:blur(14px) saturate(1.3);cursor:pointer;white-space:nowrap}
 .hero-status-chip:hover{background:var(--surface-2)}
 .hero-status-chip .hero-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--lit);box-shadow:0 0 10px var(--lit)}
@@ -1274,17 +1280,7 @@ input[type=range]:disabled::-moz-range-thumb{background:var(--faint);border-colo
 .forecast-status svg.spin,.scenario-chip svg.spin{animation:scenario-spin 1s linear infinite}
 .forecast-error{color:var(--muted)}
 
-/* Wave 8: виджет «зелёности сети» (CO₂) — только реальные данные Electricity Maps */
-.green-chip{display:flex;align-items:center;gap:10px;margin:var(--space-3) 0;padding:10px 14px;border:1px solid var(--border);border-radius:999px;background:linear-gradient(155deg,rgba(255,255,255,.07),rgba(255,255,255,.02)),var(--surface);backdrop-filter:blur(14px) saturate(1.25);-webkit-backdrop-filter:blur(14px) saturate(1.25)}
-@supports not (backdrop-filter:blur(1px)){.green-chip{background:var(--surface-solid,var(--surface))}}
-.green-chip>span{display:inline-flex;color:var(--accent-teal)}
-.green-chip svg{width:16px;height:16px;flex:none}
-.green-chip strong{font-weight:500;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.green-chip.is-green>span{color:#5ac463}
-.green-chip.is-warm>span{color:var(--warning)}
-.green-chip.is-warm{border-color:rgba(245,158,11,.5)}
-[data-theme=light] .green-chip.is-green>span{color:#42733b}
-#home-green:empty{display:none}
+
 
 /* ������ ������� (�������� � ������ ������� �������) */
 .shopping-card{margin-top:12px}
@@ -1335,7 +1331,6 @@ input[type=range]:disabled::-moz-range-thumb{background:var(--faint);border-colo
 .home-stage-wrap .spatial-stage{height:clamp(520px,calc(100dvh - 200px),900px)}
 .home-rail{position:absolute;top:110px;right:var(--space-5);z-index:4;display:flex;flex-direction:column;align-items:flex-end;gap:var(--space-2);max-width:min(300px,44vw);pointer-events:none}
 .home-rail>*{pointer-events:auto}
-.home-rail .green-chip{margin:0}
 .home-rail .digest-card{width:min(300px,44vw);margin-top:0}
 .home-rail .profile-invite{width:min(300px,44vw);margin-top:0;padding:var(--space-3)}
 .rail-allrooms{min-height:36px;font-size:var(--text-xs);color:var(--muted)}
@@ -1343,7 +1338,8 @@ input[type=range]:disabled::-moz-range-thumb{background:var(--faint);border-colo
 .home-quick-rail .quick-device{width:52px;min-height:52px;padding:0;justify-content:center;border-radius:var(--radius-md)}
 .home-quick-rail .quick-device>span:not(.quick-device-icon),.home-quick-rail .media-details,.home-quick-rail .station-skip{display:none}
 .home-quick-rail .quick-device .quick-device-icon{margin:0}
-.home-room-card{position:absolute;left:calc(var(--space-5) + 66px);bottom:calc(var(--space-5) + 100px);z-index:5;width:min(330px,72vw);pointer-events:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:0 18px 48px rgba(0,0,0,.35);padding:var(--space-4);animation:room-card-in 180ms ease}
+/* Карточка комнаты — центр рабочей области: свободна от quick-рельсы (слева-снизу), rail (справа-сверху) и hero-facts (низ). */
+.home-room-card{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:6;width:min(330px,72vw);pointer-events:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:0 18px 48px rgba(0,0,0,.35);padding:var(--space-4);animation:room-card-in 180ms ease}
 @keyframes room-card-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .home-room-card .mini-head{display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2)}
 .home-room-card .mini-head strong{font-size:var(--text-base);letter-spacing:-.01em;flex:1;min-width:0}
@@ -1355,7 +1351,7 @@ input[type=range]:disabled::-moz-range-thumb{background:var(--faint);border-colo
 .home-room-card .mini-empty{font-size:var(--text-xs);color:var(--muted);padding:var(--space-2) 0}
 .home-room-card .mini-open{margin-top:var(--space-3);width:100%}
 @media(max-width:1200px){.home-rail{top:96px;max-width:min(260px,40vw)}.home-rail .digest-card{width:min(260px,40vw)}}
-@media(max-width:900px){.home-rail{position:static;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:flex-end;max-width:none;margin-top:var(--space-3)}.home-rail .digest-card,.home-rail .profile-invite{width:100%}.home-stage-wrap .spatial-stage{height:min(70vh,560px)}}
+@media(max-width:900px){.home-rail{position:static;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:flex-end;max-width:none;margin-top:var(--space-3)}.home-rail .digest-card,.home-rail .profile-invite{width:100%}.home-stage-wrap .spatial-stage{height:min(70vh,560px)}.home-room-card{left:var(--space-4);right:var(--space-4);width:auto;transform:none;bottom:calc(var(--space-4) + 120px);top:auto}}
 
 
 /* --- Aurora 2k27 � wave 2 ������� (ambient-�����) --- */

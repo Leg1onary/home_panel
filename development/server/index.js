@@ -259,6 +259,11 @@ const server=http.createServer(async(req,res)=>{
     const request=JSON.parse((await body(req)).toString());
     return json(res,200,await ha.announce(request?.text,p.preferences));
    }
+   if(route==='ha/converse'&&req.method==='POST'){
+    if(assistantScopes.has(id))throw new Error('Дождись завершения действия станции.');
+    const request=JSON.parse((await body(req)).toString());
+    return json(res,200,await ha.converse(request?.text));
+   }
    if(route==='ha/scenario'&&req.method==='POST'){
     if(assistantScopes.has(id))throw new Error('Дождись завершения действия станции.');
     const request=JSON.parse((await body(req)).toString());

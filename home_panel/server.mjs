@@ -623,6 +623,14 @@ var HomeAssistant = class {
       this.pending.delete(entity);
     }
   }
+  // Голосовая команда: произвольная фраза в conversation.process HA.
+  // Честно возвращаем speech агента; readback не проверяем — разговорный агент HA сам отвечает.
+  async converse(text) {
+    const t = String(text ?? "").trim();
+    if (!t || t.length > 120) throw new Error("\u0413\u043E\u043B\u043E\u0441\u043E\u0432\u0430\u044F \u043A\u043E\u043C\u0430\u043D\u0434\u0430: \u043E\u0442 1 \u0434\u043E 120 \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432.");
+    const r = await this.request("/api/services/conversation/process", { text: t, language: "ru" }, { timeout: 15e3 });
+    return { speech: String(r?.response?.speech?.plain?.speech ?? "").trim(), success: true };
+  }
   // TTS-фраза на станцию. Формат как в assistant.sendMedia: play_media c media_content_type 'text'.
   // media_player не отдаёт результат озвучивания — честно возвращаем «принято, не подтверждено».
   async announce(text, p) {
@@ -2076,6 +2084,11 @@ var server = http.createServer(async (req, res) => {
       if (route === "ha/announce" && req.method === "POST") {
         const request = JSON.parse((await body(req)).toString());
         return json(res, 200, await ha.announce(request?.text, p.preferences));
+      }
+      if (route === "ha/converse" && req.method === "POST") {
+        if (assistantScopes.has(id)) throw new Error("\u0414\u043E\u0436\u0434\u0438\u0441\u044C \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u044F \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F \u0441\u0442\u0430\u043D\u0446\u0438\u0438.");
+        const request = JSON.parse((await body(req)).toString());
+        return json(res, 200, await ha.converse(request?.text));
       }
       if (route === "ha/scenario" && req.method === "POST") {
         if (assistantScopes.has(id)) throw new Error("\u0414\u043E\u0436\u0434\u0438\u0441\u044C \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u044F \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F \u0441\u0442\u0430\u043D\u0446\u0438\u0438.");

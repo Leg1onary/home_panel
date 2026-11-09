@@ -29,6 +29,7 @@ import {shouldAmbient,AMBIENT_AFTER_IDLE} from './ambient.js';
 import {luxValue,autoTheme,AUTO_THEME_UP,AUTO_THEME_DOWN} from './auto-theme.js';
 
 import {esc,disabled,timeOf,clock,date,scheduleMinute,PANEL_TIMEZONE} from './dom.js';
+import {voiceButton,voiceSync,bindVoice} from './voice.js';
 const $=s=>document.querySelector(s);
 const I=name=>`<i data-lucide="${name}"></i>`;
 const iconSet={House,Box,Lightbulb,Power,ScanEye,SlidersHorizontal,Sun,Moon,X,ArrowRight,ArrowUpRight,
@@ -184,14 +185,13 @@ function dayProgress(){
 function home(){
  const hero=`<div class="hero-overlay">
  <div class="hero-top"><div class="hero-clock" aria-label="Местное время дома"><div id="hero-clock">${clock()}</div><span id="hero-date">${date()}</span><span id="hero-greeting" class="hero-greeting" hidden></span>${dayProgress()}</div>
- <div class="hero-top-right"><span id="hero-status">${heroStatusChip()}</span><button id="reset-model" title="Вернуть исходный ракурс" aria-label="Сбросить ракурс">${I('rotate-ccw')}</button></div></div>
- <div class="hero-facts" id="home-status">${weatherCard()}${homeStatus()}</div>
- <div id="home-room-card" class="home-room-card" hidden>${miniRoomCard()}</div></div>`;
+ <div class="hero-top-right">${isLive()?voiceButton():''}<span id="hero-status">${heroStatusChip()}</span><button id="reset-model" title="Вернуть исходный ракурс" aria-label="Сбросить ракурс">${I('rotate-ccw')}</button></div></div>
+ <div class="hero-facts" id="home-status">${weatherCard()}${homeStatus()}</div></div>`;
  return `<div class="view dashboard-view view-enter">
  <h1 class="visually-hidden">Мой дом</h1>
  <div class="home-stage-wrap">${sceneStage(hero)}
+ <div id="home-room-card" class="home-room-card" hidden>${miniRoomCard()}</div>
  <aside class="home-rail" aria-label="Сводка дома">
- <div id="home-green">${greenChip()}</div>
  <div id="home-digest" hidden></div>
  <div id="home-alarm" hidden></div>
  <div id="home-light-overview">${lightOverviewBadge()}</div>
@@ -289,16 +289,6 @@ function forecastSheet(){
  simpleSheet(`<h2>Прогноз погоды</h2><div data-forecast-sheet>${forecastMarkup(null,null,true)}</div>`);
  if(!isLive()||!forecastEntity)return paintForecast(null,'Home Assistant не настроен.');
  loadForecast();
-}
-function greenChip(){
- if(!isLive()||!state.liveOnline)return '';
- const e=Object.values(state.entityStates||{}).find(e=>e.entity_id?.startsWith('sensor.')&&/co2|carbon/i.test(e.entity_id)&&Number.isFinite(Number(e.state))&&!['unknown','unavailable',''].includes(e.state));
- if(!e)return '';
- const co2=Math.round(Number(e.state));
- const fossil=[e.attributes?.fossil_fuel_percentage,e.attributes?.fossil_percentage,e.attributes?.carbon_intensity].map(Number).find(Number.isFinite);
- const green=Number.isFinite(fossil)?Math.max(0,Math.min(100,Math.round(100-fossil))):null;
- const level=co2<200?'green':co2<350?'neutral':'warm';
- return `<div class="green-chip is-${level}" role="img" aria-label="Энергосеть: ${co2} г CO2 на киловатт-час${green!==null?`, зелёная генерация ${green} %`:''}"><span>${I('leaf')}</span><strong>Сеть: ${co2} г${green!==null?` · ${green} % зелёная`:''}</strong></div>`;
 }
 function homeStatus(){
  const terraceDoor=state.devices.find(d=>d.id==='terrace-door'&&d.status==='installed');
@@ -707,7 +697,7 @@ function refresh(){
   const weatherEntity=Object.values(state.entityStates||{}).find(e=>e.entity_id?.startsWith('weather.')),weatherTemp=weatherEntity?.attributes?.temperature;
   modelAPI?.setModelWeather(weatherTemp<0&&weatherEntity?.state==='snowy'?'snow':weatherTemp<0&&weatherEntity?.state==='rainy'?'rain':null);
   if(state.view==='home'){
-   updateRegion('#home-status',weatherCard()+homeStatus());updateRegion('#home-quick',homeQuick());updateRegion('#home-green',greenChip());updateRegion('#home-light-overview',lightOverviewBadge());updateRegion('#hero-status',heroStatusChip());paintRoomCard();
+   updateRegion('#home-status',weatherCard()+homeStatus());updateRegion('#home-quick',homeQuick());updateRegion('#home-light-overview',lightOverviewBadge());updateRegion('#hero-status',heroStatusChip());voiceSync();paintRoomCard();
     const digest=$('#home-digest');if(digest){updateRegion('#home-digest',digestCard());digest.hidden=!digest.querySelector('.digest-card')}
     const alarm=$('#home-alarm');if(alarm){updateRegion('#home-alarm',alarmMarkup());alarm.hidden=!alarm.querySelector('.alarm-card')}
     updateHeroTime();
@@ -1500,6 +1490,7 @@ document.addEventListener('mousemove',()=>{if(state.idle&&document.body.classLis
 document.addEventListener('visibilitychange',()=>{if(document.hidden){clearTimeout(idleTimer);if(cameraPlayer)cameraStop()}else armIdle()});
 window.addEventListener('pagehide',clearCamera);
 bindScenarioPainter(refresh);
+bindVoice();
 // Редактор пользовательских сценариев: тот же sheet, сохранение через preferences.
 bindScenarioHost({
  openSheet:simpleSheet,closeSheet:closeModal,icons,

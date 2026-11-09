@@ -188,6 +188,14 @@ export class HomeAssistant {
   }finally{this.pending.delete(entity)}
  }
 
+ // Голосовая команда: произвольная фраза в conversation.process HA.
+ // Честно возвращаем speech агента; readback не проверяем — разговорный агент HA сам отвечает.
+ async converse(text){
+  const t=String(text??'').trim();
+  if(!t||t.length>120)throw new Error('Голосовая команда: от 1 до 120 символов.');
+  const r=await this.request('/api/services/conversation/process',{text:t,language:'ru'},{timeout:15000});
+  return {speech:String(r?.response?.speech?.plain?.speech??'').trim(),success:true};
+ }
  // TTS-фраза на станцию. Формат как в assistant.sendMedia: play_media c media_content_type 'text'.
  // media_player не отдаёт результат озвучивания — честно возвращаем «принято, не подтверждено».
  async announce(text,p){
