@@ -589,7 +589,14 @@ function render(animate=true){
    api.mountModel($('#canvas'),rooms,state,id=>{
     if(state.view==='model'){state.selected=id;updateDetail();api.updateModel(rooms,state)}else openRoom(id);
    });
-  }).catch(()=>{if(revision===viewRevision&&$('#model-loading'))$('#model-loading').innerHTML='План недоступен в этом браузере. Все комнаты доступны в разделе «Свет».'});
+  }).catch(error=>{
+   if(revision!==viewRevision||!$('#model-loading'))return;
+   // Retryable failure: dynamic import or WebGL mount can fail on stale caches
+   // or old GPU drivers; keep the reason visible instead of an endless loader.
+   modelPromise=null;modelAPI=null;state.modelError=String(error?.message||error);
+   $('#model-loading').innerHTML=`<strong>План дома не загрузился</strong><span class="model-error-detail">${esc(state.modelError)}</span><button class="text-button" data-action="model-retry">Повторить попытку</button>`;
+   console.error('Home Panel: model mount failed',error);
+  });
  }
 }
 function updateRegion(selector,markup){
@@ -1174,6 +1181,7 @@ document.addEventListener('click',async e=>{
  if(b.dataset.ttsPreset){const i=$('#tts-text');if(i){i.value=b.dataset.ttsPreset;const c=$('#tts-count');if(c)c.textContent=b.dataset.ttsPreset.length+'/100'}return}
  if(a==='tts-send')return sendTTS();
  if(a==='weather-forecast')return forecastSheet();
+ if(a==='model-retry'){state.modelError='';render(false);return}
  if(b.hasAttribute('data-forecast-reload'))return loadForecast(true);
  if(a==='history-reload')return loadStatistics(true);
  if(a==='history-focus-clear'){historyState.focus=null;paintStatistics();return}
