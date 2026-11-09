@@ -26,7 +26,7 @@ export class HomeAssistant {
   try{return await response.json()}catch{throw new Error('Некорректный ответ Home Assistant.')}
  }
  sanitize(e){
-  const keys=['friendly_name','device_class','unit_of_measurement','temperature_unit','brightness','rgb_color','supported_color_modes','current_position','battery_level','current_temperature','temperature','hvac_action','supported_features','volume_level','media_title','media_artist','alice_state','assumed_state','humidity','wind_speed','wind_bearing','pressure','carbon_intensity','fossil_fuel_percentage','fossil_percentage','code_format','changed_by'];
+  const keys=['friendly_name','device_class','state_class','unit_of_measurement','temperature_unit','brightness','rgb_color','supported_color_modes','current_position','battery_level','current_temperature','temperature','hvac_action','supported_features','volume_level','media_title','media_artist','alice_state','assumed_state','humidity','wind_speed','wind_bearing','pressure','carbon_intensity','fossil_fuel_percentage','fossil_percentage','code_format','changed_by'];
   return {entity_id:e.entity_id,state:e.state,last_changed:e.last_changed,last_updated:e.last_updated,last_reported:e.last_reported,
    attributes:Object.fromEntries(keys.filter(k=>e.attributes?.[k]!==undefined).map(k=>[k,e.attributes[k]]))};
  }

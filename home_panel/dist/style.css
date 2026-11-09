@@ -1207,6 +1207,14 @@ button:not(:disabled):active{transform:scale(.97)}
 .digest-info{color:var(--muted)}.digest-info svg{color:var(--muted)}
 .digest-card.is-danger{border-color:rgba(229,99,79,.55)}
 .digest-card.is-danger h3{color:#e5634f}
+/* Энергия v1: карточка счётчика в правой рельсе главной. */
+.energy-card .energy-reading{display:flex;flex-direction:column;gap:2px;margin:var(--space-3) 0 0}
+.energy-card .energy-reading strong{font-size:var(--text-lg);font-weight:600}
+.energy-card .energy-meta{color:var(--muted);font-size:var(--text-xs)}
+.energy-card .energy-meta.is-stale{opacity:.55}
+.energy-card .energy-consumption{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-2);margin:var(--space-2) 0 0;font-size:var(--text-sm);color:var(--text)}
+.energy-card .energy-consumption span{color:var(--muted);font-size:var(--text-xs)}
+.energy-card .is-faint strong{color:var(--muted);font-weight:400}
 
 /* Wave 7: экраны — запланированные группы, сенсоры, инженерия, настройки */
 .control-group.is-planned{opacity:.62}

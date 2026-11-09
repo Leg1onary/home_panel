@@ -2,6 +2,7 @@
 import {areaName} from './catalog.js';
 import {binaryValue} from './sensor-state.js';
 import {numericReading,stateTimes} from './readings.js';
+import {findMeterEntities,meterValue} from './energy.js';
 const plural=(n,one,few,many)=>n%10===1&&n%100!==11?one:n%10>=2&&n%10<=4&&(n%100<12||n%100>14)?few:many;
 const read=(deps,id)=>{const b=deps.bindings[id],d=deps.devices.find(x=>x.id===id);return d&&d.status==='installed'&&b?.verified&&b.entityId?deps.entityStates?.[b.entityId]:null};
 export function digestItems({mode,liveOnline=true,devices=[],bindings={},entityStates={},now=Date.now(),alarmState}){
@@ -25,6 +26,14 @@ const openSensors={label:'Открыть датчики',open:'sensors'};
  }
  const weather=Object.values(entityStates).find(e=>e.entity_id?.startsWith('weather.')),t=weather?.attributes?.temperature;
  if(Number.isFinite(t)&&t<-5)items.push({level:'info',icon:'thermometer',text:`Мороз: ${Math.round(t)} °C`});
+ // Счётчик ТНС: сущности есть, но значения недоступны. info по умолчанию (облачная
+ // интеграция может редко обновляться); больше суток без last_updated — warn.
+ const meter=findMeterEntities(entityStates);
+ if((meter.reading||meter.consumption)&&meterValue(meter.reading)===null&&meterValue(meter.consumption)===null){
+  const times=[meter.reading,meter.consumption].filter(Boolean).map(e=>{const t=Date.parse(e.last_updated);return Number.isFinite(t)?t:null});
+  const older=times.every(t=>t===null||now-t>24*3600000);
+  items.push({level:older?'warn':'info',icon:'zap',text:older?'Счётчик ТНС: нет данных больше суток':'Счётчик ТНС: нет данных'});
+ }
  // Тревога охраны — самый приоритетный сигнал; alarmState приходит опционально.
  if(alarmState==='triggered')items.push({level:'danger',icon:'triangle-alert',text:'Тревога: охрана сработала'});
  // Обновление Home Assistant: только ядро (update.home_assistant_core_update), не аддоны.
