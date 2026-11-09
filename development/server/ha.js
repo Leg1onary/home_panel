@@ -3,6 +3,16 @@ import {resolveAction} from '../src/catalog.js';
 import {stationAvailable,stationSupports} from '../src/station.js';
 import WebSocket from 'ws';
 
+// История расхода: кеш ответа HA на (url|entity|hours), 60 с.
+const energyHistoryCache=new Map();
+const ENERGY_BAD=['unknown','unavailable',''];
+// Чистый расчёт расхода: последняя валидная точка − первая в окне [fromMs, ∞); <2 точек → null.
+export const energyDeltas=(points,now=Date.now())=>{
+ const valid=(Array.isArray(points)?points:[]).filter(p=>p&&Number.isFinite(p.at)&&Number.isFinite(p.value)).sort((a,b)=>a.at-b.at);
+ const inWindow=fromMs=>{const w=valid.filter(p=>p.at>=fromMs);return w.length>=2?Math.round((w.at(-1).value-w[0].value)*10)/10:null};
+ return {day:inWindow(now-24*3600000),week:inWindow(-Infinity)};
+};
+
 export class HomeAssistant {
  constructor({url='',token='',preview=false}={}){
   this.enabled=!!url&&!!token&&!preview;this.token=token;this.url=null;this.pending=new Set();
@@ -98,6 +108,31 @@ export class HomeAssistant {
     if(Number.isFinite(Number(p.precipitation_probability)))item.precipitationProbability=Math.round(Number(p.precipitation_probability));
     if(Number.isFinite(Number(p.precipitation)))item.precipitation=Number(p.precipitation);
     return item});
+ }
+ // История показаний счётчика за окно hours∈[24,168] как в loadHistory:
+ // /api/history/period/<ISO start>?filter_entity_id=…&minimal_response&no_attributes.
+ // Возвращает только валидные точки {at, value}: state — число, не unavailable/unknown.
+ async energyHistory(entityId,hours){
+  if(!/^sensor\.[a-z0-9_]+$/.test(entityId))throw new Error('Некорректная сущность счётчика.');
+  if(![24,168].includes(hours))throw new Error('Период истории расхода: 24 или 168 часов.');
+  if(!this.enabled)throw new Error('Home Assistant не настроен. История расхода недоступна.');
+  const key=[this.url,entityId,hours].join('|');
+  const saved=energyHistoryCache.get(key);
+  if(saved&&Date.now()-saved.at<60000)return saved.data;
+  const end=Date.now(),start=end-hours*3600000;
+  const query=new URLSearchParams({filter_entity_id:entityId,end_time:new Date(end).toISOString(),minimal_response:'',no_attributes:'',significant_changes_only:'0'});
+  const promise=(async()=>{
+   let raw;
+   try{raw=await this.request('/api/history/period/'+encodeURIComponent(new Date(start).toISOString())+'?'+query)}
+   catch(error){throw new Error('История расхода HA недоступна. Проверь History/Recorder для сущности счётчика. '+error.message)}
+   const group=(Array.isArray(raw)?raw:[]).find(g=>Array.isArray(g)&&g[0]?.entity_id===entityId)||[];
+   return group.map(r=>({at:Date.parse(r.last_changed||r.last_updated),state:String(r.state??'')}))
+    .filter(r=>Number.isFinite(r.at)&&!ENERGY_BAD.includes(r.state)&&Number.isFinite(Number(r.state)))
+    .sort((a,b)=>a.at-b.at).map(r=>({at:r.at,value:Number(r.state)}));
+ })();
+  if(energyHistoryCache.size>=12)energyHistoryCache.delete(energyHistoryCache.keys().next().value);
+  energyHistoryCache.set(key,{at:Date.now(),promise});
+  try{return await promise}catch(error){energyHistoryCache.delete(key);throw error}
  }
  cameraEntity(id,p){
   const d=p.devices.find(d=>d.id===id),b=p.bindings[id];

@@ -11,6 +11,8 @@ import {CameraStreams} from './stream.js';
 import {CameraRTC} from './rtc.js';
 import {LiveFeed} from './live-stream.js';
 import {YardMotion} from './yard-motion.js';
+import {meterValue} from '../src/energy.js';
+import {energyDeltas} from './ha.js';
 
 import {deviceTypes,samePhysicalDevice} from '../src/catalog.js';
 import {migrateHouseProfile,activateHouseProfile,bindingProblem} from '../src/house-profile.js';
@@ -41,7 +43,7 @@ const yardMotion=new YardMotion({ha});
 
 const proofs=new Map(),pendingScopes=new Map();
 const live=new LiveFeed({ha}),liveIds=new Map();
-let forecastCache=null,forecastKey='',shoppingCache=null;
+let forecastCache=null,forecastKey='',shoppingCache=null,energyCache=null;
 const getProfile=id=>{
  let row=db.prepare('SELECT * FROM profiles WHERE id=?').get(id);
  if(!row){db.prepare('INSERT INTO profiles(id,preferences) VALUES(?,?)').run(id,JSON.stringify(defaultPreferences()));row=db.prepare('SELECT * FROM profiles WHERE id=?').get(id)}
@@ -197,6 +199,25 @@ const server=http.createServer(async(req,res)=>{
     forecastCache={at:Date.now(),data};forecastKey=entityId;
     return json(res,200,data);
    }
+    // Электроэнергия: показания/потребление/дата показаний из состояний + расход за сутки и неделю из истории.
+    if(route==='ha/energy'&&req.method==='GET'){
+     if(energyCache&&Date.now()-energyCache.at<60000)return json(res,200,{...energyCache.data,cached:true});
+     if(!ha.enabled)throw new Error('Home Assistant не настроен. Расход электроэнергии недоступен.');
+     const all=await ha.states();
+     // Счётчик ТНС: sensor.* с schetchik/meter, без signal; суффиксы как в src/energy.js.
+     const list=all.filter(e=>typeof e?.entity_id==='string'&&e.entity_id.startsWith('sensor.')&&/schetchik|meter/.test(e.entity_id)&&!/signal/.test(e.entity_id));
+     const by=tag=>list.find(e=>e.entity_id.includes('_'+tag))||null;
+     const reading=by('reading'),consumption=by('consumption'),meterNumber=by('meter_number'),readingsDate=by('readings_date');
+     const readingValue=meterValue(reading);
+     // Окно 168 ч один раз: сутки — это первые 24 ч того же окна.
+     const history=readingValue===null?[]:await ha.energyHistory(reading.entity_id,168);
+     const data={reading:{value:readingValue,entityId:reading?.entity_id??null,updatedAt:reading?.last_updated??null},
+      consumption:meterValue(consumption),meterNumber:meterNumber?.state??null,readingsDate:readingsDate?.state??null,
+      deltas:energyDeltas(history)};
+     energyCache={at:Date.now(),data};
+     return json(res,200,data);
+    }
+
    if(route==='ha/stream'&&req.method==='GET'){
     if(req.headers['sec-fetch-site']==='cross-site')return json(res,403,{error:'Межсайтовый запрос запрещён.'});
     if(!ha.enabled)return json(res,400,{error:'Home Assistant не настроен.'});

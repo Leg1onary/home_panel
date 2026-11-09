@@ -2570,6 +2570,16 @@ function validatePreferences(input, { importing = false } = {}) {
 
 // server/ha.js
 import WebSocket from "ws";
+var energyHistoryCache = /* @__PURE__ */ new Map();
+var ENERGY_BAD = ["unknown", "unavailable", ""];
+var energyDeltas = (points, now = Date.now()) => {
+  const valid = (Array.isArray(points) ? points : []).filter((p) => p && Number.isFinite(p.at) && Number.isFinite(p.value)).sort((a, b) => a.at - b.at);
+  const inWindow = (fromMs) => {
+    const w = valid.filter((p) => p.at >= fromMs);
+    return w.length >= 2 ? Math.round((w.at(-1).value - w[0].value) * 10) / 10 : null;
+  };
+  return { day: inWindow(now - 24 * 36e5), week: inWindow(-Infinity) };
+};
 var HomeAssistant = class {
   constructor({ url = "", token = "", preview: preview2 = false } = {}) {
     this.enabled = !!url && !!token && !preview2;
@@ -2726,6 +2736,37 @@ var HomeAssistant = class {
       if (Number.isFinite(Number(p.precipitation))) item.precipitation = Number(p.precipitation);
       return item;
     });
+  }
+  // История показаний счётчика за окно hours∈[24,168] как в loadHistory:
+  // /api/history/period/<ISO start>?filter_entity_id=…&minimal_response&no_attributes.
+  // Возвращает только валидные точки {at, value}: state — число, не unavailable/unknown.
+  async energyHistory(entityId, hours) {
+    if (!/^sensor\.[a-z0-9_]+$/.test(entityId)) throw new Error("\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u0430\u044F \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u044C \u0441\u0447\u0451\u0442\u0447\u0438\u043A\u0430.");
+    if (![24, 168].includes(hours)) throw new Error("\u041F\u0435\u0440\u0438\u043E\u0434 \u0438\u0441\u0442\u043E\u0440\u0438\u0438 \u0440\u0430\u0441\u0445\u043E\u0434\u0430: 24 \u0438\u043B\u0438 168 \u0447\u0430\u0441\u043E\u0432.");
+    if (!this.enabled) throw new Error("Home Assistant \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D. \u0418\u0441\u0442\u043E\u0440\u0438\u044F \u0440\u0430\u0441\u0445\u043E\u0434\u0430 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430.");
+    const key = [this.url, entityId, hours].join("|");
+    const saved = energyHistoryCache.get(key);
+    if (saved && Date.now() - saved.at < 6e4) return saved.data;
+    const end = Date.now(), start = end - hours * 36e5;
+    const query = new URLSearchParams({ filter_entity_id: entityId, end_time: new Date(end).toISOString(), minimal_response: "", no_attributes: "", significant_changes_only: "0" });
+    const promise = (async () => {
+      let raw;
+      try {
+        raw = await this.request("/api/history/period/" + encodeURIComponent(new Date(start).toISOString()) + "?" + query);
+      } catch (error) {
+        throw new Error("\u0418\u0441\u0442\u043E\u0440\u0438\u044F \u0440\u0430\u0441\u0445\u043E\u0434\u0430 HA \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430. \u041F\u0440\u043E\u0432\u0435\u0440\u044C History/Recorder \u0434\u043B\u044F \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u0438 \u0441\u0447\u0451\u0442\u0447\u0438\u043A\u0430. " + error.message);
+      }
+      const group = (Array.isArray(raw) ? raw : []).find((g) => Array.isArray(g) && g[0]?.entity_id === entityId) || [];
+      return group.map((r) => ({ at: Date.parse(r.last_changed || r.last_updated), state: String(r.state ?? "") })).filter((r) => Number.isFinite(r.at) && !ENERGY_BAD.includes(r.state) && Number.isFinite(Number(r.state))).sort((a, b) => a.at - b.at).map((r) => ({ at: r.at, value: Number(r.state) }));
+    })();
+    if (energyHistoryCache.size >= 12) energyHistoryCache.delete(energyHistoryCache.keys().next().value);
+    energyHistoryCache.set(key, { at: Date.now(), promise });
+    try {
+      return await promise;
+    } catch (error) {
+      energyHistoryCache.delete(key);
+      throw error;
+    }
   }
   cameraEntity(id, p) {
     const d = p.devices.find((d2) => d2.id === id), b = p.bindings[id];
@@ -3429,6 +3470,13 @@ var YardMotion = class {
   }
 };
 
+// src/dom.js
+var PANEL_TIMEZONE = "Europe/Moscow";
+
+// src/energy.js
+var BAD = ["unavailable", "unknown", ""];
+var meterValue = (e) => e && !BAD.includes(e.state) && Number.isFinite(Number(e.state)) ? Number(e.state) : null;
+
 // src/sensor-state.js
 function binaryValue(type, value) {
   const v = String(value ?? "").trim().toLowerCase();
@@ -3756,9 +3804,6 @@ async function loadHistory(ha2, p, hoursText) {
     throw error;
   }
 }
-
-// src/dom.js
-var PANEL_TIMEZONE = "Europe/Moscow";
 
 // server/assistant.js
 import { createHash } from "node:crypto";
@@ -4171,6 +4216,7 @@ var liveIds = /* @__PURE__ */ new Map();
 var forecastCache = null;
 var forecastKey = "";
 var shoppingCache = null;
+var energyCache = null;
 var getProfile = (id) => {
   let row = db.prepare("SELECT * FROM profiles WHERE id=?").get(id);
   if (!row) {
@@ -4351,6 +4397,25 @@ var server = http.createServer(async (req, res) => {
         const data2 = { entityId, forecast: await ha.weatherForecast(entityId) };
         forecastCache = { at: Date.now(), data: data2 };
         forecastKey = entityId;
+        return json(res, 200, data2);
+      }
+      if (route === "ha/energy" && req.method === "GET") {
+        if (energyCache && Date.now() - energyCache.at < 6e4) return json(res, 200, { ...energyCache.data, cached: true });
+        if (!ha.enabled) throw new Error("Home Assistant \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D. \u0420\u0430\u0441\u0445\u043E\u0434 \u044D\u043B\u0435\u043A\u0442\u0440\u043E\u044D\u043D\u0435\u0440\u0433\u0438\u0438 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D.");
+        const all = await ha.states();
+        const list = all.filter((e) => typeof e?.entity_id === "string" && e.entity_id.startsWith("sensor.") && /schetchik|meter/.test(e.entity_id) && !/signal/.test(e.entity_id));
+        const by = (tag) => list.find((e) => e.entity_id.includes("_" + tag)) || null;
+        const reading = by("reading"), consumption = by("consumption"), meterNumber = by("meter_number"), readingsDate = by("readings_date");
+        const readingValue = meterValue(reading);
+        const history = readingValue === null ? [] : await ha.energyHistory(reading.entity_id, 168);
+        const data2 = {
+          reading: { value: readingValue, entityId: reading?.entity_id ?? null, updatedAt: reading?.last_updated ?? null },
+          consumption: meterValue(consumption),
+          meterNumber: meterNumber?.state ?? null,
+          readingsDate: readingsDate?.state ?? null,
+          deltas: energyDeltas(history)
+        };
+        energyCache = { at: Date.now(), data: data2 };
         return json(res, 200, data2);
       }
       if (route === "ha/stream" && req.method === "GET") {

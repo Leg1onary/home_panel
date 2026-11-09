@@ -201,6 +201,28 @@ async function pollYardMotion(){
  try{const data=await api('ha/yard-motion');if(data){yardData=data;paintYardChip()}}catch{/* детектор недоступен — чип просто не показываем */}
  finally{yardPoll.busy=false}
 }
+// Расход электроэнергии: ленивая загрузка ha/energy при первом рендере карточки
+// и по кнопке обновления; клиентский кеш 60 с, как серверный.
+const ENERGY_POLL_MS=60000;
+let energyData=null,energyPoll={at:0,busy:false};
+function energyExtra(){
+ if(!energyData)return undefined;
+ return {readingsDate:energyData.readingsDate||null,deltas:energyData.deltas?{day:energyData.deltas.day,week:energyData.deltas.week}:null};
+}
+function updateEnergyRegion(){
+ const energy=$('#home-energy');if(!energy||!isLive())return;
+ updateRegion('#home-energy',energyCard(findMeterEntities(state.entityStates||{}),Date.now(),energyExtra()));
+ energy.hidden=!energy.querySelector('.energy-card');icons();
+}
+async function pollEnergy(force=false){
+ if(!isLive()||energyPoll.busy)return;
+ const now=Date.now();
+ if(!force&&now-energyPoll.at<ENERGY_POLL_MS)return;
+ energyPoll.busy=true;energyPoll.at=now;
+ try{energyData=await api('ha/energy')}catch{/* история расхода недоступна — карточка остаётся с показаниями */}
+ finally{energyPoll.busy=false}
+ if(state.view==='home')updateEnergyRegion();
+}
 function yardMarkup(){
  if(!isLive()||!yardData||yardData.available===false)return '';
  if(!showYardCard({motion:yardData.motion,lastMotionAt:yardData.lastMotionAt,now:Date.now(),mode:state.mode}))return '';
@@ -768,7 +790,7 @@ function refresh(){
    updateRegion('#home-status',YARD_SLOT+weatherCard()+homeStatus());paintYardChip();pollYardMotion();updateRegion('#home-quick',homeQuick());updateRegion('#home-light-overview',lightOverviewBadge());updateRegion('#hero-status',heroStatusChip());voiceSync();paintRoomCard();
     const digest=$('#home-digest');if(digest){updateRegion('#home-digest',digestCard());digest.hidden=!digest.querySelector('.digest-card')}
     const alarm=$('#home-alarm');if(alarm){updateRegion('#home-alarm',alarmMarkup());alarm.hidden=!alarm.querySelector('.alarm-card')}
-    const energy=$('#home-energy');if(energy){updateRegion('#home-energy',isLive()?energyCard(findMeterEntities(state.entityStates||{}),Date.now()):'');energy.hidden=!energy.querySelector('.energy-card')}
+    const energy=$('#home-energy');if(energy){updateEnergyRegion();pollEnergy()}
     updateHeroTime();
   }else if(state.view==='room'&&$('#room-scenarios'))updateRegion('#room-scenarios',scenarioChipsRow());
  }else if(state.view!=='statistics')render(false);
@@ -1358,6 +1380,8 @@ async function dispatchAction(e){
  if(a==='weather-forecast')return forecastSheet();
  if(a==='model-retry'){state.modelError='';render(false);return}
  if(b.hasAttribute('data-forecast-reload'))return loadForecast(true);
+  if(b.hasAttribute('data-energy-reload'))return pollEnergy(true);
+
  if(a==='history-reload')return loadStatistics(true);
  if(a==='history-focus-clear'){historyState.focus=null;paintStatistics();return}
  if(a==='active-lights'){simpleSheet(`<div data-lights-overview>${lightOverviewSheet()}</div>`);return}

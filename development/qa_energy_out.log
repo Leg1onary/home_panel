@@ -1,0 +1,8 @@
+DEMO ENERGY CARD RENDERED: false
+DEMO ha/energy CALLS: 0
+NAV: ["home","rooms","watch","engineering","statistics"]
+TAB rooms done
+TAB statistics done
+TAB station done
+PAGEERRORS: ["console: Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8129/favicon.ico"]
+VERDICT: OK

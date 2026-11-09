@@ -1222,6 +1222,16 @@ button:not(:disabled):active{filter:brightness(1.12)}
 .energy-card .energy-consumption{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-2);margin:var(--space-2) 0 0;font-size:var(--text-sm);color:var(--text)}
 .energy-card .energy-consumption span{color:var(--muted);font-size:var(--text-xs)}
 .energy-card .is-faint strong{color:var(--muted);font-weight:400}
+/* Расход за сутки/неделю и muted-состояние, пока данные честно отсутствуют. */
+.energy-card .energy-delta{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-2);margin:var(--space-2) 0 0;font-size:var(--text-sm);color:var(--text)}
+.energy-card .energy-delta span{color:var(--muted);font-size:var(--text-xs)}
+.energy-card .energy-delta strong{font-weight:600}
+.energy-card .energy-deltas{min-height:0}
+.energy-card .energy-deltas .is-faint,.energy-card .energy-deltas.is-faint{margin:var(--space-2) 0 0;color:var(--muted);font-size:var(--text-xs);font-weight:400}
+.energy-card .energy-reload{margin-left:auto;background:none;border:0;padding:2px;color:var(--muted);cursor:pointer;display:inline-flex;align-items:center}
+.energy-card .energy-reload svg{width:14px;height:14px}
+.energy-card .energy-reload:hover,.energy-card .energy-reload:focus-visible{color:var(--text)}
+.energy-card h3{display:flex;align-items:center;gap:var(--space-2)}
 
 /* Wave 7: экраны — запланированные группы, сенсоры, инженерия, настройки */
 .control-group.is-planned{opacity:.62}
