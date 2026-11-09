@@ -1,8 +1,7 @@
 FROM node:22-bookworm-slim AS dependencies
 WORKDIR /app
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3 make g++ \
-    && rm -rf /var/lib/apt/lists/*
+# better-sqlite3 11.10.0 ships prebuilt binaries for Node 22 (linux-x64 glibc),
+# so no python3/make/g++ toolchain is needed: apt-get was the slowest step.
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 

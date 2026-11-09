@@ -1,0 +1,10 @@
+A0 view: home
+A1 click systems: clicked
+A2 view: engineering
+A3 click watch (1 клик): clicked
+A4 view: watch <- должен быть watch после ПЕРВОГО клика
+B1 click rooms: clicked
+B2 before: {"selLen":0,"roomButtons":["living","hall","office","bedroom","children","bath","utility","pantry","corridor","terrace","attic","well","yard"]}
+B3 click living card: clicked
+B4 after: {"selLen":740,"view":"home","controlGroups":2} <- selLen>0 и controlGroups>0 = комнаты раскрываются
+ERRORS: ["CONSOLE: Failed to load resource: the server responded with a status of 404 (Not Found)"]
