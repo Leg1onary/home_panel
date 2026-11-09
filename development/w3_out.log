@@ -1,0 +1,35 @@
+PASS: clean catalog v3, older formats rejected, stable IDs, import reset, capabilities, duplicates, planned locks, extensible sensors and climate summary follows real zones.
+PASS: yard-card — чип только по факту движения панельного детектора ≤5 мин; демо и отсутствие данных никогда не показывают карточку; сдвинутое/неизвестное время события не считается движением.
+PASS: additive device model v1, logical groups, components, stable bindings, capabilities, imports, validation, read-only new families, no command escalation.
+PASS: real SQLite migration, original backup, idempotent restart, preserved theme/photo/live mappings, grouping CRUD, new device without a plan, unknown versions rejected without mutation.
+PASS: 39 inventory bindings, enum safety/alerts, v5 migration/idempotency, theme/photo/custom mappings preserved, partial activation, numeric units/classes, CSRF, zero service calls, read-only events/batteries, persistence.
+PASS: media discovery/secret filtering, pause/play/volume readback, unchanged target no-op, features/offline/unverified locks, strict action/value allowlist, demo isolation.
+PASS: station hub action allowlist, TTS/cloud/local gating, durable idempotency/crash safety, truthful acknowledgements, background wet/dry/unknown/restart dedupe, Moscow quiet hours, shopping readback, scoped leave, no secret/HTML leakage.
+shopping: ok
+voice: ok (converse: process вызов, speech, пустая строка, валидация, proof, выключенный и упавший HA)
+PASS: floor states, no texture/living overlay, independent selection; transformed house/terrace foundation vertices are safely below every room floor.
+PASS: unavailable light observations stay unknown; detailed schematic interior is batched and room-tagged.
+PASS: one installed corridor line, immutable/idempotent migration, verified/custom/grouped mappings preserved, no guessed entity, persistent spatial view contracts.
+PASS: motion expiry/event timestamps, no polling renewal, native binary semantics, HA-only scoped history, unavailable gaps, line-hours/coverage, cache and binding changes, honest scene pins.
+PASS: stable and untimestamped HA values remain visible, provenance is not polling, zero/units/offline/unknown validation and verified scene pins.
+PASS: дайджест показывает только реальные сигналы — батарейки/агрегат, протечка danger, offline, недоступные датчики только с проверенным биндингом, забытый свет, мороз, сортировка; действия (датчики/комната/системы) и гистерезис авто-темы.
+PASS: энергия v2 — поиск счётчика, карточка рельсы (показания/дата показаний/потребление/сутки/неделя/заглушка), история расхода (energyHistory: /api/history/period, фильтр unavailable, кеш 60 с) и energyDeltas (окна 24/168 ч, <2 точек → null).
+preact-energy ok
+preact-digest ok
+preact-weather ok
+preact-quick ok
+preact-facts ok
+PASS: buffered LL-HLS at 1x, narrow start-hint removal, loader callback/binary safety, part delivery, ordinary HLS fallback, rate/latency/frame diagnostics, bounded recovery and cleanup.
+PASS: WebRTC-only startup, recvonly tracks, ICE ordering/default mid, diagnostics, no parallel HLS, session cleanup/stop-during-start, explicit HLS and unsupported-browser fallback.
+PASS: HA WebRTC auth/capabilities/config, bounded owned sessions, offer/subscription/trickle ICE/events, fixed camera scope, secret filtering, unsupported/auth rejection, binding changes, expiry and close.
+PASS: stale proof refresh, concurrent single-flight, exactly one safe retry, no retries on transport/HA/origin errors, no infinite retries.
+PASS: SW api-exclusion and strategies, registration, allowlist, build pipeline, profile export endpoint and UI.
+ambient: ok
+PASS: yard-motion — сетка-диф (0/порог), детектор на requestRaw, endpoint ha/yard-motion, троттлинг 3с, недоступность без паники.
+PASS: clean v3 initialization, no migration schema, old formats rejected, persistence, CSRF, verified mappings, stable reorder, move resets verification, HA command/readback, locked engineering, camera images, secret filtering, unknown format leaves database unchanged, preview isolation.
+PASS: local manifest, Supervisor token, correct /core/api routes, LAN Host/Origin/CSRF, shared SQLite profile, saved theme/favorites/mode/bindings after restart, light command/readback, camera frame, secret filtering, HA auth error, health.
+PASS: WS auth/stream command, verified camera only, CSRF, HLS rewrites incl init/parts, progressive first bytes before upstream completion, secret filtering, query/file allowlists, SSRF rejection, stop invalidates session, mode change blocks existing stream.
+PASS: SSE snapshot then minimal patch, cross-site 403, error event on HA outage with connection alive, subscriber removed on close while poller keeps ticking.
+PASS: panel scenarios (leave/evening/cinema), per-line readback, unavailable line fails alone, verified-only batching, room scoping, dim fallback honesty, bad id 400, proof required.
+PASS: user scenarios — strict validation drops bad id/name/steps, 8/12 limits enforced, ordered run with readback, unavailable line fails alone, brightness fallback honesty, unknown id 400, CRUD through preferences endpoint.
+All thirty-four test suites passed.

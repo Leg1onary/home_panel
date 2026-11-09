@@ -31,7 +31,9 @@ import {render as preactRender,h as ph} from './preact/kit.js';
 import {EnergyWidget} from './preact/energy-widget.js';
 import {DigestWidget,digestBus} from './preact/digest-widget.js';
 import {WeatherChip,weatherBus,WEATHER_ICON} from './preact/weather-widget.js';
-import {showYardCard,YARD_REFRESH_MS} from './yard-card.js';
+import {QuickWidget,quickBus} from './preact/quick-widget.js';
+import {FactsWidget,factsBus} from './preact/facts-widget.js';
+import {YARD_REFRESH_MS} from './yard-card.js';
 
 import {esc,disabled,timeOf,clock,date,scheduleMinute,PANEL_TIMEZONE} from './dom.js';
 import {voiceButton,voiceSync,bindVoice} from './voice.js';
@@ -193,8 +195,8 @@ function dayProgress(){
 // Детектор панельный — сравнение кадров камеры на сервере, биндинг yard-motion не нужен.
 // Слот живёт внутри #home-status, чтобы частые перерисовки погоды/фактов
 // не сбрасывали загруженный кадр камеры.
-const YARD_SLOT='<span id="yard-slot" class="yard-slot"></span>';
 const WEATHER_SLOT='<span id="weather-slot"></span>';
+const FACTS_SLOT='<span id="facts-slot"></span>';
 const YARD_POLL_MS=3000;
 let yardData=null,yardPoll={at:0,busy:false};
 async function pollYardMotion(){
@@ -202,7 +204,7 @@ async function pollYardMotion(){
  const now=Date.now();
  if(now-yardPoll.at<YARD_POLL_MS)return;
  yardPoll.busy=true;yardPoll.at=now;
- try{const data=await api('ha/yard-motion');if(data){yardData=data;paintYardChip()}}catch{/* детектор недоступен — чип просто не показываем */}
+ try{const data=await api('ha/yard-motion');if(data){yardData=data;factsNotify()}}catch{/* детектор недоступен — чип просто не показываем */}
  finally{yardPoll.busy=false}
 }
 // Энергокарточка: Preact-компонента (src/preact/energy-widget.js) сама опрашивает
@@ -239,39 +241,58 @@ function updateWeatherRegion(){
   slot.dataset.preact='1';
  }
 }
-function yardMarkup(){
- if(!isLive()||!yardData||yardData.available===false)return '';
- if(!showYardCard({motion:yardData.motion,lastMotionAt:yardData.lastMotionAt,now:Date.now(),mode:state.mode}))return '';
- const when=timeOf(yardData.lastMotionAt);
- return `<button class="home-fact yard-chip" data-camera="camera-yard" title="Панельное распознавание движения по кадру камеры" aria-label="Двор: движение в ${esc(when)}. Открыть камеру двора"><span class="yard-thumb" aria-hidden="true">${I('camera')}</span><strong>Движение · ${esc(when)}</strong></button>`;
-}
-function paintYardChip(){
- const slot=$('#yard-slot');if(!slot)return;
- const markup=yardMarkup();
- if(markup){
-  const leaving=slot.querySelector('.yard-chip.is-leaving');
-  if(leaving){leaving.classList.remove('is-leaving');return}
-  if(!slot.querySelector('.yard-chip')){slot.innerHTML=markup;icons();loadYardFrame()}
-  return;
- }
- const chip=slot.querySelector('.yard-chip');
- if(chip&&!chip.classList.contains('is-leaving')){
-  chip.classList.add('is-leaving');
-  setTimeout(()=>{const c=$('#yard-slot .yard-chip');if(c?.classList.contains('is-leaving'))c.remove()},500);
+// Факты: Preact-компонента (src/preact/facts-widget.js) управляет содержимым
+// #facts-slot внутри #home-status (двери/скважина/чердак + двор-чип). app.js
+// монтирует узел и рассылает deps по factsBus в refresh() и после опроса двора.
+function updateFactsRegion(){
+ const slot=$('#facts-slot');
+ if(!slot)return;
+ if(!slot.dataset.preact){
+  preactRender(ph(FactsWidget,{onYardFrame:()=>loadYardFrame()}),slot);
+  slot.dataset.preact='1';
  }
 }
+function factsArgs(){
+ const door=binaryLabel('door','Открыта','Закрыта'),terrace=binaryLabel('terrace-door','Открыта','Закрыта');
+ const temperature=id=>{
+  const d=state.devices.find(d=>d.room===id&&d.status==='installed'&&d.type==='temperature');
+  return d?deviceReading(d):'Нет датчика';
+ };
+ const when=yardData?timeOf(yardData.lastMotionAt):'';
+ return {devices:state.devices,door,terrace,well:temperature('well'),attic:temperature('attic'),live:isLive(),
+  yard:isLive()?{data:yardData,when,mode:state.mode,now:Date.now(),frameUrl:yardFrame.url}:null};
+}
+function factsNotify(){factsBus.notify(factsArgs())}
+// Рельса «Под рукой»: Preact-компонента (src/preact/quick-widget.js) в #home-quick.
+// app.js только монтирует узел и рассылает deps по quickBus в refresh().
+function updateQuickRegion(){
+ const rail=$('#home-quick');
+ if(!rail)return;
+ if(!rail.dataset.preact){
+  preactRender(ph(QuickWidget,{}),rail);
+  rail.dataset.preact='1';
+ }
+}
+function quickArgs(){
+ const camera=state.devices.find(d=>d.type==='camera'&&d.room==='yard'&&d.status==='installed');
+ const media=state.devices.find(d=>d.id==='station'&&d.status==='installed');
+ const e=isLive()?observed('station'):null;
+ return {masterBlocked:masterBlocked(),cameraId:camera?.id||null,media:!!media,
+  stationPlaying:state.stationPlaying,playDisabled:!canControl('station:playing')||hasPending(),
+  prevDisabled:!isLive()||!stationSupports(e,'previous',true)||hasPending(),
+  nextDisabled:!isLive()||!stationSupports(e,'next',true)||hasPending(),
+  stationRoom:stationRoom(),stationTitle:observed('station')?.attributes?.media_title||stationRoom()};
+}
+
 // Кадр двора: не чаще раза в 2 минуты (YARD_REFRESH_MS), ревизии против гонок,
 // при ошибке кадра чип остаётся с иконкой камеры — честно без картинки.
+// Кадр попадает в чип через factsNotify (deps.yard.frameUrl).
 let yardFrame={url:null,at:0,rev:0,busy:false};
-function paintYardThumb(thumb){
- if(!thumb)return;
- thumb.innerHTML=yardFrame.url?`<img src="${yardFrame.url}" alt=""/>`:'';
-}
 async function loadYardFrame(force=false){
  const thumb=$('.yard-chip .yard-thumb');
  if(!thumb||yardFrame.busy)return;
  const now=Date.now();
- if(!force&&now-yardFrame.at<YARD_REFRESH_MS)return paintYardThumb(thumb);
+ if(!force&&now-yardFrame.at<YARD_REFRESH_MS)return;
  yardFrame.busy=true;const rev=++yardFrame.rev;
  try{
   const blob=await api('ha/camera',{method:'POST',body:{id:'camera-yard'},image:true});
@@ -282,14 +303,14 @@ async function loadYardFrame(force=false){
   yardFrame={url,at:now,rev,busy:false};
  }catch{if(rev===yardFrame.rev)yardFrame={...yardFrame,at:now,busy:false}}
  finally{if(rev===yardFrame.rev)yardFrame.busy=false}
- paintYardThumb($('.yard-chip .yard-thumb'));
+ factsNotify();
 }
 
 function home(){
  const hero=`<div class="hero-overlay">
  <div class="hero-top"><div class="hero-clock" aria-label="Местное время дома"><div id="hero-clock">${clock()}</div><span id="hero-date">${date()}</span><span id="hero-greeting" class="hero-greeting" hidden></span>${dayProgress()}</div>
  <div class="hero-top-right">${isLive()?voiceButton():''}<span id="hero-status">${heroStatusChip()}</span><button id="reset-model" title="Вернуть исходный ракурс" aria-label="Сбросить ракурс">${I('rotate-ccw')}</button></div></div>
- <div class="hero-facts" id="home-status">${YARD_SLOT}${WEATHER_SLOT}${homeStatus()}</div></div>`;
+ <div class="hero-facts" id="home-status">${WEATHER_SLOT}${FACTS_SLOT}</div></div>`;
  return `<div class="view dashboard-view view-enter">
  <h1 class="visually-hidden">Мой дом</h1>
  <div class="home-stage-wrap">${sceneStage(hero)}
@@ -302,7 +323,7 @@ function home(){
  <button class="text-button rail-allrooms" data-action="allrooms">Все комнаты ${I('arrow-up-right')}</button>
  ${!state.preview&&!state.houseProfileConfirmed&&state.devices.some(d=>houseBindings[d.id]===state.bindings[d.id]?.entityId)?'<div class="profile-invite"><div><strong>Профиль ждёт проверки</strong><p>Подтверди привязки перед управлением домом.</p></div><button class="secondary" data-action="house-review">Проверить профиль</button></div>':''}
  </aside>
- <div id="home-quick" class="home-quick-rail">${homeQuick()}</div>
+ <div id="home-quick" class="home-quick-rail"></div>
  </div></div>`;
 }
 // Мини-карточка комнаты: тап по плану показывает климат и линии света рядом со сценой.
@@ -380,19 +401,8 @@ function forecastSheet(){
  if(!isLive()||!forecastEntity)return paintForecast(null,'Home Assistant не настроен.');
  loadForecast();
 }
-function homeStatus(){
- const terraceDoor=state.devices.find(d=>d.id==='terrace-door'&&d.status==='installed');
- const door=binaryLabel('door','Открыта','Закрыта'),terrace=binaryLabel('terrace-door','Открыта','Закрыта');
- const fact=(label,value,attrs,attention=false)=>`<button class="home-fact ${attention?'needs-attention':''} ${/Нет |—/.test(value)?'is-faint':''}" ${attrs}><span>${label}</span><strong>${esc(value)}</strong></button>`;
- const temperature=id=>{
-  const d=state.devices.find(d=>d.room===id&&d.status==='installed'&&d.type==='temperature');
-  return d?deviceReading(d):'Нет датчика';
- };
- return fact('Входная',door,`data-action="door" aria-label="Входная дверь: ${esc(door)}"`,door==='Открыта')+
- (terraceDoor?fact('Терраса',terrace,'data-action="terrace-door"',terrace==='Открыта'):'')+
- fact('Скважина',temperature('well'),'data-sensor="well"')+
- fact('Чердак',temperature('attic'),'data-sensor="attic"');
-}
+// Волна 3: разметка homeStatus() перенесена в src/preact/facts-widget.js
+// (factsMarkup); данные рассылаются через factsBus.notify(factsArgs()).
 function lightOverview(){
  const all=rooms.flatMap(r=>channelsFor(r).map(c=>({r,c})));
  const unknown=all.filter(({c})=>noConnection()||isLive()&&!canControl(c.id));
@@ -526,18 +536,6 @@ function stationSkipButtons(){
  const e=isLive()?observed('station'):null;
  return `<div class="station-skip"><button class="icon-button" data-action="station-previous" aria-label="Предыдущий трек" ${disabled(!isLive()||!stationSupports(e,'previous',true)||hasPending())}>${I('skip-back')}</button>
  <button class="icon-button" data-action="station-next" aria-label="Следующий трек" ${disabled(!isLive()||!stationSupports(e,'next',true)||hasPending())}>${I('skip-forward')}</button></div>`;
-}
-function homeQuick(){
- const camera=state.devices.find(d=>d.type==='camera'&&d.room==='yard'&&d.status==='installed');
- const media=state.devices.find(d=>d.id==='station'&&d.status==='installed');
- return `<div class="quick-devices">
- <button class="quick-device light-shortcut" data-action="master" ${disabled(masterBlocked())}><span class="quick-device-icon">${I('power')}</span><span><strong>Весь свет</strong><small>Выключить</small></span></button>
- ${camera?`<button class="quick-device camera-shortcut" data-camera="${camera.id}" aria-label="Двор: открыть прямой эфир"><span class="quick-device-icon">${I('camera')}</span><span><strong>Двор</strong><small>Камера</small></span></button>`:''}
- ${media?`<div class="quick-device media-shortcut">
- <button class="quick-device-icon" data-action="station-play" aria-label="${state.stationPlaying?'Пауза на станции':'Продолжить на станции'}" ${disabled(!canControl('station:playing')||hasPending())}>${I(state.stationPlaying?'pause':'play')}</button>
- <button class="media-details" data-action="station" aria-label="Станция · ${esc(stationRoom())}: открыть управление"><span class="media-title-line"><strong>Станция</strong>${state.stationPlaying?'<span class="eq-bars" aria-hidden="true"><i></i><i></i><i></i></span>':''}</span><small title="${esc(observed('station')?.attributes?.media_title||stationRoom())}">${esc(observed('station')?.attributes?.media_title||stationRoom())}</small></button>
- ${stationSkipButtons()}</div>`:''}
- </div>`;
 }
 function sceneStage(hero=''){
  return `<section class="model-stage spatial-stage${hero?' hero-stage':''}"><canvas id="canvas" aria-label="Интерактивная объёмная модель дома"></canvas>
@@ -761,6 +759,7 @@ function render(animate=true){
 }
 function updateRegion(selector,markup){
  if(selector==='#home-energy')return; // энергокарточка на Preact — содержимым управляет виджет
+ if(selector==='#home-quick'||selector==='#home-status')return; // рельса и факты на Preact — app.js монтирует узлы и шлёт deps по шинам
  const node=$(selector);if(!node||node.dataset.rendered===markup)return;
  // Не перекрашиваем тапабельные рельсы под пальцем: кнопка может «уехать» между pointerdown и click.
  if(Date.now()-lastPointerDown<400&&(selector==='#home-quick'||selector==='#home-status'||selector==='#home-room-card')){setTimeout(()=>{if($(selector)&&$(selector).dataset.rendered!==markup)updateRegion(selector,markup)},450);return}
@@ -785,7 +784,7 @@ function refresh(){
   const weatherEntity=Object.values(state.entityStates||{}).find(e=>e.entity_id?.startsWith('weather.')),weatherTemp=weatherEntity?.attributes?.temperature;
   modelAPI?.setModelWeather(weatherTemp<0&&weatherEntity?.state==='snowy'?'snow':weatherTemp<0&&weatherEntity?.state==='rainy'?'rain':null);
   if(state.view==='home'){
-   updateRegion('#home-status',YARD_SLOT+WEATHER_SLOT+homeStatus());paintYardChip();pollYardMotion();updateRegion('#home-quick',homeQuick());updateRegion('#home-light-overview',lightOverviewBadge());updateRegion('#hero-status',heroStatusChip());voiceSync();paintRoomCard();
+   updateFactsRegion();factsNotify();pollYardMotion();updateQuickRegion();quickBus.notify(quickArgs());updateRegion('#home-light-overview',lightOverviewBadge());updateRegion('#hero-status',heroStatusChip());voiceSync();paintRoomCard();
     updateWeatherRegion();
     // Погодный чип на Preact: notify только в live-режиме (в демо чипа нет — deps null).
     if(isLive())weatherBus.notify({entityStates:state.entityStates||{},now:Date.now()});
