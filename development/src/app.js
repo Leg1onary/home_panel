@@ -184,21 +184,26 @@ function dayProgress(){
  const p=Math.round(Math.min(1,Math.max(0,(now-a)/(b-a)))*100);
  return `<div class="day-progress" role="img" aria-label="Пройдено ${p} % светового дня от рассвета до заката"><span style="width:${p}%"></span></div>`;
 }
-// Чип двора: только реальное движение по проверенной привязке yard-motion.
+// Чип двора: только реальное движение по панельному детектору (ha/yard-motion).
+// Детектор панельный — сравнение кадров камеры на сервере, биндинг yard-motion не нужен.
 // Слот живёт внутри #home-status, чтобы частые перерисовки погоды/фактов
 // не сбрасывали загруженный кадр камеры.
 const YARD_SLOT='<span id="yard-slot" class="yard-slot"></span>';
-function yardObservation(){
- const b=state.bindings['yard-motion'];
- if(!isLive()||!b?.verified||!b.entityId)return null;
- return motionObservation(state.entityStates?.[b.entityId]);
+const YARD_POLL_MS=3000;
+let yardData=null,yardPoll={at:0,busy:false};
+async function pollYardMotion(){
+ if(!isLive()||yardPoll.busy)return;
+ const now=Date.now();
+ if(now-yardPoll.at<YARD_POLL_MS)return;
+ yardPoll.busy=true;yardPoll.at=now;
+ try{const data=await api('ha/yard-motion');if(data){yardData=data;paintYardChip()}}catch{/* детектор недоступен — чип просто не показываем */}
+ finally{yardPoll.busy=false}
 }
 function yardMarkup(){
- const m=yardObservation();
- if(!m)return '';
- if(!showYardCard({bindingVerified:true,motionState:m.kind,lastEventAt:m.at??NaN,now:Date.now(),mode:state.mode}))return '';
- const when=timeOf(m.at);
- return `<button class="home-fact yard-chip" data-camera="camera-yard" aria-label="Двор: движение в ${esc(when)}. Открыть камеру двора"><span class="yard-thumb" aria-hidden="true">${I('camera')}</span><strong>Движение · ${esc(when)}</strong></button>`;
+ if(!isLive()||!yardData||yardData.available===false)return '';
+ if(!showYardCard({motion:yardData.motion,lastMotionAt:yardData.lastMotionAt,now:Date.now(),mode:state.mode}))return '';
+ const when=timeOf(yardData.lastMotionAt);
+ return `<button class="home-fact yard-chip" data-camera="camera-yard" title="Панельное распознавание движения по кадру камеры" aria-label="Двор: движение в ${esc(when)}. Открыть камеру двора"><span class="yard-thumb" aria-hidden="true">${I('camera')}</span><strong>Движение · ${esc(when)}</strong></button>`;
 }
 function paintYardChip(){
  const slot=$('#yard-slot');if(!slot)return;
@@ -756,7 +761,7 @@ function refresh(){
   const weatherEntity=Object.values(state.entityStates||{}).find(e=>e.entity_id?.startsWith('weather.')),weatherTemp=weatherEntity?.attributes?.temperature;
   modelAPI?.setModelWeather(weatherTemp<0&&weatherEntity?.state==='snowy'?'snow':weatherTemp<0&&weatherEntity?.state==='rainy'?'rain':null);
   if(state.view==='home'){
-   updateRegion('#home-status',YARD_SLOT+weatherCard()+homeStatus());paintYardChip();updateRegion('#home-quick',homeQuick());updateRegion('#home-light-overview',lightOverviewBadge());updateRegion('#hero-status',heroStatusChip());voiceSync();paintRoomCard();
+   updateRegion('#home-status',YARD_SLOT+weatherCard()+homeStatus());paintYardChip();pollYardMotion();updateRegion('#home-quick',homeQuick());updateRegion('#home-light-overview',lightOverviewBadge());updateRegion('#hero-status',heroStatusChip());voiceSync();paintRoomCard();
     const digest=$('#home-digest');if(digest){updateRegion('#home-digest',digestCard());digest.hidden=!digest.querySelector('.digest-card')}
     const alarm=$('#home-alarm');if(alarm){updateRegion('#home-alarm',alarmMarkup());alarm.hidden=!alarm.querySelector('.alarm-card')}
     const energy=$('#home-energy');if(energy){updateRegion('#home-energy',isLive()?energyCard(findMeterEntities(state.entityStates||{}),Date.now()):'');energy.hidden=!energy.querySelector('.energy-card')}

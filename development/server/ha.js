@@ -25,6 +25,23 @@ export class HomeAssistant {
   if(!response.ok)throw new Error(`Home Assistant: запрос отклонён (${response.status}).`);
   try{return await response.json()}catch{throw new Error('Некорректный ответ Home Assistant.')}
  }
+  // Raw-ответ (кадр камеры): та же авторизация, но без JSON-парсинга.
+  // Возвращает {type,bytes}; не-изображение → null (детектор не паникует).
+  async requestRaw(path,{timeout=10000}={}){
+   if(!this.enabled)throw new Error('Home Assistant не настроен. На месте добавим HA_URL и HA_TOKEN в .env локального сервера.');
+   let response;
+   try{response=await fetch(this.url+path,{redirect:'error',headers:{Authorization:`Bearer ${this.token}`},signal:AbortSignal.timeout(timeout)})}
+   catch{throw new Error('Нет связи с Home Assistant. Проверь сеть и адрес локального сервера.')}
+   if(response.status===401||response.status===403)throw new Error('Home Assistant отклонил авторизацию. Проверь локальный токен.');
+   if(!response.ok)throw new Error(`Home Assistant: запрос отклонён (${response.status}).`);
+   const type=response.headers.get('content-type')?.split(';')[0];
+   if(!['image/jpeg','image/png','image/webp'].includes(type))return null;
+   const reader=response.body.getReader(),parts=[];let size=0;
+   try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>5*1024*1024)throw new Error('Кадр превышает 5 МБ.');parts.push(Buffer.from(value))}}
+   finally{await reader.cancel()}
+   return {type,bytes:Buffer.concat(parts)};
+  }
+
  sanitize(e){
   const keys=['friendly_name','device_class','state_class','unit_of_measurement','temperature_unit','brightness','rgb_color','supported_color_modes','current_position','battery_level','current_temperature','temperature','hvac_action','supported_features','volume_level','media_title','media_artist','alice_state','assumed_state','humidity','wind_speed','wind_bearing','pressure','carbon_intensity','fossil_fuel_percentage','fossil_percentage','code_format','changed_by'];
   return {entity_id:e.entity_id,state:e.state,last_changed:e.last_changed,last_updated:e.last_updated,last_reported:e.last_reported,

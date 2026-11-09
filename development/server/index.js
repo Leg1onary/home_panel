@@ -10,6 +10,8 @@ import {HomeAssistant} from './ha.js';
 import {CameraStreams} from './stream.js';
 import {CameraRTC} from './rtc.js';
 import {LiveFeed} from './live-stream.js';
+import {YardMotion} from './yard-motion.js';
+
 import {deviceTypes,samePhysicalDevice} from '../src/catalog.js';
 import {migrateHouseProfile,activateHouseProfile,bindingProblem} from '../src/house-profile.js';
 import {seedDeviceModel,buildDeviceModel} from '../src/device-model.js';
@@ -31,6 +33,12 @@ const streams=new CameraStreams(ha);
 const rtc=new CameraRTC(ha);
 setInterval(()=>streams.prune(),30000).unref();
 setInterval(()=>rtc.prune(),30000).unref();
+// Панельный детектор движения двора: без биндинга yard-motion и без облака.
+// Сущность камеры разрешается из проверенного биндинга camera-yard на каждый вызов;
+// нет проверенной привязки → детектор unavailable.
+const yardCameraEntity=p=>{const b=p?.bindings['camera-yard'];return p?.mode==='live'&&b?.verified&&/^camera\.[a-z0-9_]+$/.test(b.entityId||'')?b.entityId:null};
+const yardMotion=new YardMotion({ha});
+
 const proofs=new Map(),pendingScopes=new Map();
 const live=new LiveFeed({ha}),liveIds=new Map();
 let forecastCache=null,forecastKey='',shoppingCache=null;
@@ -179,6 +187,8 @@ const server=http.createServer(async(req,res)=>{
     if(req.method==='DELETE'){db.prepare('UPDATE profiles SET photo=NULL WHERE id=?').run(id);return json(res,200,{saved:true})}
    }
    if(route==='ha/states'&&req.method==='GET')return json(res,200,{states:await ha.states(),receivedAt:Date.now()});
+   // Панельный детектор двора: кадр камеры сравнивается на сервере (jpeg-js), троттлинг внутри check().
+   if(route==='ha/yard-motion'&&req.method==='GET')return json(res,200,{...(await yardMotion.check(yardCameraEntity(p.preferences))),checkedAt:Date.now()});
    if(route==='ha/weather-forecast'&&req.method==='GET'){
     const asked=url.searchParams.get('entity')||'',entityId=/^weather\.[a-z0-9_]+$/.test(asked)?asked:(await ha.states()).find(e=>e.entity_id.startsWith('weather.'))?.entity_id||'';
     if(!entityId)return json(res,400,{error:'Сущность погоды не найдена в Home Assistant.'});
