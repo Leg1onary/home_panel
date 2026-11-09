@@ -319,6 +319,7 @@ var defaultPreferences = () => ({
   kiosk: false,
   mode: "demo",
   ambientMode: true,
+  autoTheme: false,
   devices: defaultDevices(),
   bindings: Object.fromEntries(defaultDevices().map((d) => [d.id, { entityId: "", verified: false }])),
   userScenarios: []
@@ -371,6 +372,7 @@ function validatePreferences(input, { importing = false } = {}) {
   if (!["demo", "live"].includes(raw.mode)) throw new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A \u0434\u0430\u043D\u043D\u044B\u0445.");
   Object.assign(p, { theme: raw.theme, nightMode: raw.nightMode, idleSeconds: raw.idleSeconds, favorites: [...raw.favorites], kiosk: raw.kiosk === true, mode: importing ? "demo" : raw.mode, ambientMode: raw.ambientMode !== false, devices: validateDevices(raw.devices) });
   p.deviceModel = validateDeviceModel(raw.deviceModel, p.devices, areas);
+  p.autoTheme = raw.autoTheme === true;
   const used = /* @__PURE__ */ new Set();
   p.bindings = {};
   for (const definition of bindingDefinitions(p.devices)) {

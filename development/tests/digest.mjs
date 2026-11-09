@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {digestItems} from '../src/digest.js';
+import {autoTheme,luxValue} from '../src/auto-theme.js';
 const now=Date.now(),old=new Date(now-7*3600000).toISOString(),fresh=new Date(now-3600000).toISOString();
 const base={mode:'live',liveOnline:true,now};
 const ent=(state,attrs={},changed=old,id)=>({entity_id:id,state,...(changed?{last_changed:changed}:{}),attributes:attrs});
@@ -74,4 +75,24 @@ s={...base,devices:[{id:'leak:bath',type:'leak',room:'bath',name:'L',status:'ins
  bindings:{'leak:bath':{entityId:'binary_sensor.leak',verified:true},door:{entityId:'binary_sensor.door',verified:true},'battery:x':{entityId:'sensor.bx',verified:true}},
  entityStates:{'binary_sensor.leak':ent('on'),'binary_sensor.door':ent('unavailable'),'sensor.bx':ent('15',{unit_of_measurement:'%'}),'weather.home':ent('snowy',{temperature:-9},old,'weather.home')}};
 assert.deepEqual(digestItems(s).map(i=>i.level),['danger','warn','warn','info']);
-console.log('PASS: дайджест показывает только реальные сигналы — батарейки/агрегат, протечка danger, offline, недоступные датчики только с проверенным биндингом, забытый свет, мороз, сортировка.');
+// Волна 3 «Умное поведение»: кликабельные действия дайджеста.
+// Батарейка/агрегат/протечка/нет связи → вкладка датчиков; забытый свет → комната; обновление HA → системы.
+let a=digestItems({...base,
+ devices:[{id:'battery:x',type:'battery',room:'bath',name:'B',status:'installed'}],
+ bindings:{'battery:x':{entityId:'sensor.bx',verified:true}},
+ entityStates:{'sensor.bx':ent('15',{unit_of_measurement:'%'})}});
+assert.deepEqual(a[0].action,{label:'Открыть датчики',open:'sensors'});
+a=digestItems({...base,
+ devices:[{id:'leak:bath',type:'leak',room:'bath',name:'L',status:'installed'},{id:'door',type:'door',room:'hall',name:'D',status:'installed'},{id:'corridor-main',type:'light',room:'living',name:'Свет',status:'installed'}],
+ bindings:{'leak:bath':{entityId:'binary_sensor.leak',verified:true},door:{entityId:'binary_sensor.door',verified:true},'corridor-main':{entityId:'light.corridor',verified:true}},
+ entityStates:{'binary_sensor.leak':ent('on'),'binary_sensor.door':ent('unavailable'),'light.corridor':ent('on',{},old),
+  'update.home_assistant_core_update':ent('on',{},old,'update.home_assistant_core_update')}});
+assert.deepEqual(a.map(i=>i.action?.open||i.action?.room||null),['sensors','sensors','systems','living']);
+// Без действия пункты остаются текстом (мороз, тревога, потеря связи с HA).
+a=digestItems({...base,devices:[],bindings:{},entityStates:{'weather.home':ent('snowy',{temperature:-8},old,'weather.home')},alarmState:'triggered',liveOnline:false});
+assert.ok(a.every(i=>i.action===undefined),JSON.stringify(a));
+// Гистерезис авто-темы: вверх от 40, вниз только ниже 30, зона 30–39 сохраняет предыдущую.
+assert.equal(autoTheme(39,null),null);assert.equal(autoTheme(40,null),'light');assert.equal(autoTheme(29,null),'dark');
+assert.equal(autoTheme(39,'dark'),'dark');assert.equal(autoTheme(39,'light'),'light');assert.equal(autoTheme(29,'light'),'dark');
+assert.equal(autoTheme(40,'dark'),'light');assert.equal(autoTheme(NaN,'dark'),null);assert.equal(luxValue({state:'unavailable'}),null);
+console.log('PASS: дайджест показывает только реальные сигналы — батарейки/агрегат, протечка danger, offline, недоступные датчики только с проверенным биндингом, забытый свет, мороз, сортировка; действия (датчики/комната/системы) и гистерезис авто-темы.');

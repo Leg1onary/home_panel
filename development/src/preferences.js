@@ -5,7 +5,7 @@ export {bindingDefinitions} from './catalog.js';
 
 export const defaultPreferences=()=>({
  version:3,theme:'dark',favorites:['living','hall','terrace','bedroom','office','bath'],
- nightMode:'auto',idleSeconds:90,kiosk:false,mode:'demo',ambientMode:true,devices:defaultDevices(),
+ nightMode:'auto',idleSeconds:90,kiosk:false,mode:'demo',ambientMode:true,autoTheme:false,devices:defaultDevices(),
  bindings:Object.fromEntries(defaultDevices().map(d=>[d.id,{entityId:'',verified:false}])),
  userScenarios:[]
 });
@@ -53,6 +53,8 @@ export function validatePreferences(input,{importing=false}={}){
  if(!['demo','live'].includes(raw.mode))throw new Error('Неизвестный источник данных.');
  Object.assign(p,{theme:raw.theme,nightMode:raw.nightMode,idleSeconds:raw.idleSeconds,favorites:[...raw.favorites],kiosk:raw.kiosk===true,mode:importing?'demo':raw.mode,ambientMode:raw.ambientMode!==false,devices:validateDevices(raw.devices)});
  p.deviceModel=validateDeviceModel(raw.deviceModel,p.devices,areas);
+ p.autoTheme=raw.autoTheme===true;
+
  const used=new Set();p.bindings={};
  for(const definition of bindingDefinitions(p.devices)){
   const b=raw.bindings?.[definition.id]||{},entityId=typeof b.entityId==='string'?b.entityId.trim():'';

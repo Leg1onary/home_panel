@@ -1,4 +1,4 @@
-﻿import {deviceId} from './compat.js';
+import {deviceId} from './compat.js';
 import {
  createIcons,House,Box,Lightbulb,Power,ScanEye,SlidersHorizontal,Sun,Moon,X,ArrowRight,ArrowUpRight,
  AudioLines,Camera,ChevronRight,CircleCheck,DoorClosed,Droplets,Heater,Leaf,Radio,RotateCcw,Thermometer,Shield,
@@ -26,6 +26,7 @@ import {numericReading,stateTimes} from './readings.js';
 import {duoUI,assistantView} from './assistant-ui.js';
 import {scenarioChipsRow,handleScenarioClick,bindScenarioPainter,bindScenarioHost} from './scenarios-ui.js';
 import {shouldAmbient,AMBIENT_AFTER_IDLE} from './ambient.js';
+import {luxValue,autoTheme,AUTO_THEME_UP,AUTO_THEME_DOWN} from './auto-theme.js';
 
 import {esc,disabled,timeOf,clock,date,scheduleMinute,PANEL_TIMEZONE} from './dom.js';
 const $=s=>document.querySelector(s);
@@ -63,7 +64,36 @@ function storageStatus(){
 function persist(){saveStorage(storageStatus);storageStatus()}
 function applyAppearance(){
  document.documentElement.dataset.theme=state.theme;document.documentElement.dataset.kiosk=String(state.kiosk);
- document.documentElement.dataset.mode=state.mode;$('#theme').innerHTML=I(state.theme==='dark'?'sun':'moon');applyNight();icons();
+ document.documentElement.dataset.mode=state.mode;$('#theme').innerHTML=I(state.theme==='dark'?'sun':'moon');applyNight();icons();updateThemeButton();
+}
+// Авто-тема по освещённости террасы: чистое решение в auto-theme.js, здесь —
+// только чтение привязки и применение. Ручной переключатель блокируется честно.
+let autoThemeZone=null;
+function terraceLux(){
+ if(!isLive())return null;
+ const r=numericReading(observed('terrace-lux'),{online:state.liveOnline,unit:'lx'});
+ return r.available?r.value:null;
+}
+function applyAutoTheme(){
+ if(!state.autoTheme){autoThemeZone=null;return}
+ const lux=terraceLux();
+ if(lux===null){autoThemeZone=null;return}
+ const next=autoTheme(lux,autoThemeZone);
+ if(!next)return;
+ autoThemeZone=next;
+ if(next===state.theme)return;
+ state.theme=next;
+ document.documentElement.dataset.theme=next;
+ $('#theme').innerHTML=I(next==='dark'?'sun':'moon');
+ updateThemeButton();icons();
+ if(state.view==='statistics')paintStatistics();
+}
+function updateThemeButton(){
+ const b=$('#theme');if(!b)return;
+ const lux=terraceLux(),locked=state.autoTheme&&lux!==null;
+ b.disabled=locked;
+ const label=locked?`Авто по освещённости · ${Math.round(lux)} лк`:'Переключить тему';
+ b.setAttribute('aria-label',label);b.title=label;
 }
 
 function toast(message){
@@ -152,7 +182,7 @@ function dayProgress(){
 }
 function home(){
  const hero=`<div class="hero-overlay">
- <div class="hero-top"><div class="hero-clock" aria-label="Местное время дома"><div id="hero-clock">${clock()}</div><span id="hero-date">${date()}</span>${dayProgress()}</div>
+ <div class="hero-top"><div class="hero-clock" aria-label="Местное время дома"><div id="hero-clock">${clock()}</div><span id="hero-date">${date()}</span><span id="hero-greeting" class="hero-greeting" hidden></span>${dayProgress()}</div>
  <div class="hero-top-right"><span id="hero-status">${heroStatusChip()}</span><button id="reset-model" title="Вернуть исходный ракурс" aria-label="Сбросить ракурс">${I('rotate-ccw')}</button></div></div>
  <div class="hero-facts" id="home-status">${weatherCard()}${homeStatus()}</div>
  <div id="home-room-card" class="home-room-card" hidden>${miniRoomCard()}</div></div>`;
@@ -304,9 +334,34 @@ function houseAlerts(){
   .map(d=>`<button class="house-alert ${d.alarm?'is-alarm':'is-unavailable'}" data-action="leak" data-leak-id="${esc(d.id)}" ${d.alarm?'role="alert"':''}>${I(d.alarm?'triangle-alert':'wifi-off')}<span><strong>${esc(d.alarm?d.name+'!':'Нет данных · '+d.name)}</strong><small>${d.alarm?'Проверь воду и источник протечки':'Датчик недоступен или его состояние неизвестно'}</small></span>${I('chevron-right')}</button>`).join('');
 }
 function digestCard(){
- const items=digestItems({mode:state.mode,liveOnline:state.liveOnline,devices:state.devices,bindings:state.bindings,entityStates:state.entityStates||{},now:Date.now(),alarmState:alarmEntity()?.state});
+ const items=digestItems(digestArgs());
  if(!items.length)return '';
- return `<div class="digest-card ${items[0].level==='danger'?'is-danger':''}"><h3>${I('info')}Дайджест дома</h3><ul>${items.map(it=>`<li class="digest-item digest-${it.level}">${I(it.icon)}<span>${esc(it.text)}</span></li>`).join('')}</ul></div>`;
+ return `<div class="digest-card ${items[0].level==='danger'?'is-danger':''}"><h3>${I('info')}Дайджест дома</h3><ul>${items.map(it=>it.action
+  ?`<li class="digest-item digest-${it.level}"><button class="digest-action" ${it.action.open?`data-digest-open="${it.action.open}"`:`data-room="${esc(it.action.room)}"`} aria-label="${esc(it.text)} · ${esc(it.action.label)}">${I(it.icon)}<span>${esc(it.text)}</span><small>${esc(it.action.label)}</small></button></li>`
+  :`<li class="digest-item digest-${it.level}">${I(it.icon)}<span>${esc(it.text)}</span></li>`).join('')}</ul></div>`;
+}
+// Волна 3 «Умное поведение»: адаптивные акценты главной. Один источник аргументов
+// для дайджеста — карточка в рейле и ночная сводка в hero показывают одно и то же.
+function digestArgs(){
+ return {mode:state.mode,liveOnline:state.liveOnline,devices:state.devices,bindings:state.bindings,entityStates:state.entityStates||{},now:Date.now(),alarmState:alarmEntity()?.state};
+}
+const digestSummary=()=>{const items=digestItems(digestArgs());return items.length?items.slice(0,2).map(i=>i.text).join(' · '):''};
+const dayPhase=hour=>hour>=6&&hour<11?'morning':hour>=11&&hour<17?'day':hour>=17&&hour<22?'evening':'night';
+function updateHeroTime(){
+ if(state.view!=='home')return;
+ const hour=+new Intl.DateTimeFormat('en-GB',{hour:'numeric',hourCycle:'h23',timeZone:PANEL_TIMEZONE}).format(Date.now());
+ const greeting=$('#hero-greeting'),dateNode=$('#hero-date');
+ if(!greeting||!dateNode)return;
+ const phase=dayPhase(hour);
+ if(phase==='night'){
+  const summary=digestSummary();
+  if(summary){dateNode.hidden=true;greeting.textContent=summary;greeting.hidden=false}
+  else{greeting.hidden=true;greeting.textContent='';dateNode.hidden=false}
+ }else{
+  dateNode.hidden=false;
+  const text=phase==='morning'?'Доброе утро':phase==='evening'?'Добрый вечер':'';
+  greeting.textContent=text;greeting.hidden=!text;
+ }
 }
 // Список покупок: данные только с сервера (todo/get_items), без опроса каждые 5 секунд.
 let shoppingState={loaded:false,items:[],busy:false,error:'',note:'',truncated:false};
@@ -642,6 +697,7 @@ function updateDetail(){
 }
 function refresh(){
  const focus=document.activeElement?.getAttribute('aria-label');
+  applyAutoTheme();
  if(['home','model','room'].includes(state.view)){
   updateDetail();modelAPI?.updateModel(rooms,state);
   const weatherEntity=Object.values(state.entityStates||{}).find(e=>e.entity_id?.startsWith('weather.')),weatherTemp=weatherEntity?.attributes?.temperature;
@@ -650,6 +706,7 @@ function refresh(){
    updateRegion('#home-status',weatherCard()+homeStatus());updateRegion('#home-quick',homeQuick());updateRegion('#home-green',greenChip());updateRegion('#home-light-overview',lightOverviewBadge());updateRegion('#hero-status',heroStatusChip());paintRoomCard();
     const digest=$('#home-digest');if(digest){updateRegion('#home-digest',digestCard());digest.hidden=!digest.querySelector('.digest-card')}
     const alarm=$('#home-alarm');if(alarm){updateRegion('#home-alarm',alarmMarkup());alarm.hidden=!alarm.querySelector('.alarm-card')}
+    updateHeroTime();
   }else if(state.view==='room'&&$('#room-scenarios'))updateRegion('#room-scenarios',scenarioChipsRow());
  }else if(state.view!=='statistics')render(false);
  if(!$('#overlay').hidden){
@@ -925,6 +982,8 @@ function technical(){
   ${!state.preview?houseProfileReview():''}
   <div class="connection-status">${I(state.liveOnline?'circle-check':'radio')}<div><h3>${state.liveOnline?'Состояния Home Assistant доступны':state.haConfigured?'Адрес и токен заданы на сервере':'Дом пока не подключён'}</h3><p>${state.preview?'Это приватное демопревью. Доступ к дому в нём отключён.':esc(state.liveError||'Синхронизация раз в 5 секунд')}</p></div></div>
   <label class="setting-field">Источник данных<select id="mode-setting" ${disabled(hasPending())}><option value="demo" ${!isLive()?'selected':''}>Демонстрационный макет</option><option value="live" ${isLive()?'selected':''}>Home Assistant · реальные состояния</option></select></label>
+  <label class="setting-field setting-check"><input id="auto-theme-setting" type="checkbox" ${state.autoTheme?'checked':''} ${disabled(!state.autoTheme&&terraceLux()===null)}/>Тема по освещённости</label>
+  <p class="setting-help">${terraceLux()!==null?`Освещённость террасы сейчас ${Math.round(terraceLux())} лк: от ${AUTO_THEME_UP} лк — светлая тема, ниже ${AUTO_THEME_DOWN} лк — тёмная. Пока авто-тема работает, ручной переключатель темы заблокирован.`:'Нужна проверенная привязка «Освещённость террасы» и число лк из Home Assistant — без данных опция недоступна.'}</p>
   <div class="inline-note">В рабочем режиме нет подстановки демоданных: до получения состояния линии и датчики недоступны.</div>
   ${state.addon?'<ol class="setup-list"><li>Home Panel работает на системнике Home Assistant OS.</li><li>Доступ к HA настроен автоматически через Supervisor. .env и личный токен не нужны.</li><li>Во вкладке «Привязки» загрузи сущности и проверь соответствие каждой линии.</li></ol><p class="setting-help">Настройки сохраняются в /data/homepanel. Панель доступна в доверенной домашней сети; порт 8090 не выставляй в интернет.</p>':'<ol class="setup-list"><li>Локальный запуск через <code>Запустить.cmd</code>.</li><li>На месте создай <code>.env</code> по примеру. Адрес и токен вводятся только в локальный файл, не в браузер и не в чат.</li><li>Перезапусти сервер, загрузи список сущностей и проверь каждую привязку.</li></ol><p class="setting-help">Токен не включается в сборку и резервную копию. Локальный сервер слушает только этот компьютер; сетевой доступ для отдельного планшета настроим позже безопасным способом.</p>'}`;
  if(techTab==='catalog')content=catalogSettings();
@@ -1095,6 +1154,7 @@ function applyNight(){
 function updateClocks(){
  for(const id of ['clock','idle-clock','hero-clock'])if($('#'+id))$('#'+id).textContent=clock();
  for(const id of ['date','idle-date','hero-date'])if($('#'+id))$('#'+id).textContent=date();
+ updateHeroTime();
  $('#idle-climate').textContent=noConnection()||sensors.living.quality==='unavailable'||sensors.well.quality==='unavailable'?'Датчики недоступны':sensorStatus('living')==='Данные устарели'||sensorStatus('well')==='Данные устарели'?'Показания устарели':`Гостиная ${reading(sensors.living.value)}°  ·  Скважина ${reading(sensors.well.value)}°  ·  ${isLive()?'Home Assistant':'демоданные'}`;
 }
 function armIdle(){
@@ -1142,6 +1202,8 @@ document.addEventListener('click',async e=>{
  if(b.dataset.historyHours){historyState.hours=Number(b.dataset.historyHours);historyState.data=null;loadStatistics(true);return}
  if(b.dataset.historyMetric){historyState.metric=b.dataset.historyMetric;paintStatistics();return}
  if(b.dataset.historyZone){historyState.room=b.dataset.historyZone;return navigate('statistics')}
+ if(b.dataset.digestOpen){activeRoomCard=null;paintRoomCard();return navigate(b.dataset.digestOpen==='sensors'?'watch':'engineering')}
+ if(b.classList.contains('digest-action')&&b.dataset.room){activeRoomCard=null;paintRoomCard();return openRoom(b.dataset.room)}
  if(b.dataset.room)return openRoom(b.dataset.room);
  if(b.dataset.sensor)return simpleSheet(`<div data-climate-sheet="${esc(b.dataset.sensor)}">${sensorSheet(b.dataset.sensor)}</div>`);
  if(b.dataset.duoTab){
@@ -1328,6 +1390,7 @@ document.addEventListener('change',async e=>{
  if(id==='station-volume'){stationAdjusting=false;return command('station:volume',+e.target.value)}
  if(id==='idle-setting'){state.idleSeconds=+e.target.value;armIdle();persist()}
  if(id==='ambient-setting'){state.ambientMode=e.target.checked;if(state.idle&&!state.ambientMode)exitAmbient();persist()}
+ if(id==='auto-theme-setting'){state.autoTheme=e.target.checked;autoThemeZone=null;persist();applyAutoTheme();updateThemeButton();updateTechnical();return}
  if(id==='night-setting'){state.nightMode=e.target.value;applyNight();persist()}
  if(id==='kiosk-setting'){state.kiosk=e.target.value==='on';applyAppearance();persist()}
  if(id==='network-setting'&&!isLive()){state.demoOffline=e.target.value==='offline';refresh();updateTechnical()}
@@ -1404,6 +1467,7 @@ window.addEventListener('resize',()=>{clearTimeout(historyResizeTimer);if(state.
 $('#master').onclick=master;$('#info').onclick=()=>openSettings();
 $('#standby').onclick=enterIdle;$('#idle-screen').onclick=e=>{e.preventDefault();e.stopPropagation();wake()};
 $('#theme').onclick=()=>{
+ if(state.autoTheme&&terraceLux()!==null){toast('Температура темы задаётся освещённостью террасы.');return}
  state.theme=state.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=state.theme;
  $('#theme').innerHTML=I(state.theme==='dark'?'sun':'moon');icons();persist();
  if(state.view==='statistics')paintStatistics();

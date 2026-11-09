@@ -1358,7 +1358,7 @@ input[type=range]:disabled::-moz-range-thumb{background:var(--faint);border-colo
 @media(max-width:900px){.home-rail{position:static;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:flex-end;max-width:none;margin-top:var(--space-3)}.home-rail .digest-card,.home-rail .profile-invite{width:100%}.home-stage-wrap .spatial-stage{height:min(70vh,560px)}}
 
 
-/* --- Aurora 2k27 � wave 2 ������� (ambient-�����) --- */
+/* --- Aurora 2k27 � wave 2 ������� (ambient-�����) --- */
 .setting-check{flex-direction:row;align-items:center;gap:var(--space-2)}
 .setting-check input{accent-color:var(--accent,currentColor)}
 .idle-screen{transition:background .6s ease,backdrop-filter .6s ease}
@@ -1370,3 +1370,19 @@ body.is-ambient .idle-date{opacity:.55;letter-spacing:.12em}
 body.is-ambient .idle-climate{opacity:.4}
 body.is-ambient .aurora-blob{opacity:.25;filter:blur(90px) saturate(.6)}
 @media(prefers-reduced-motion:reduce){.idle-screen,.idle-screen>*,.aurora-blob{transition:none}}
+
+
+
+/* --- Aurora 2k27 · wave 3 «Умное поведение» --- */
+/* Кликабельный пункт дайджеста: вся строка — кнопка с подписью действия. */
+.digest-item .digest-action{display:flex;align-items:flex-start;gap:var(--space-2);width:100%;padding:var(--space-1) 0;margin:0;background:none;border:0;color:inherit;font:inherit;font-size:var(--text-xs);line-height:1.4;text-align:left;cursor:pointer;border-radius:6px}
+.digest-item .digest-action:hover,.digest-item .digest-action:focus-visible{background:var(--surface-hover,rgba(255,255,255,.06))}
+.digest-item .digest-action:focus-visible{outline:2px solid var(--accent,currentColor);outline-offset:2px}
+.digest-item .digest-action:disabled{opacity:.5;cursor:default}
+.digest-item .digest-action small{margin-left:auto;flex-shrink:0;color:var(--muted);font-size:var(--text-2xs,var(--text-xs))}
+/* Адаптивные акценты hero: приветствие или ночная сводка под датой. */
+.hero-greeting{display:block;font-size:var(--text-sm,14px);color:var(--muted);letter-spacing:.02em}
+.hero-greeting[hidden]{display:none}
+/* Авто-тема: заблокированный ручной переключатель честно выглядит заблокированным. */
+.icon-button:disabled{opacity:.4;cursor:default}
+#theme[title^="Авто по освещённости"]{position:relative}
