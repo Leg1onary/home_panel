@@ -4404,7 +4404,7 @@ var server = http.createServer(async (req, res) => {
         if (!ha.enabled) throw new Error("Home Assistant \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D. \u0420\u0430\u0441\u0445\u043E\u0434 \u044D\u043B\u0435\u043A\u0442\u0440\u043E\u044D\u043D\u0435\u0440\u0433\u0438\u0438 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D.");
         const all = await ha.states();
         const list = all.filter((e) => typeof e?.entity_id === "string" && e.entity_id.startsWith("sensor.") && /schetchik|meter/.test(e.entity_id) && !/signal/.test(e.entity_id));
-        const by = (tag) => list.find((e) => e.entity_id.includes("_" + tag)) || null;
+        const by = (tag) => list.find((e) => e.entity_id.endsWith("_" + tag)) || null;
         const reading = by("reading"), consumption = by("consumption"), meterNumber = by("meter_number"), readingsDate = by("readings_date");
         const readingValue = meterValue(reading);
         const history = readingValue === null ? [] : await ha.energyHistory(reading.entity_id, 168);

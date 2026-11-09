@@ -206,7 +206,7 @@ const server=http.createServer(async(req,res)=>{
      const all=await ha.states();
      // Счётчик ТНС: sensor.* с schetchik/meter, без signal; суффиксы как в src/energy.js.
      const list=all.filter(e=>typeof e?.entity_id==='string'&&e.entity_id.startsWith('sensor.')&&/schetchik|meter/.test(e.entity_id)&&!/signal/.test(e.entity_id));
-     const by=tag=>list.find(e=>e.entity_id.includes('_'+tag))||null;
+     const by=tag=>list.find(e=>e.entity_id.endsWith('_'+tag))||null;
      const reading=by('reading'),consumption=by('consumption'),meterNumber=by('meter_number'),readingsDate=by('readings_date');
      const readingValue=meterValue(reading);
      // Окно 168 ч один раз: сутки — это первые 24 ч того же окна.

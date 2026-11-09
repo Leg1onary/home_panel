@@ -4,7 +4,7 @@ import {esc,timeOf} from './dom.js';
 const BAD=['unavailable','unknown',''];
 export const findMeterEntities=(states={})=>{
  const list=Object.values(states).filter(e=>typeof e?.entity_id==='string'&&e.entity_id.startsWith('sensor.')&&/schetchik|meter/.test(e.entity_id)&&!/signal/.test(e.entity_id));
- const by=tag=>list.find(e=>e.entity_id.includes('_'+tag))||null;
+ const by=tag=>list.find(e=>e.entity_id.endsWith('_'+tag))||null;
  return {reading:by('reading'),consumption:by('consumption')};
 };
 export const meterValue=e=>e&&!BAD.includes(e.state)&&Number.isFinite(Number(e.state))?Number(e.state):null;
