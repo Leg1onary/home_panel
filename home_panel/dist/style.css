@@ -1130,7 +1130,7 @@ html[data-view=home] .header-clock>span{letter-spacing:.04em}
 /* ─── Wave 3 · micro-interactions ─── */
 /* Buttons: unified press feedback, 140ms */
 button{transition:transform 140ms ease,background .2s ease,box-shadow .2s ease,border-color .2s ease}
-button:not(:disabled):active{transform:scale(.97)}
+button:not(:disabled):active{filter:brightness(1.12)}
 
 /* Hover-lift for cards (touch devices: hover not involved, harmless) */
 .quick-device,.favorite-room,.room-card{transition:background .25s,transform 180ms ease,box-shadow 180ms ease}
