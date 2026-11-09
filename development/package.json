@@ -1,6 +1,6 @@
 {
   "name": "home-panel",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "scripts": {
     "build": "node build.mjs",
     "test": "npm run build && node tests/run.mjs"

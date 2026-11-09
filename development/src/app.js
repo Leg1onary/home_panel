@@ -24,7 +24,7 @@ import {motionObservation,elapsedLabel} from './motion.js';
 import {historyState,statisticsView,inspectHistoryChart} from './history-ui.js';
 import {numericReading,stateTimes} from './readings.js';
 import {duoUI,assistantView} from './assistant-ui.js';
-import {scenariosRow,handleScenarioClick,bindScenarioPainter,bindScenarioHost} from './scenarios-ui.js';
+import {scenarioChipsRow,handleScenarioClick,bindScenarioPainter,bindScenarioHost} from './scenarios-ui.js';
 
 import {esc,disabled,timeOf,clock,date,scheduleMinute,PANEL_TIMEZONE} from './dom.js';
 const $=s=>document.querySelector(s);
@@ -160,9 +160,7 @@ function home(){
  <aside class="home-context">
  <div class="context-heading quick-heading"><h2>Под рукой</h2><span id="home-light-overview">${lightOverviewBadge()}</span></div>
  <div id="home-quick">${homeQuick()}</div>
- <div id="home-scenarios">${scenariosRow()}</div>
  <div id="home-green">${greenChip()}</div>
- <div id="home-shopping" hidden></div>
  <div id="home-alarm" hidden></div>
  <div class="context-heading rooms-heading"><h2>Комнаты</h2><button class="text-button" data-action="favorites" aria-label="Настроить избранные комнаты">${I('sliders-horizontal')}</button></div>
  <div class="favorite-rooms" id="home-favorites">${favoriteRooms()}</div>
@@ -298,9 +296,10 @@ function shoppingMarkup(){
  ${shoppingState.note?`<p class="description">${esc(shoppingState.note)}</p>`:''}</div>`;
 }
 function paintShopping(){
- const node=$('#home-shopping');if(!node)return;
- const markup=shoppingState.loaded?shoppingMarkup():'';
- if(markup){updateRegion('#home-shopping',markup);node.hidden=false}else node.hidden=true;
+ // Регион покупок теперь живёт в шите станции (#sheet-shopping); updateRegion
+ // с dataset.rendered-guard не перерисовывает одинаковый DOM, фокус input сохраняется.
+ const m=shoppingState.loaded?shoppingMarkup():'<p class="description">Загружаем список покупок…</p>';
+ if($('#sheet-shopping'))updateRegion('#sheet-shopping',m);
 }
 async function loadShopping(){
  if(!isLive()){shoppingState={...shoppingState,loaded:true,error:'Список покупок работает в рабочем режиме с подключённым Home Assistant.',note:''};paintShopping();return}
@@ -431,11 +430,14 @@ function model(){
  <button class="secondary" data-action="allrooms">Все комнаты ${I('arrow-right')}</button></div><div class="model-layout">
  ${sceneStage()}<aside class="side-stack"><div id="selected-room">${selectedRoom()}</div><button class="secondary" data-room="${state.selected}">Открыть комнату ${I('arrow-up-right')}</button><p class="model-note">Мебель и размеры показаны схематично.</p></aside></div></div>`;
 }
+// Сценарии на экране комнаты — только если в ней есть установленная линия света
+// с подтверждённой привязкой (в live — canControl, в демо — достаточно установки).
+const roomHasLight=r=>r.channels.some(c=>!c.planned&&(!isLive()||canControl(c.id)));
 function roomPage(){
  const r=getRoom(state.selected),external=['attic','well','yard'].includes(r.id);
  return `<div class="view room-view"><div class="room-heading"><div><button class="room-back text-button" data-view="home">${I('house')}Мой дом ${I('chevron-right')}</button><h1>${esc(r.name)}</h1></div><div class="room-climate" id="room-climate">${roomClimate(r.id)}</div></div>
  <div class="room-layout"><div class="room-visual-column">${external?`<section class="zone-stage">${I(r.icon)}<h2>${esc(r.short)}</h2><p>Показания и доступность устройств</p><div class="room-climate">${roomClimate(r.id)}</div></section>`:sceneStage()}
- <div class="room-equipment" id="room-equipment">${roomEquipment(r)}</div></div><aside class="room-control-column"><div id="selected-room">${selectedRoom()}</div><details class="room-other-zones"><summary>Другие комнаты</summary>${rooms.filter(x=>x.id!==r.id&&x.id!=='yard').map(x=>`<button data-room="${x.id}">${I(x.icon)}${esc(x.short)}${I('chevron-right')}</button>`).join('')}</details></aside></div></div>`;
+ <div class="room-equipment" id="room-equipment">${roomEquipment(r)}</div></div><aside class="room-control-column">${roomHasLight(r)?`<div id="room-scenarios">${scenarioChipsRow()}</div>`:''}<div id="selected-room">${selectedRoom()}</div><details class="room-other-zones"><summary>Другие комнаты</summary>${rooms.filter(x=>x.id!==r.id&&x.id!=='yard').map(x=>`<button data-room="${x.id}">${I(x.icon)}${esc(x.short)}${I('chevron-right')}</button>`).join('')}</details></aside></div></div>`;
 }
 function roomEquipment(r){
  const cards=logicalSensorCards(r.id);
@@ -579,7 +581,7 @@ function render(animate=true){
   b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');
  });
  $('#master').disabled=masterBlocked();updateHeader();storageStatus();icons();
- if(state.view==='home'&&!shoppingState.loaded)loadShopping();
+ if($('#sheet-content').dataset.station==='hub'&&!shoppingState.loaded&&!shoppingState.busy)loadShopping();
  if(state.view==='statistics')loadStatistics();
  if($('#canvas')){
   modelPromise ||= import('./model.js');
@@ -621,17 +623,18 @@ function refresh(){
   const weatherEntity=Object.values(state.entityStates||{}).find(e=>e.entity_id?.startsWith('weather.')),weatherTemp=weatherEntity?.attributes?.temperature;
   modelAPI?.setModelWeather(weatherTemp<0&&weatherEntity?.state==='snowy'?'snow':weatherTemp<0&&weatherEntity?.state==='rainy'?'rain':null);
   if(state.view==='home'){
-   updateRegion('#home-favorites',favoriteRooms());updateRegion('#home-status',weatherCard()+homeStatus());updateRegion('#home-quick',homeQuick());updateRegion('#home-scenarios',scenariosRow());updateRegion('#home-green',greenChip());updateRegion('#home-light-overview',lightOverviewBadge());updateRegion('#hero-status',heroStatusChip());
+   updateRegion('#home-favorites',favoriteRooms());updateRegion('#home-status',weatherCard()+homeStatus());updateRegion('#home-quick',homeQuick());updateRegion('#home-green',greenChip());updateRegion('#home-light-overview',lightOverviewBadge());updateRegion('#hero-status',heroStatusChip());
     const digest=$('#home-digest');if(digest){updateRegion('#home-digest',digestCard());digest.hidden=!digest.querySelector('.digest-card')}
-    const shop=$('#home-shopping');if(shop&&shoppingState.loaded)paintShopping();
     const alarm=$('#home-alarm');if(alarm){updateRegion('#home-alarm',alarmMarkup());alarm.hidden=!alarm.querySelector('.alarm-card')}
-  }
+  }else if(state.view==='room'&&$('#room-scenarios'))updateRegion('#room-scenarios',scenarioChipsRow());
  }else if(state.view!=='statistics')render(false);
  if(!$('#overlay').hidden){
   if(state.techOpen&&techTab==='diagnostics')$('#sheet-content').innerHTML=technical();
   else if(settingsOpen){/* HA polling must not replace an open form or its focus. */}
-  else if($('#sheet-content').dataset.station==='true'&&!stationAdjusting)$('#sheet-content').innerHTML=stationSheet();
+  else if($('#sheet-content').dataset.station==='true'&&!stationAdjusting&&!document.activeElement?.matches('#shopping-input'))$('#sheet-content').innerHTML=stationSheet();
   else if(duoOpen()&&duoUI.tab==='music'&&!stationAdjusting&&!duoUI.busy)updateRegion('#assistant-music',stationSheet());
+  const sheetShop=$('#sheet-shopping');
+  if(sheetShop&&!document.activeElement?.matches('#shopping-input'))paintShopping();
   else updateDetail();
  }
  $('#master').disabled=masterBlocked();updateHeader();
@@ -724,6 +727,7 @@ function stationSheet(){
  <div class="control-group"><div class="control-row"><div><h3>Воспроизведение</h3><p>Команды только через media_player в HA</p></div><button class="icon-button" data-action="station-play" aria-label="${state.stationPlaying?'Пауза':'Воспроизвести'}" ${disabled(!stationSupports(e,'playing',!state.stationPlaying)||hasPending())}>${I(state.stationPlaying?'pause':'play')}</button></div>${phaseLine('station:playing')}</div>
  <div class="rgb-control"><label for="station-volume">Громкость <span id="station-volume-label">${Number.isFinite(e?.attributes.volume_level)?state.stationVolume+' %':'Недоступна'}</span></label><input id="station-volume" type="range" min="0" max="100" value="${state.stationVolume}" ${disabled(!stationSupports(e,'volume')||hasPending())}/>${phaseLine('station:volume')}</div>
  ${stationSkipButtons()}${phaseLine('station:previous')}${phaseLine('station:next')}
+ <div id="sheet-shopping">${shoppingState.loaded?shoppingMarkup():'<p class="description">Загружаем список покупок…</p>'}</div>
  <div class="control-group tts-block"><h3>Сказать на станции</h3>
   <div class="tts-presets">${['Гость пришёл','Ужин готов','Пора домой'].map(t=>`<button class="tts-preset" data-tts-preset="${esc(t)}" ${disabled(!state.liveOnline)}>${esc(t)}</button>`).join('')}</div>
   <label for="tts-text">Своя фраза · до 100 символов</label>

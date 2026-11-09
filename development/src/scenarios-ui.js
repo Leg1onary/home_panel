@@ -42,11 +42,15 @@ function chip(id,label,icon){
  return `<div class="scenario-item" data-scenario-item="${esc(id)}"><button type="button" class="${cls}" data-scenario="${esc(id)}" aria-label="Сценарий ${esc(label)}">${inner}</button>${edit}${s.error?`<p class="scenario-error">${esc(s.error)}</p>`:''}${details}</div>`;
 }
 
-export function scenariosRow(){
+export function scenarioChipsRow(){
  const items=scenarios.map(({id,icon,label})=>chip(id,label,icon)).join('')
   +userScenarios().map(s=>chip(s.id,s.name,'sparkles')).join('')
   +`<div class="scenario-item"><button type="button" class="scenario-chip scenario-add" data-scenario-new aria-label="Создать свой сценарий"><i data-lucide="sparkles"></i><span>+ Сценарий</span></button></div>`;
- return `<div class="context-heading"><h2>Сценарии</h2><span class="scenario-hint">Батч команд панели · не автоматизации</span></div><div class="scenario-chips">${items}</div>`;
+ return `<div class="scenario-chips">${items}</div>`;
+}
+
+export function scenariosRow(){
+ return `<div class="context-heading"><h2>Сценарии</h2><span class="scenario-hint">Батч команд панели · не автоматизации</span></div>${scenarioChipsRow()}`;
 }
 
 export async function runScenario(id){
