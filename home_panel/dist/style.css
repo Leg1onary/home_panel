@@ -1357,3 +1357,16 @@ input[type=range]:disabled::-moz-range-thumb{background:var(--faint);border-colo
 @media(max-width:1200px){.home-rail{top:96px;max-width:min(260px,40vw)}.home-rail .digest-card{width:min(260px,40vw)}}
 @media(max-width:900px){.home-rail{position:static;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:flex-end;max-width:none;margin-top:var(--space-3)}.home-rail .digest-card,.home-rail .profile-invite{width:100%}.home-stage-wrap .spatial-stage{height:min(70vh,560px)}}
 
+
+/* --- Aurora 2k27 · wave 2 «Тишина» (ambient-режим) --- */
+.setting-check{flex-direction:row;align-items:center;gap:var(--space-2)}
+.setting-check input{accent-color:var(--accent,currentColor)}
+.idle-screen{transition:background .6s ease,backdrop-filter .6s ease}
+.idle-screen>*{transition:opacity .6s ease,letter-spacing .6s ease}
+body.is-ambient .idle-screen{background:linear-gradient(180deg,#0a0e09f7,#0a0e09),var(--hero-image,url(assets/interior.webp)) center/cover}
+body.is-ambient .idle-place,body.is-ambient .idle-hint{opacity:0;pointer-events:none}
+body.is-ambient .idle-time{font-weight:150;font-variation-settings:'wght' 150;font-size:clamp(88px,16vw,240px);letter-spacing:-.06em}
+body.is-ambient .idle-date{opacity:.55;letter-spacing:.12em}
+body.is-ambient .idle-climate{opacity:.4}
+body.is-ambient .aurora-blob{opacity:.25;filter:blur(90px) saturate(.6)}
+@media(prefers-reduced-motion:reduce){.idle-screen,.idle-screen>*,.aurora-blob{transition:none}}

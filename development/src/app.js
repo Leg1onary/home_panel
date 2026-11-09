@@ -25,6 +25,7 @@ import {historyState,statisticsView,inspectHistoryChart} from './history-ui.js';
 import {numericReading,stateTimes} from './readings.js';
 import {duoUI,assistantView} from './assistant-ui.js';
 import {scenarioChipsRow,handleScenarioClick,bindScenarioPainter,bindScenarioHost} from './scenarios-ui.js';
+import {shouldAmbient,AMBIENT_AFTER_IDLE} from './ambient.js';
 
 import {esc,disabled,timeOf,clock,date,scheduleMinute,PANEL_TIMEZONE} from './dom.js';
 const $=s=>document.querySelector(s);
@@ -39,7 +40,7 @@ const icons=()=>{
 };
 let stationAdjusting=false;
 const reading=n=>n.toFixed(1).replace('.',',');
-let modelAPI=null,modelPromise=null,viewRevision=0,lastFocus=null,toastTimer,idleTimer,settingsOpen=false,photoBlob=null;
+let modelAPI=null,modelPromise=null,viewRevision=0,lastFocus=null,toastTimer,idleTimer,ambientTimer,idleAt=0,settingsOpen=false,photoBlob=null;
 let techTab='connection',bindingRoom='living',techEntities=[],techMessage='';
 // Unsaved form edits survive room switches and failed saves; outcome is per binding.
 let bindingDraft={},bindingOutcome={};
@@ -834,6 +835,8 @@ function settings(){
 function panelSettings(){
  return `<div class="panel-settings-grid"><section class="settings-section"><h3>Экран и режим ожидания</h3><label class="setting-field">Режим ожидания<select id="idle-setting">${[[0,'Выключен'],[10,'10 секунд · для проверки'],[60,'Через минуту'],[90,'Через 90 секунд'],[180,'Через 3 минуты']].map(([v,l])=>`<option value="${v}" ${state.idleSeconds===v?'selected':''}>${l}</option>`).join('')}</select></label>
  <button class="secondary full-width" data-action="standby">${I('moon-star')}Посмотреть экран ожидания</button>
+ <label class="setting-field setting-check"><input id="ambient-setting" type="checkbox" ${state.ambientMode!==false?'checked':''}/>Тихий режим</label>
+ <p class="setting-help">Через минуту после экрана ожидания панель затихает: только большие часы, дата и температура. Любое касание возвращает обычный режим.</p>
  <label class="setting-field">Ночной интерфейс<select id="night-setting">${[['auto','Автоматически · 22:00–07:00 МСК'],['on','Всегда включён'],['off','Выключен']].map(([v,l])=>`<option value="${v}" ${state.nightMode===v?'selected':''}>${l}</option>`).join('')}</select></label>
  <p class="setting-help">Приглушается оформление панели, не аппаратная яркость планшета. Свет в доме не переключается.</p>
  </section><section class="settings-section"><h3>Оформление и обслуживание</h3><label class="setting-field">Постоянный экран<select id="kiosk-setting"><option value="off" ${!state.kiosk?'selected':''}>Обычная панель</option><option value="on" ${state.kiosk?'selected':''}>Компактный режим для экрана</option></select></label>
@@ -1095,18 +1098,34 @@ function updateClocks(){
  $('#idle-climate').textContent=noConnection()||sensors.living.quality==='unavailable'||sensors.well.quality==='unavailable'?'Датчики недоступны':sensorStatus('living')==='Данные устарели'||sensorStatus('well')==='Данные устарели'?'Показания устарели':`Гостиная ${reading(sensors.living.value)}°  ·  Скважина ${reading(sensors.well.value)}°  ·  ${isLive()?'Home Assistant':'демоданные'}`;
 }
 function armIdle(){
- clearTimeout(idleTimer);
+ clearTimeout(idleTimer);clearTimeout(ambientTimer);
  if(state.idle||document.hidden||!state.idleSeconds||cameraPlayer)return;
  idleTimer=setTimeout(()=>{if(hasPending()){armIdle();return}enterIdle()},state.idleSeconds*1000);
+}
+// Волна 2 «Тишина»: глубокая ступень после экрана ожидания. Тонально гаснет всё,
+// остаются только огромные тонкие часы, дата и одна строка температуры.
+function enterAmbient(){
+ if(!state.idle||state.ambientMode===false)return;
+ if(!shouldAmbient({enabled:true,idleSeconds:AMBIENT_AFTER_IDLE,lastActivity:idleAt,now:Date.now()}))return;
+ document.body.classList.add('is-ambient');
+ for(const id of ['idle-place','idle-hint'])$('#'+id)?.setAttribute('aria-hidden','true');
+ updateClocks();
+}
+function exitAmbient(){
+ document.body.classList.remove('is-ambient');
+ for(const id of ['idle-place','idle-hint'])$('#'+id)?.removeAttribute('aria-hidden');
 }
 function enterIdle(){
  if(hasPending()){toast('Сначала дождёмся подтверждения команды.');return}
  closeModal();state.idle=true;clearTimeout(idleTimer);updateClocks();
  $('#idle-screen').style.setProperty('--hero-image',state.heroURL?`url('${state.heroURL}')`:'url(assets/interior.webp)');
  $('#idle-screen').hidden=false;$('.shell').inert=true;$('#overlay').inert=true;modelAPI?.setModelPaused(true);$('#idle-screen').focus();
+ exitAmbient();idleAt=Date.now();clearTimeout(ambientTimer);
+ if(state.ambientMode!==false&&state.idleSeconds)ambientTimer=setTimeout(enterAmbient,AMBIENT_AFTER_IDLE*1000);
 }
 function wake(){
  state.idle=false;$('#idle-screen').hidden=true;$('.shell').inert=false;$('#overlay').inert=false;
+ clearTimeout(ambientTimer);exitAmbient();
  modelAPI?.setModelPaused(false);$('#standby').focus({preventScroll:true});armIdle();
 }
 function simpleSheet(content){settingsOpen=false;$('#sheet-content').dataset.station='';modal(content)}
@@ -1308,6 +1327,7 @@ document.addEventListener('change',async e=>{
  if(id==='brightness')return command('rgb:brightness',+e.target.value);
  if(id==='station-volume'){stationAdjusting=false;return command('station:volume',+e.target.value)}
  if(id==='idle-setting'){state.idleSeconds=+e.target.value;armIdle();persist()}
+ if(id==='ambient-setting'){state.ambientMode=e.target.checked;if(state.idle&&!state.ambientMode)exitAmbient();persist()}
  if(id==='night-setting'){state.nightMode=e.target.value;applyNight();persist()}
  if(id==='kiosk-setting'){state.kiosk=e.target.value==='on';applyAppearance();persist()}
  if(id==='network-setting'&&!isLive()){state.demoOffline=e.target.value==='offline';refresh();updateTechnical()}
@@ -1407,6 +1427,8 @@ document.addEventListener('keydown',e=>{
  }
 });
 for(const event of ['pointerdown','keydown','wheel','input','change'])document.addEventListener(event,()=>{if(!state.idle)armIdle()},{passive:true});
+// «Тишина»: движение мыши будит только из ambient-ступени.
+document.addEventListener('mousemove',()=>{if(state.idle&&document.body.classList.contains('is-ambient'))wake()},{passive:true});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){clearTimeout(idleTimer);if(cameraPlayer)cameraStop()}else armIdle()});
 window.addEventListener('pagehide',clearCamera);
 bindScenarioPainter(refresh);

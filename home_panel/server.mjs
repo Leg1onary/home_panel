@@ -318,6 +318,7 @@ var defaultPreferences = () => ({
   idleSeconds: 90,
   kiosk: false,
   mode: "demo",
+  ambientMode: true,
   devices: defaultDevices(),
   bindings: Object.fromEntries(defaultDevices().map((d) => [d.id, { entityId: "", verified: false }])),
   userScenarios: []
@@ -365,9 +366,10 @@ function validatePreferences(input, { importing = false } = {}) {
   if (!["dark", "light"].includes(raw.theme)) throw new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F \u0442\u0435\u043C\u0430.");
   if (!["auto", "on", "off"].includes(raw.nightMode)) throw new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u043D\u043E\u0447\u043D\u043E\u0439 \u0440\u0435\u0436\u0438\u043C.");
   if (![0, 10, 60, 90, 180].includes(raw.idleSeconds)) throw new Error("\u041D\u0435\u0432\u0435\u0440\u043D\u0430\u044F \u0437\u0430\u0434\u0435\u0440\u0436\u043A\u0430 \u043E\u0436\u0438\u0434\u0430\u043D\u0438\u044F.");
+  if (raw.ambientMode !== void 0 && typeof raw.ambientMode !== "boolean") throw new Error("\u041D\u0435\u0432\u0435\u0440\u043D\u044B\u0439 \u0442\u0438\u0445\u0438\u0439 \u0440\u0435\u0436\u0438\u043C.");
   if (!Array.isArray(raw.favorites) || raw.favorites.length > 6 || new Set(raw.favorites).size !== raw.favorites.length || raw.favorites.some((id) => !areas.some((r) => r.id === id))) throw new Error("\u041F\u0440\u043E\u0432\u0435\u0440\u044C \u0441\u043F\u0438\u0441\u043E\u043A \u0438\u0437\u0431\u0440\u0430\u043D\u043D\u044B\u0445 \u043A\u043E\u043C\u043D\u0430\u0442.");
   if (!["demo", "live"].includes(raw.mode)) throw new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A \u0434\u0430\u043D\u043D\u044B\u0445.");
-  Object.assign(p, { theme: raw.theme, nightMode: raw.nightMode, idleSeconds: raw.idleSeconds, favorites: [...raw.favorites], kiosk: raw.kiosk === true, mode: importing ? "demo" : raw.mode, devices: validateDevices(raw.devices) });
+  Object.assign(p, { theme: raw.theme, nightMode: raw.nightMode, idleSeconds: raw.idleSeconds, favorites: [...raw.favorites], kiosk: raw.kiosk === true, mode: importing ? "demo" : raw.mode, ambientMode: raw.ambientMode !== false, devices: validateDevices(raw.devices) });
   p.deviceModel = validateDeviceModel(raw.deviceModel, p.devices, areas);
   const used = /* @__PURE__ */ new Set();
   p.bindings = {};
