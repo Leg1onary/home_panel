@@ -33,6 +33,7 @@ import {DigestWidget,digestBus} from './preact/digest-widget.js';
 import {WeatherChip,weatherBus,WEATHER_ICON} from './preact/weather-widget.js';
 import {QuickWidget,quickBus} from './preact/quick-widget.js';
 import {FactsWidget,factsBus} from './preact/facts-widget.js';
+import {RoomCardWidget,RoomSheetWidget,roomBus} from './preact/room-widget.js';
 import {YARD_REFRESH_MS} from './yard-card.js';
 
 import {esc,disabled,timeOf,clock,date,scheduleMinute,PANEL_TIMEZONE} from './dom.js';
@@ -314,7 +315,7 @@ function home(){
  return `<div class="view dashboard-view view-enter">
  <h1 class="visually-hidden">Мой дом</h1>
  <div class="home-stage-wrap">${sceneStage(hero)}
- <div id="home-room-card" class="home-room-card" hidden>${miniRoomCard()}</div>
+ <div id="home-room-card" class="home-room-card" hidden></div>
  <aside class="home-rail" aria-label="Сводка дома">
  <div id="home-digest" hidden></div>
  <div id="home-energy" hidden></div>
@@ -327,23 +328,61 @@ function home(){
  </div></div>`;
 }
 // Мини-карточка комнаты: тап по плану показывает климат и линии света рядом со сценой.
-let activeRoomCard=null,cardGuard=0;
-function miniRoomCard(){
- if(!activeRoomCard||state.view!=='home')return '';
- const r=getRoom(activeRoomCard);if(!r)return '';
- const cs=channelsFor(r);
- return `<div role="dialog" aria-label="Карточка комнаты ${esc(r.name)}">
- <div class="mini-head"><span class="mini-icon">${I(r.icon)}</span><strong>${esc(r.name)}</strong><span class="mini-climate">${compactRoomClimate(r.id)}</span><button class="icon-button" data-action="close-room-card" aria-label="Закрыть карточку комнаты">${I('x')}</button></div>
- ${cs.map(c=>`<div class="control-row mini-row"><div><h3>${esc(c.name)}</h3><p>${esc(c.planned?c.note||'Планируется':noConnection()?'Нет связи':isLive()&&!canControl(c.id)?'Нет данных · канал не проверен или недоступен':c.note||'Отдельная линия света')}</p></div>${toggle(c.id,c.name,c.on,c.planned,`data-device="${c.id}" data-mini="1"`)}</div>${phaseLine(c.id)}`).join('')}
- ${cs.length?'':`<p class="mini-empty">Линий света в этой комнате нет.</p>`}
- <button class="secondary mini-open" data-room="${r.id}">Открыть комнату ${I('arrow-up-right')}</button></div>`;
+// Волна 4: разметка miniRoomCard() перенесена в src/preact/room-widget.js (roomCardMarkup),
+// roomSheet(r) — туда же (sheetMarkup); app.js монтирует виджеты и рассылает deps по roomBus.
+let activeRoomCard=null,cardGuard=0,cardPaintTimer=0;
+function phaseArgs(id){
+ const c=commandFor(id);
+ return c?{id,phase:c.phase,message:c.message,confirmedAt:c.confirmedAt}:null;
+}
+// Строка линии света: снимок состояния для чистой разметки виджета (toggle/phaseLine).
+function rowArgs(c){
+ return {id:c.id,name:c.name,on:c.on,planned:c.planned,
+ note:c.planned?c.note||'Планируется':noConnection()?'Нет связи':isLive()&&!canControl(c.id)?'Нет данных · канал не проверен или недоступен':c.note||'Отдельная линия света',
+ unknown:isLive()&&!canControl(c.id),
+ blocked:c.planned||!canControl(c.id)||hasPending(),
+ busy:commandFor(c.id)?.phase==='pending',
+ phase:phaseArgs(c.id)};
+}
+function roomCardArgs(){
+ if(!activeRoomCard||state.view!=='home')return null;
+ const r=getRoom(activeRoomCard);if(!r)return null;
+ return {room:{id:r.id,name:r.name,icon:r.icon},climate:compactRoomClimate(r.id),rows:channelsFor(r).map(rowArgs)};
+}
+// Deps щитка комнаты: шапка + controls() той же комнаты (включая RGB-блок прихожей).
+function roomSheetArgs(){
+ const id=$('#sheet-content').dataset.room;
+ const r=id?getRoom(id):null;if(!r)return null;
+ const d=state.devices.find(d=>d.id==='rgb'),powered=d?.status==='installed'&&hallPowered();
+ const rgb=d?{name:d?.name||'RGB-лампа',
+ note:d?.status==='planned'?'Планируется':state.demoOffline?'Нет связи · демо':powered?(state.rgbOn?'Включена · Yeelight':'Выключена · Yeelight'):'Без питания · включи свет прихожей',
+ powered,
+ toggle:{name:d?.name||'RGB-лампа',on:powered&&state.rgbOn,unknown:false,busy:commandFor('rgb:on')?.phase==='pending',blocked:!powered},
+ brightLabel:`${state.brightness} % · ${isLive()?'Home Assistant':'подтверждено в демо'}`,
+ brightness:state.brightness,
+ brightBlocked:!state.rgbOn||!canControl('rgb:brightness')||hasPending(),
+ swatches:[['#e6c68c','Тёплый'],['#eef1e5','Белый'],['#d1a1e8','Сиреневый'],['#9dbddb','Голубой']].map(([c,l])=>({color:c,label:l,selected:state.rgbColor===c,blocked:!state.rgbOn||!canControl('rgb:color')||hasPending()})),
+ phases:{on:phaseArgs('rgb:on'),bright:phaseArgs('rgb:brightness'),color:phaseArgs('rgb:color')}}:null;
+ return {room:{id:r.id,name:r.name,short:r.short,description:r.description},
+ rows:r.channels.map(rowArgs),rgb,
+ corridorUnbound:r.id==='corridor'&&r.channels.some(c=>!state.bindings[c.id]?.entityId),
+ hallTerrace:r.id==='hall'};
+}
+function updateRoomCardRegion(){
+ const node=$('#home-room-card');if(!node)return;
+ if(!node.dataset.preact){preactRender(ph(RoomCardWidget,{}),node);node.dataset.preact='1'}
 }
 function paintRoomCard(){
  const node=$('#home-room-card');if(!node)return;
  // Пока команда из карточки в полёте (optimistic apply + pending), перерисовка
  // по опросу может заменить кнопку между pointerdown и click — пропускаем.
  if(activeRoomCard&&hasPending())return;
- updateRegion('#home-room-card',miniRoomCard());node.hidden=!activeRoomCard;icons();
+ node.hidden=!activeRoomCard;
+ // Не перекрашиваем тапабельную карточку под пальцем (бывший guard updateRegion):
+ // откладываем notify на 450 мс после pointerdown.
+ if(Date.now()-lastPointerDown<400){clearTimeout(cardPaintTimer);cardPaintTimer=setTimeout(()=>paintRoomCard(),450);return}
+ updateRoomCardRegion();
+ roomBus.notify({card:roomCardArgs(),sheet:roomSheetArgs()});
 }
 function toggleRoomCard(id){
  activeRoomCard=activeRoomCard===id?null:id;cardGuard=Date.now();paintRoomCard();
@@ -772,8 +811,7 @@ function updateDetail(){
  if($('#room-climate'))$('#room-climate').innerHTML=roomClimate(state.selected);
  updateRegion('.zone-stage .room-climate',roomClimate(state.selected));
  if($('#room-equipment')&&!editingRange)updateRegion('#room-equipment',roomEquipment(getRoom(state.selected)));
- const id=$('#sheet-content').dataset.room;
- if(!$('#overlay').hidden&&id)$('#sheet-content').innerHTML=roomSheet(getRoom(id));
+ if(!$('#overlay').hidden&&$('#sheet-content').dataset.room)updateRoomSheet();
  icons();
 }
 function refresh(){
@@ -850,8 +888,16 @@ function motionSheetMarkup(id){
  <div class="motion-timestamp"><span>Последнее обновление события</span><strong>${m.at?new Date(m.at).toLocaleString('ru-RU',{timeZone:PANEL_TIMEZONE}):'Неизвестно'}</strong><small>${m.at?esc(elapsedLabel(m.at)):''}</small></div>
  <p class="description">${m.kind==='unknown'?'Без достоверного состояния или времени не считаем, что движения нет.':'Сущность HA не изменяется. Расчётный статус применяется только в панели.'}</p>`;
 }
+// Волна 4: содержимое щитка на Preact — roomSheet() отдаёт только слот-корень,
+// разметка и repaint живут в room-widget.js (sheetMarkup) по roomBus.
 function roomSheet(r){
- return `<div class="eyebrow">${r.short}</div><h2 style="margin-top:12px">${r.name}</h2><p class="description">${r.description||'Каждая линия управляется отдельно.'}</p>${controls(r)}`;
+ return `<div id="room-sheet-root"></div>`;
+}
+function updateRoomSheet(){
+ const root=$('#room-sheet-root');
+ if(!root)return;
+ if(!root.dataset.preact){preactRender(ph(RoomSheetWidget,{}),root);root.dataset.preact='1'}
+ roomBus.notify({card:null,sheet:roomSheetArgs()});
 }
 function openRoom(id){
  if(id==='yard')return openYardCamera();

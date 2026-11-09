@@ -12,10 +12,10 @@ function run(command,args){
  if(result.error)throw result.error;
  if(result.status!==0)throw new Error(`${command} ${args.join(' ')} failed: ${result.status}`);
 }
-for(const name of ['catalog','yard-card','device-model','device-model-integration','house-profile','station','assistant','shopping','voice','model-state','interior','redesign','history','readings','digest','energy','preact-energy','preact-digest','preact-weather','preact-quick','preact-facts','camera-player','rtc-player','rtc','api-session','sw','ambient','yard-motion']){
+for(const name of ['catalog','yard-card','device-model','device-model-integration','house-profile','station','assistant','shopping','voice','model-state','interior','redesign','history','readings','digest','energy','preact-energy','preact-digest','preact-weather','preact-quick','preact-facts','preact-room','camera-player','rtc-player','rtc','api-session','sw','ambient','yard-motion']){
  await bundle(`tests/${name}.mjs`,`.qa/${name}.mjs`);
  run(process.execPath,[`.qa/${name}.mjs`]);
 }
 for(const name of ['integration','addon','stream','live-stream','scenarios','scenarios-user'])run(process.execPath,[`tests/${name}.mjs`]);
-console.log('All thirty-four test suites passed.');
+console.log('All thirty-five test suites passed.');
 
