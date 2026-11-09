@@ -840,6 +840,11 @@ html[data-view=home] .shell>footer[data-storage=saved]{display:none}
 .weather-card{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:var(--space-1);min-height:62px;padding:var(--space-2);border:1px solid transparent;border-radius:var(--radius-md);background:var(--surface);color:var(--text);grid-column:1/-1}
 .weather-card>span{font-size:var(--text-xs);color:var(--muted);line-height:1.3}
 .weather-card>strong{font-size:var(--text-sm);font-weight:500;line-height:1.4}
+.yard-slot{display:contents}
+.yard-chip{transition:opacity .45s ease,transform .45s ease}
+.yard-chip.is-leaving{opacity:0;transform:scale(.92)}
+.yard-chip .yard-thumb{width:72px;height:72px;border-radius:var(--radius-md);overflow:hidden;display:flex;align-items:center;justify-content:center;background:var(--surface);color:var(--muted)}
+.yard-chip .yard-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 [data-theme=light] .weather-card{background:var(--surface)}
 .light-overview-badge{display:flex;align-items:center;justify-content:center;gap:var(--space-1);min-height:44px;padding:var(--space-2);background:none;border:0;border-radius:var(--radius-sm);font-size:var(--text-xs);color:var(--muted);white-space:nowrap}
 .light-overview-badge.has-light{color:var(--accent)}.light-overview-badge svg{width:14px;height:14px}

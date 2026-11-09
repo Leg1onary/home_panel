@@ -27,7 +27,8 @@ import {duoUI,assistantView} from './assistant-ui.js';
 import {scenarioChipsRow,handleScenarioClick,bindScenarioPainter,bindScenarioHost} from './scenarios-ui.js';
 import {shouldAmbient,AMBIENT_AFTER_IDLE} from './ambient.js';
 import {luxValue,autoTheme,AUTO_THEME_UP,AUTO_THEME_DOWN} from './auto-theme.js';
-import {findMeterEntities,energyCard} from './energy.js';
+import {energyCard,findMeterEntities} from './energy.js';
+import {showYardCard,YARD_REFRESH_MS} from './yard-card.js';
 
 import {esc,disabled,timeOf,clock,date,scheduleMinute,PANEL_TIMEZONE} from './dom.js';
 import {voiceButton,voiceSync,bindVoice} from './voice.js';
@@ -183,11 +184,67 @@ function dayProgress(){
  const p=Math.round(Math.min(1,Math.max(0,(now-a)/(b-a)))*100);
  return `<div class="day-progress" role="img" aria-label="Пройдено ${p} % светового дня от рассвета до заката"><span style="width:${p}%"></span></div>`;
 }
+// Чип двора: только реальное движение по проверенной привязке yard-motion.
+// Слот живёт внутри #home-status, чтобы частые перерисовки погоды/фактов
+// не сбрасывали загруженный кадр камеры.
+const YARD_SLOT='<span id="yard-slot" class="yard-slot"></span>';
+function yardObservation(){
+ const b=state.bindings['yard-motion'];
+ if(!isLive()||!b?.verified||!b.entityId)return null;
+ return motionObservation(state.entityStates?.[b.entityId]);
+}
+function yardMarkup(){
+ const m=yardObservation();
+ if(!m)return '';
+ if(!showYardCard({bindingVerified:true,motionState:m.kind,lastEventAt:m.at??NaN,now:Date.now(),mode:state.mode}))return '';
+ const when=timeOf(m.at);
+ return `<button class="home-fact yard-chip" data-camera="camera-yard" aria-label="Двор: движение в ${esc(when)}. Открыть камеру двора"><span class="yard-thumb" aria-hidden="true">${I('camera')}</span><strong>Движение · ${esc(when)}</strong></button>`;
+}
+function paintYardChip(){
+ const slot=$('#yard-slot');if(!slot)return;
+ const markup=yardMarkup();
+ if(markup){
+  const leaving=slot.querySelector('.yard-chip.is-leaving');
+  if(leaving){leaving.classList.remove('is-leaving');return}
+  if(!slot.querySelector('.yard-chip')){slot.innerHTML=markup;icons();loadYardFrame()}
+  return;
+ }
+ const chip=slot.querySelector('.yard-chip');
+ if(chip&&!chip.classList.contains('is-leaving')){
+  chip.classList.add('is-leaving');
+  setTimeout(()=>{const c=$('#yard-slot .yard-chip');if(c?.classList.contains('is-leaving'))c.remove()},500);
+ }
+}
+// Кадр двора: не чаще раза в 2 минуты (YARD_REFRESH_MS), ревизии против гонок,
+// при ошибке кадра чип остаётся с иконкой камеры — честно без картинки.
+let yardFrame={url:null,at:0,rev:0,busy:false};
+function paintYardThumb(thumb){
+ if(!thumb)return;
+ thumb.innerHTML=yardFrame.url?`<img src="${yardFrame.url}" alt=""/>`:'';
+}
+async function loadYardFrame(force=false){
+ const thumb=$('.yard-chip .yard-thumb');
+ if(!thumb||yardFrame.busy)return;
+ const now=Date.now();
+ if(!force&&now-yardFrame.at<YARD_REFRESH_MS)return paintYardThumb(thumb);
+ yardFrame.busy=true;const rev=++yardFrame.rev;
+ try{
+  const blob=await api('ha/camera',{method:'POST',body:{id:'camera-yard'},image:true});
+  const url=URL.createObjectURL(blob),image=new Image();
+  await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=url});
+  if(rev!==yardFrame.rev){URL.revokeObjectURL(url);return}
+  if(yardFrame.url)URL.revokeObjectURL(yardFrame.url);
+  yardFrame={url,at:now,rev,busy:false};
+ }catch{if(rev===yardFrame.rev)yardFrame={...yardFrame,at:now,busy:false}}
+ finally{if(rev===yardFrame.rev)yardFrame.busy=false}
+ paintYardThumb($('.yard-chip .yard-thumb'));
+}
+
 function home(){
  const hero=`<div class="hero-overlay">
  <div class="hero-top"><div class="hero-clock" aria-label="Местное время дома"><div id="hero-clock">${clock()}</div><span id="hero-date">${date()}</span><span id="hero-greeting" class="hero-greeting" hidden></span>${dayProgress()}</div>
  <div class="hero-top-right">${isLive()?voiceButton():''}<span id="hero-status">${heroStatusChip()}</span><button id="reset-model" title="Вернуть исходный ракурс" aria-label="Сбросить ракурс">${I('rotate-ccw')}</button></div></div>
- <div class="hero-facts" id="home-status">${weatherCard()}${homeStatus()}</div></div>`;
+ <div class="hero-facts" id="home-status">${YARD_SLOT}${weatherCard()}${homeStatus()}</div></div>`;
  return `<div class="view dashboard-view view-enter">
  <h1 class="visually-hidden">Мой дом</h1>
  <div class="home-stage-wrap">${sceneStage(hero)}
@@ -699,7 +756,7 @@ function refresh(){
   const weatherEntity=Object.values(state.entityStates||{}).find(e=>e.entity_id?.startsWith('weather.')),weatherTemp=weatherEntity?.attributes?.temperature;
   modelAPI?.setModelWeather(weatherTemp<0&&weatherEntity?.state==='snowy'?'snow':weatherTemp<0&&weatherEntity?.state==='rainy'?'rain':null);
   if(state.view==='home'){
-   updateRegion('#home-status',weatherCard()+homeStatus());updateRegion('#home-quick',homeQuick());updateRegion('#home-light-overview',lightOverviewBadge());updateRegion('#hero-status',heroStatusChip());voiceSync();paintRoomCard();
+   updateRegion('#home-status',YARD_SLOT+weatherCard()+homeStatus());paintYardChip();updateRegion('#home-quick',homeQuick());updateRegion('#home-light-overview',lightOverviewBadge());updateRegion('#hero-status',heroStatusChip());voiceSync();paintRoomCard();
     const digest=$('#home-digest');if(digest){updateRegion('#home-digest',digestCard());digest.hidden=!digest.querySelector('.digest-card')}
     const alarm=$('#home-alarm');if(alarm){updateRegion('#home-alarm',alarmMarkup());alarm.hidden=!alarm.querySelector('.alarm-card')}
     const energy=$('#home-energy');if(energy){updateRegion('#home-energy',isLive()?energyCard(findMeterEntities(state.entityStates||{}),Date.now()):'');energy.hidden=!energy.querySelector('.energy-card')}
