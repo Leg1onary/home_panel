@@ -1,4 +1,4 @@
-import {api} from './api.js';
+import {api,panelURL} from './api.js';
 import {state,rooms,sensors} from './schema.js';
 import {bindingDefinitions} from './preferences.js';
 import {deviceTypes,findDevice,resolveAction} from './catalog.js';
@@ -60,7 +60,7 @@ const stopFallback=()=>{if(timer){clearInterval(timer);timer=null}};
 function startSSE(onChange=()=>{}){
  return new Promise(resolve=>{
   let done=false;
-  const source=new EventSource(api.panelURL('ha/stream'));sse=source;
+  const source=new EventSource(panelURL('ha/stream'));sse=source;
   const fail=()=>{
    if(sse!==source)return;closeSSE();
    if(done){pollLive(onChange);timer=setInterval(()=>{if(!document.hidden)pollLive(onChange)},5000)}
