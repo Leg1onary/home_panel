@@ -211,7 +211,17 @@ function energyExtra(){
 }
 function updateEnergyRegion(){
  const energy=$('#home-energy');if(!energy||!isLive())return;
- updateRegion('#home-energy',energyCard(findMeterEntities(state.entityStates||{}),Date.now(),energyExtra()));
+ // ТНС «мигает» (пометит сущности unavailable между опросами): если сервер помнит
+ // последние валидные значения — рисуем карточку из них с пометкой stale.
+ let entities=findMeterEntities(state.entityStates||{});
+ let staleFlag=false,extra=energyExtra();
+ if(energyData?.stale&&Number.isFinite(energyData.reading?.value)){
+  const u=energyData.reading.updatedAt;
+  entities={reading:{entity_id:energyData.reading.entityId,state:String(energyData.reading.value),last_updated:u},
+   consumption:energyData.consumption!==null&&Number.isFinite(energyData.consumption)?{entity_id:'synthetic',state:String(energyData.consumption),last_updated:u}:null};
+  staleFlag=true;extra={...extra,stale:true,staleSince:energyData.staleSince,readingsDate:energyData.readingsDate};
+ }
+ updateRegion('#home-energy',energyCard(entities,Date.now(),extra,staleFlag));
  energy.hidden=!energy.querySelector('.energy-card');icons();
 }
 async function pollEnergy(force=false){
@@ -425,7 +435,7 @@ function digestCard(){
 // Волна 3 «Умное поведение»: адаптивные акценты главной. Один источник аргументов
 // для дайджеста — карточка в рейле и ночная сводка в hero показывают одно и то же.
 function digestArgs(){
- return {mode:state.mode,liveOnline:state.liveOnline,devices:state.devices,bindings:state.bindings,entityStates:state.entityStates||{},now:Date.now(),alarmState:alarmEntity()?.state};
+ return {mode:state.mode,liveOnline:state.liveOnline,devices:state.devices,bindings:state.bindings,entityStates:state.entityStates||{},now:Date.now(),alarmState:alarmEntity()?.state,meterKnown:Boolean(energyData?.stale&&Number.isFinite(energyData?.reading?.value))};
 }
 const digestSummary=()=>{const items=digestItems(digestArgs());return items.length?items.slice(0,2).map(i=>i.text).join(' · '):''};
 const dayPhase=hour=>hour>=6&&hour<11?'morning':hour>=11&&hour<17?'day':hour>=17&&hour<22?'evening':'night';

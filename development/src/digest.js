@@ -5,7 +5,7 @@ import {numericReading,stateTimes} from './readings.js';
 import {findMeterEntities,meterValue} from './energy.js';
 const plural=(n,one,few,many)=>n%10===1&&n%100!==11?one:n%10>=2&&n%10<=4&&(n%100<12||n%100>14)?few:many;
 const read=(deps,id)=>{const b=deps.bindings[id],d=deps.devices.find(x=>x.id===id);return d&&d.status==='installed'&&b?.verified&&b.entityId?deps.entityStates?.[b.entityId]:null};
-export function digestItems({mode,liveOnline=true,devices=[],bindings={},entityStates={},now=Date.now(),alarmState}){
+export function digestItems({mode,liveOnline=true,devices=[],bindings={},entityStates={},now=Date.now(),alarmState,meterKnown=false}){
  const deps={devices,bindings,entityStates,now},items=[];
  const batteries=devices.filter(d=>d.type==='battery'&&d.status==='installed')
   .map(d=>({d,value:numericReading(read(deps,d.id),{online:liveOnline,unit:'%',now}).value}))

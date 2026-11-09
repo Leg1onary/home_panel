@@ -4217,6 +4217,7 @@ var forecastCache = null;
 var forecastKey = "";
 var shoppingCache = null;
 var energyCache = null;
+var energyLastKnown = null;
 var getProfile = (id) => {
   let row = db.prepare("SELECT * FROM profiles WHERE id=?").get(id);
   if (!row) {
@@ -4415,6 +4416,23 @@ var server = http.createServer(async (req, res) => {
           readingsDate: readingsDate?.state ?? null,
           deltas: energyDeltas(history)
         };
+        if (readingValue !== null || meterValue(consumption) !== null) {
+          energyLastKnown = { at: Date.now(), data: data2 };
+          data2.stale = false;
+        } else {
+          if (!energyLastKnown) {
+            const hist = await ha.energyHistory((reading || readingsDate || { entity_id: "" }).entity_id, 168);
+            const last = [...hist].reverse().find((p2) => Number.isFinite(p2.value));
+            if (last) energyLastKnown = { at: last.at, data: {
+              reading: { value: last.value, entityId: reading?.entity_id ?? null, updatedAt: new Date(last.at).toISOString() },
+              consumption: meterValue(consumption),
+              meterNumber: meterNumber?.state ?? null,
+              readingsDate: readingsDate?.state ?? null,
+              deltas: energyDeltas(hist)
+            } };
+          }
+          if (energyLastKnown) return json(res, 200, { ...energyLastKnown.data, stale: true, staleSince: energyLastKnown.at });
+        }
         energyCache = { at: Date.now(), data: data2 };
         return json(res, 200, data2);
       }

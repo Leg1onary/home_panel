@@ -1,0 +1,19 @@
+LIVE PANEL STATE: {
+ "digest": {
+  "hidden": false,
+  "text": "Дайджест домаНет связи: Входная дверьОткрыть датчикиДоступно обновление Home AssistantОткрыть системыСчётчик ТНС: нет да"
+ },
+ "energy": {
+  "hidden": true,
+  "text": ""
+ },
+ "meterState": "n/a",
+ "railCards": [
+  "home-digest",
+  "home-energy",
+  "home-alarm",
+  "home-light-overview",
+  "text-button rail-all"
+ ]
+}
+PAGEERRORS: []

@@ -43,7 +43,7 @@ const yardMotion=new YardMotion({ha});
 
 const proofs=new Map(),pendingScopes=new Map();
 const live=new LiveFeed({ha}),liveIds=new Map();
-let forecastCache=null,forecastKey='',shoppingCache=null,energyCache=null;
+let forecastCache=null,forecastKey='',shoppingCache=null,energyCache=null,energyLastKnown=null;
 const getProfile=id=>{
  let row=db.prepare('SELECT * FROM profiles WHERE id=?').get(id);
  if(!row){db.prepare('INSERT INTO profiles(id,preferences) VALUES(?,?)').run(id,JSON.stringify(defaultPreferences()));row=db.prepare('SELECT * FROM profiles WHERE id=?').get(id)}
@@ -214,6 +214,19 @@ const server=http.createServer(async(req,res)=>{
      const data={reading:{value:readingValue,entityId:reading?.entity_id??null,updatedAt:reading?.last_updated??null},
       consumption:meterValue(consumption),meterNumber:meterNumber?.state??null,readingsDate:readingsDate?.state??null,
       deltas:energyDeltas(history)};
+     // ТНС «мигает» (неудачный опрос помечает сущности unavailable): помним последние
+     // валидные значения и отдаём их с пометкой stale, чтобы виджет не мигал.
+     if(readingValue!==null||meterValue(consumption)!==null){energyLastKnown={at:Date.now(),data};data.stale=false}
+     else{
+      if(!energyLastKnown){
+       // Первая загрузка после «мигания»: последняя валидная точка из истории HA.
+       const hist=await ha.energyHistory((reading||readingsDate||{entity_id:''}).entity_id,168);
+       const last=[...hist].reverse().find(p=>Number.isFinite(p.value));
+       if(last)energyLastKnown={at:last.at,data:{reading:{value:last.value,entityId:reading?.entity_id??null,updatedAt:new Date(last.at).toISOString()},
+        consumption:meterValue(consumption),meterNumber:meterNumber?.state??null,readingsDate:readingsDate?.state??null,deltas:energyDeltas(hist)}};
+      }
+      if(energyLastKnown)return json(res,200,{...energyLastKnown.data,stale:true,staleSince:energyLastKnown.at});
+     }
      energyCache={at:Date.now(),data};
      return json(res,200,data);
     }
