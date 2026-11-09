@@ -740,6 +740,8 @@ function render(animate=true){
 }
 function updateRegion(selector,markup){
  const node=$(selector);if(!node||node.dataset.rendered===markup)return;
+ // Не перекрашиваем тапабельные рельсы под пальцем: кнопка может «уехать» между pointerdown и click.
+ if(Date.now()-lastPointerDown<400&&(selector==='#home-quick'||selector==='#home-status'||selector==='#home-room-card')){setTimeout(()=>{if($(selector)&&$(selector).dataset.rendered!==markup)updateRegion(selector,markup)},450);return}
  node.innerHTML=markup;node.dataset.rendered=markup;
 }
 function updateDetail(){
@@ -1537,6 +1539,10 @@ document.addEventListener('fullscreenchange',()=>{
  $('#fullscreen').setAttribute('aria-label',document.fullscreenElement?'Выйти из полного экрана':'Полный экран');icons();
 });
 $('.close').onclick=closeModal;
+// Тап-устойчивость: на некоторых планшетах click после pointer-событий не доходит.
+document.addEventListener('pointerup',e=>{if(e.target?.closest?.('.sheet .close'))closeModal()});
+let lastPointerDown=0;
+document.addEventListener('pointerdown',()=>{lastPointerDown=Date.now()},{passive:true});
 $('#overlay').addEventListener('click',e=>{if(e.target===$('#overlay'))closeModal()});
 document.addEventListener('keydown',e=>{
  if(state.idle){if(['Enter',' ','Escape'].includes(e.key)){e.preventDefault();wake()}return}

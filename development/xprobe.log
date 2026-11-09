@@ -1,0 +1,61 @@
+X PROBE: {
+ "rect": {
+  "x": 0,
+  "y": 0,
+  "w": 0,
+  "h": 0
+ },
+ "display": "grid",
+ "position": "absolute",
+ "zIndex": "auto",
+ "pointerEvents": "auto",
+ "width": "44px",
+ "height": "44px",
+ "center": {
+  "cx": 0,
+  "cy": 0
+ },
+ "elementAtPoint": "BODY.",
+ "hitChain": [
+  "BODY.",
+  "HTML."
+ ],
+ "overlayHidden": true
+}
+AFTER REAL X CLICK: overlayHidden= true
+WEATHER SHEET X: {"w":44,"h":44,"top":"path."}
+ERRORS: ["CONSOLE: Failed to load resource: the server responded with a status of 404 (Not Found)"]
+LIGHT VIEW: {
+ "view": "?",
+ "dataRoomCount": 13,
+ "dataRoom": [
+  {
+   "t": "0 / 2\n ГостинаяСве",
+   "room": "living",
+   "visible": true
+  },
+  {
+   "t": "0 / 1\n ПрихожаяСве",
+   "room": "hall",
+   "visible": true
+  },
+  {
+   "t": "0 / 2\n КабинетСвет",
+   "room": "office",
+   "visible": true
+  },
+  {
+   "t": "0 / 2\n СпальняСвет",
+   "room": "bedroom",
+   "visible": true
+  }
+ ],
+ "toggles": 0,
+ "enabled": 0
+}
+CLICKED ROOM: living
+AFTER ROOM CLICK: {"selLen":717}
+YARD TRY 1: ok overlayHidden= false
+YARD TRY 2: ok overlayHidden= false
+YARD TRY 3: ok overlayHidden= false
+ERRORS FINAL: ["CONSOLE: Failed to load resource: the server responded with a status of 404 (Not Found)"]

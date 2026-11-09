@@ -1,0 +1,9 @@
+BEFORE: {"viewText":"УправлениеСвет в домеВыбери комнату. Все линии доступны неза","rooms":true,"selected":0}
+AFTER ROOM CLICK: {
+ "viewText": "Мой дом Гостиная / кухня21,4 °C35,0 %\n \n Загружаем план дома\n Гостиная",
+ "controlGroups": 2,
+ "toggles": 2,
+ "hasStage": true,
+ "selectedLen": 717,
+ "activeNav": "home"
+}
