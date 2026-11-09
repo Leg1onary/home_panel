@@ -2569,6 +2569,7 @@ function validatePreferences(input, { importing = false } = {}) {
 }
 
 // server/ha.js
+import WebSocket from "ws";
 var HomeAssistant = class {
   constructor({ url = "", token = "", preview: preview2 = false } = {}) {
     this.enabled = !!url && !!token && !preview2;
@@ -2609,6 +2610,65 @@ var HomeAssistant = class {
     }
   }
   // Raw-ответ (кадр камеры): та же авторизация, но без JSON-парсинга.
+  // Одноразовый WebSocket-вызов сервиса с ответом (ws — зависимость аддона).
+  callService(domain, service, data2, timeout = 15e3) {
+    if (!this.enabled) return Promise.reject(new Error("Home Assistant \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D."));
+    return new Promise((resolve2, reject) => {
+      const wsURL = this.url.replace(/^http/, "ws") + "/api/websocket";
+      let ws, done = false;
+      const fail = (message) => {
+        if (done) return;
+        done = true;
+        try {
+          ws?.close();
+        } catch {
+        }
+        reject(new Error(message));
+      };
+      const timer = setTimeout(() => fail("Home Assistant \u043D\u0435 \u043E\u0442\u0432\u0435\u0442\u0438\u043B \u043D\u0430 \u0432\u044B\u0437\u043E\u0432 \u0441\u0435\u0440\u0432\u0438\u0441\u0430 \u0432\u043E\u0432\u0440\u0435\u043C\u044F."), timeout);
+      const send = (obj) => ws.send(JSON.stringify(obj));
+      try {
+        ws = new WebSocket(wsURL);
+      } catch (error) {
+        clearTimeout(timer);
+        return fail("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0441\u043E\u0435\u0434\u0438\u043D\u0438\u0442\u044C\u0441\u044F \u0441 Home Assistant WebSocket.");
+      }
+      ws.on("message", (raw) => {
+        let msg;
+        try {
+          msg = JSON.parse(raw);
+        } catch {
+          return;
+        }
+        if (msg.type === "auth_required") {
+          send({ type: "auth", access_token: this.token });
+          return;
+        }
+        if (msg.type === "auth_invalid") {
+          clearTimeout(timer);
+          return fail("Home Assistant \u043E\u0442\u043A\u043B\u043E\u043D\u0438\u043B \u0430\u0432\u0442\u043E\u0440\u0438\u0437\u0430\u0446\u0438\u044E. \u041F\u0440\u043E\u0432\u0435\u0440\u044C \u043B\u043E\u043A\u0430\u043B\u044C\u043D\u044B\u0439 \u0442\u043E\u043A\u0435\u043D.");
+        }
+        if (msg.type === "auth_ok") {
+          send({ id: 1, type: "call_service", domain, service, target: {}, return_response: true, ...data2 ? { service_data: data2 } : {} });
+          return;
+        }
+        if (msg.type === "result") {
+          clearTimeout(timer);
+          if (done) return;
+          done = true;
+          try {
+            ws.close();
+          } catch {
+          }
+          if (msg.success) return resolve2(msg.result?.response);
+          const detail = msg.error?.message || "\u0412\u044B\u0437\u043E\u0432 \u0441\u0435\u0440\u0432\u0438\u0441\u0430 \u043D\u0435 \u0443\u0434\u0430\u043B\u0441\u044F.";
+          return reject(new Error(`Home Assistant: ${detail}`));
+        }
+      });
+      ws.on("error", () => fail("\u041D\u0435\u0442 \u0441\u0432\u044F\u0437\u0438 \u0441 Home Assistant \u043F\u043E WebSocket. \u041F\u0440\u043E\u0432\u0435\u0440\u044C \u0441\u0435\u0442\u044C \u0438 \u0430\u0434\u0440\u0435\u0441 \u0441\u0435\u0440\u0432\u0435\u0440\u0430."));
+      ws.on("close", () => fail("Home Assistant \u0437\u0430\u043A\u0440\u044B\u043B WebSocket \u0434\u043E \u043E\u0442\u0432\u0435\u0442\u0430 \u0441\u0435\u0440\u0432\u0438\u0441\u0430."));
+    });
+  }
   // Возвращает {type,bytes}; не-изображение → null (детектор не паникует).
   async requestRaw(path, { timeout = 1e4 } = {}) {
     if (!this.enabled) throw new Error("Home Assistant \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D. \u041D\u0430 \u043C\u0435\u0441\u0442\u0435 \u0434\u043E\u0431\u0430\u0432\u0438\u043C HA_URL \u0438 HA_TOKEN \u0432 .env \u043B\u043E\u043A\u0430\u043B\u044C\u043D\u043E\u0433\u043E \u0441\u0435\u0440\u0432\u0435\u0440\u0430.");
@@ -2656,8 +2716,8 @@ var HomeAssistant = class {
   async weatherForecast(entityId) {
     if (!/^weather\.[a-z0-9_]+$/.test(entityId)) throw new Error("\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u0430\u044F \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u044C \u043F\u043E\u0433\u043E\u0434\u044B.");
     if (!this.enabled) throw new Error("Home Assistant \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D. \u041F\u0440\u043E\u0433\u043D\u043E\u0437 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D.");
-    const result = await this.request("/api/services/weather/get_forecasts", { entity_id: [entityId] });
-    const raw = !Array.isArray(result) && (result?.[entityId] || result?.service_response?.[entityId])?.forecast;
+    const answer = await this.callService("weather", "get_forecasts", { type: "daily", entity_id: [entityId] }, 15e3);
+    const raw = answer?.[entityId]?.forecast ?? answer?.service_response?.[entityId]?.forecast;
     if (!Array.isArray(raw)) throw new Error("Home Assistant \u043D\u0435 \u0432\u0435\u0440\u043D\u0443\u043B \u043F\u0440\u043E\u0433\u043D\u043E\u0437 \u043F\u043E\u0433\u043E\u0434\u044B.");
     return raw.filter((p) => p && typeof p.datetime === "string" && Number.isFinite(Date.parse(p.datetime)) && Number.isFinite(Number(p.temperature))).sort((a, b) => Date.parse(a.datetime) - Date.parse(b.datetime)).slice(0, 8).map((p) => {
       const item = { datetime: p.datetime, condition: p.condition, temperature: Number(p.temperature) };
@@ -2890,7 +2950,7 @@ var HomeAssistant = class {
 };
 
 // server/stream.js
-import WebSocket from "ws";
+import WebSocket2 from "ws";
 import { randomBytes } from "node:crypto";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -2925,7 +2985,7 @@ var CameraStreams = class {
     endpoint.pathname = endpoint.hostname === "supervisor" ? "/core/websocket" : endpoint.pathname.replace(/\/$/, "") + "/api/websocket";
     return new Promise((resolve2, reject) => {
       let settled = false;
-      const ws = new WebSocket(endpoint, { headers: { Authorization: `Bearer ${this.ha.token}` }, maxPayload: 1024 * 1024, followRedirects: false });
+      const ws = new WebSocket2(endpoint, { headers: { Authorization: `Bearer ${this.ha.token}` }, maxPayload: 1024 * 1024, followRedirects: false });
       const finish = (error, url) => {
         if (settled) return;
         settled = true;
@@ -3038,7 +3098,7 @@ var CameraStreams = class {
 };
 
 // server/rtc.js
-import WebSocket2 from "ws";
+import WebSocket3 from "ws";
 import { randomBytes as randomBytes2 } from "node:crypto";
 function candidate(value) {
   if (!value || typeof value.candidate !== "string" || value.candidate.length > 4096) throw new Error("\u041D\u0435\u0432\u0435\u0440\u043D\u044B\u0439 ICE-\u043A\u0430\u043D\u0434\u0438\u0434\u0430\u0442.");
@@ -3088,7 +3148,7 @@ var CameraRTC = class {
       pending.reject(new Error("\u041F\u0440\u043E\u0441\u043C\u043E\u0442\u0440 \u0437\u0430\u0432\u0435\u0440\u0448\u0451\u043D."));
     }
     s.pending.clear();
-    if (s.ws.readyState === WebSocket2.OPEN) s.ws.close();
+    if (s.ws.readyState === WebSocket3.OPEN) s.ws.close();
     else s.ws.terminate();
   }
   get(key, owner, p) {
@@ -3110,7 +3170,7 @@ var CameraRTC = class {
     s.events.push({ seq: ++s.seq, ...event });
   }
   call(s, type, fields = {}) {
-    if (s.closed || s.ws.readyState !== WebSocket2.OPEN) return Promise.reject(new Error("\u041D\u0435\u0442 \u0441\u0432\u044F\u0437\u0438 \u0441 \u0432\u0438\u0434\u0435\u043E API HA."));
+    if (s.closed || s.ws.readyState !== WebSocket3.OPEN) return Promise.reject(new Error("\u041D\u0435\u0442 \u0441\u0432\u044F\u0437\u0438 \u0441 \u0432\u0438\u0434\u0435\u043E API HA."));
     const id = ++s.counter;
     return new Promise((resolve2, reject) => {
       const timer = setTimeout(() => {
@@ -3129,7 +3189,7 @@ var CameraRTC = class {
     endpoint.protocol = endpoint.protocol === "https:" ? "wss:" : "ws:";
     endpoint.pathname = endpoint.hostname === "supervisor" ? "/core/websocket" : endpoint.pathname.replace(/\/$/, "") + "/api/websocket";
     const key = randomBytes2(24).toString("hex");
-    const ws = new WebSocket2(endpoint, { headers: { Authorization: `Bearer ${this.ha.token}` }, maxPayload: 256 * 1024, followRedirects: false });
+    const ws = new WebSocket3(endpoint, { headers: { Authorization: `Bearer ${this.ha.token}` }, maxPayload: 256 * 1024, followRedirects: false });
     const s = { key, owner, id, entity, ws, expires: Date.now() + 9e4, counter: 0, pending: /* @__PURE__ */ new Map(), events: [], seq: 0, closed: false, offered: false, subscription: null, sessionId: null, candidates: 0 };
     this.sessions.set(key, s);
     try {

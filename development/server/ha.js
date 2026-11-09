@@ -1,6 +1,7 @@
 import {bindingDefinitions} from '../src/preferences.js';
 import {resolveAction} from '../src/catalog.js';
 import {stationAvailable,stationSupports} from '../src/station.js';
+import WebSocket from 'ws';
 
 export class HomeAssistant {
  constructor({url='',token='',preview=false}={}){
@@ -26,6 +27,34 @@ export class HomeAssistant {
   try{return await response.json()}catch{throw new Error('Некорректный ответ Home Assistant.')}
  }
   // Raw-ответ (кадр камеры): та же авторизация, но без JSON-парсинга.
+ // Одноразовый WebSocket-вызов сервиса с ответом (ws — зависимость аддона).
+ callService(domain,service,data,timeout=15000){
+  if(!this.enabled)return Promise.reject(new Error('Home Assistant не настроен.'));
+  return new Promise((resolve,reject)=>{
+   const wsURL=this.url.replace(/^http/,'ws')+'/api/websocket';
+   let ws,done=false;
+   const fail=message=>{if(done)return;done=true;try{ws?.close()}catch{}reject(new Error(message))};
+   const timer=setTimeout(()=>fail('Home Assistant не ответил на вызов сервиса вовремя.'),timeout);
+   const send=obj=>ws.send(JSON.stringify(obj));
+   try{ws=new WebSocket(wsURL)}catch(error){clearTimeout(timer);return fail('Не удалось соединиться с Home Assistant WebSocket.')}
+   ws.on('message',raw=>{
+    let msg;try{msg=JSON.parse(raw)}catch{return}
+    if(msg.type==='auth_required'){send({type:'auth',access_token:this.token});return}
+    if(msg.type==='auth_invalid'){clearTimeout(timer);return fail('Home Assistant отклонил авторизацию. Проверь локальный токен.')}
+    if(msg.type==='auth_ok'){send({id:1,type:'call_service',domain,service,target:{},return_response:true,...(data?{service_data:data}:{})});return}
+    if(msg.type==='result'){
+     clearTimeout(timer);
+     if(done)return;done=true;
+     try{ws.close()}catch{}
+     if(msg.success)return resolve(msg.result?.response);
+     const detail=msg.error?.message||'Вызов сервиса не удался.';
+     return reject(new Error(`Home Assistant: ${detail}`));
+    }
+   });
+   ws.on('error',()=>fail('Нет связи с Home Assistant по WebSocket. Проверь сеть и адрес сервера.'));
+   ws.on('close',()=>fail('Home Assistant закрыл WebSocket до ответа сервиса.'));
+  });
+ }
   // Возвращает {type,bytes}; не-изображение → null (детектор не паникует).
   async requestRaw(path,{timeout=10000}={}){
    if(!this.enabled)throw new Error('Home Assistant не настроен. На месте добавим HA_URL и HA_TOKEN в .env локального сервера.');
@@ -55,10 +84,11 @@ export class HomeAssistant {
  async weatherForecast(entityId){
   if(!/^weather\.[a-z0-9_]+$/.test(entityId))throw new Error('Некорректная сущность погоды.');
   if(!this.enabled)throw new Error('Home Assistant не настроен. Прогноз недоступен.');
-  // HA 2026.10: прогноз отдаёт сервис weather.get_forecasts (service response),
-  // атрибут forecast в состоянии в новых версиях пуст.
-  const result=await this.request('/api/services/weather/get_forecasts',{entity_id:[entityId]});
-  const raw=!Array.isArray(result)&&(result?.[entityId]||result?.service_response?.[entityId])?.forecast;
+  // HA 2026.10: прогноз отдаёт сервис weather.get_forecasts. REST-вызов с
+  // ?return_response в этой версии не работает — используем WebSocket
+  // call_service с return_response:true и явным type:'daily'.
+  const answer=await this.callService('weather','get_forecasts',{type:'daily',entity_id:[entityId]},15000);
+  const raw=answer?.[entityId]?.forecast??answer?.service_response?.[entityId]?.forecast;
   if(!Array.isArray(raw))throw new Error('Home Assistant не вернул прогноз погоды.');
   return raw.filter(p=>p&&typeof p.datetime==='string'&&Number.isFinite(Date.parse(p.datetime))&&Number.isFinite(Number(p.temperature)))
    .sort((a,b)=>Date.parse(a.datetime)-Date.parse(b.datetime)).slice(0,8)

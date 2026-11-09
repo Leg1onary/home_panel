@@ -1,0 +1,41 @@
+TREE: [
+ {
+  "tag": "BUTTON#",
+  "w": 0,
+  "h": 0,
+  "display": "grid",
+  "width": "44px",
+  "height": "44px",
+  "minW": "0px",
+  "maxW": "none",
+  "fontSize": "16px",
+  "gridTemplate": "none",
+  "cls": "icon-button close"
+ },
+ {
+  "tag": "svg#",
+  "w": 0,
+  "h": 0,
+  "display": "block",
+  "width": "22px",
+  "height": "22px",
+  "minW": "0px",
+  "maxW": "none",
+  "fontSize": "16px",
+  "gridTemplate": "none",
+  "cls": "lucide lucide-x"
+ },
+ {
+  "tag": "path#",
+  "w": 0,
+  "h": 0,
+  "display": "inline",
+  "width": "auto",
+  "height": "auto",
+  "minW": "0px",
+  "maxW": "none",
+  "fontSize": "16px",
+  "gridTemplate": "none",
+  "cls": ""
+ }
+]

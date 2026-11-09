@@ -1,0 +1,15 @@
+1 PLAY: clicked
+1 SHEET: {"overlayHidden":true,"display":"block","len":398,"text":""}
+1 CLOSE: clicked undefined {"overlayHidden":true,"display":"block","len":398,"text":""}
+2 YARD: clicked
+2 SHEET: {"overlayHidden":false,"display":"block","len":2877,"text":"ДворДвор · Tapo C320WSПрямой эфир по запросу. Закрой окно, чтобы остановить просмотр.Снача"}
+2 CLOSE: clicked undefined {"overlayHidden":true,"display":"block","len":2877,"text":"ДворДвор · Tapo C320WSПрямой эфир по запросу. Закрой окно, чтобы остановить просмотр.Снача"}
+3 WEATHER: clicked
+3 SHEET: {"overlayHidden":false,"display":"block","len":1060,"text":"Прогноз погодыПрогноз недоступен: Home Assistant: запрос отклонён (400).Обновить"}
+3 CLOSE: clicked undefined {"overlayHidden":true,"display":"block","len":1060,"text":"Прогноз погодыПрогноз недоступен: Home Assistant: запрос отклонён (400).Обновить"}
+4 ALLROOMS: clicked
+4 VIEW: view
+4 CLOSE: clicked undefined {"overlayHidden":true,"display":"block","len":1060,"text":"Прогноз погодыПрогноз недоступен: Home Assistant: запрос отклонён (400).Обновить"}
+5 LIGHT TAB: clicked
+5 NAV: [{"v":"home","t":"Главная"},{"v":"rooms","t":"Свет"},{"v":"watch","t":"Датчики"},{"v":"engineering","t":"Системы"},{"v":"statistics","t":"СтатистикаИс"}]
+ERRORS: ["CONSOLE: Failed to load resource: the server responded with a status of 404 (Not Found)","CONSOLE: Failed to load resource: the server responded with a status of 400 (Bad Request)"]
