@@ -153,22 +153,43 @@ function home(){
  const hero=`<div class="hero-overlay">
  <div class="hero-top"><div class="hero-clock" aria-label="Местное время дома"><div id="hero-clock">${clock()}</div><span id="hero-date">${date()}</span>${dayProgress()}</div>
  <div class="hero-top-right"><span id="hero-status">${heroStatusChip()}</span><button id="reset-model" title="Вернуть исходный ракурс" aria-label="Сбросить ракурс">${I('rotate-ccw')}</button></div></div>
- <div class="hero-facts" id="home-status">${weatherCard()}${homeStatus()}</div></div>`;
+ <div class="hero-facts" id="home-status">${weatherCard()}${homeStatus()}</div>
+ <div id="home-room-card" class="home-room-card" hidden>${miniRoomCard()}</div></div>`;
  return `<div class="view dashboard-view view-enter">
  <h1 class="visually-hidden">Мой дом</h1>
- <div class="dashboard-layout"><div class="house-column">${sceneStage(hero)}</div>
- <aside class="home-context">
- <div class="context-heading quick-heading"><h2>Под рукой</h2><span id="home-light-overview">${lightOverviewBadge()}</span></div>
- <div id="home-quick">${homeQuick()}</div>
+ <div class="home-stage-wrap">${sceneStage(hero)}
+ <aside class="home-rail" aria-label="Сводка дома">
  <div id="home-green">${greenChip()}</div>
- <div id="home-alarm" hidden></div>
- <div class="context-heading rooms-heading"><h2>Комнаты</h2><button class="text-button" data-action="favorites" aria-label="Настроить избранные комнаты">${I('sliders-horizontal')}</button></div>
- <div class="favorite-rooms" id="home-favorites">${favoriteRooms()}</div>
- <button class="all-zones-link text-button" data-action="allrooms">Все комнаты и зоны ${I('arrow-up-right')}</button>
  <div id="home-digest" hidden></div>
+ <div id="home-alarm" hidden></div>
+ <div id="home-light-overview">${lightOverviewBadge()}</div>
+ <button class="text-button rail-allrooms" data-action="allrooms">Все комнаты ${I('arrow-up-right')}</button>
  ${!state.preview&&!state.houseProfileConfirmed&&state.devices.some(d=>houseBindings[d.id]===state.bindings[d.id]?.entityId)?'<div class="profile-invite"><div><strong>Профиль ждёт проверки</strong><p>Подтверди привязки перед управлением домом.</p></div><button class="secondary" data-action="house-review">Проверить профиль</button></div>':''}
- </aside></div></div>`;
+ </aside>
+ <div id="home-quick" class="home-quick-rail">${homeQuick()}</div>
+ </div></div>`;
 }
+// Мини-карточка комнаты: тап по плану показывает климат и линии света рядом со сценой.
+let activeRoomCard=null,cardGuard=0;
+function miniRoomCard(){
+ if(!activeRoomCard||state.view!=='home')return '';
+ const r=getRoom(activeRoomCard);if(!r)return '';
+ const cs=channelsFor(r);
+ return `<div role="dialog" aria-label="Карточка комнаты ${esc(r.name)}">
+ <div class="mini-head"><span class="mini-icon">${I(r.icon)}</span><strong>${esc(r.name)}</strong><span class="mini-climate">${compactRoomClimate(r.id)}</span><button class="icon-button" data-action="close-room-card" aria-label="Закрыть карточку комнаты">${I('x')}</button></div>
+ ${cs.map(c=>`<div class="control-row mini-row"><div><h3>${esc(c.name)}</h3><p>${esc(c.planned?c.note||'Планируется':noConnection()?'Нет связи':isLive()&&!canControl(c.id)?'Нет данных · канал не проверен или недоступен':c.note||'Отдельная линия света')}</p></div>${toggle(c.id,c.name,c.on,c.planned,`data-device="${c.id}" data-mini="1"`)}</div>${phaseLine(c.id)}`).join('')}
+ ${cs.length?'':`<p class="mini-empty">Линий света в этой комнате нет.</p>`}
+ <button class="secondary mini-open" data-room="${r.id}">Открыть комнату ${I('arrow-up-right')}</button></div>`;
+}
+function paintRoomCard(){
+ const node=$('#home-room-card');if(!node)return;
+ updateRegion('#home-room-card',miniRoomCard());node.hidden=!activeRoomCard;icons();
+}
+function toggleRoomCard(id){
+ activeRoomCard=activeRoomCard===id?null:id;cardGuard=Date.now();paintRoomCard();
+}
+// Карточка только для комнат с линиями света; пустые зоны открывают room view как раньше.
+const activeCardRoom=id=>{if(id==='yard')return false;const r=getRoom(id);return Boolean(r&&channelsFor(r).length)};
 function roomClimate(id){
  return state.devices.filter(d=>d.room===id&&d.status==='installed'&&['temperature','humidity'].includes(d.type))
   .map(d=>`<span class="climate-pill">${I(deviceTypes[d.type].icon)}${esc(deviceReading(d))}</span>`).join('');
@@ -572,7 +593,7 @@ async function cameraFrame(id,button){
  finally{if(rev===cameraRevision)button.disabled=false}
 }
 function render(animate=true){
- const revision=++viewRevision;modelAPI?.disposeModel();
+ const revision=++viewRevision;modelAPI?.disposeModel();if(state.view!=='home')activeRoomCard=null;
  $('#main').innerHTML=state.view==='home'?home():state.view==='room'?roomPage():state.view==='model'?model():state.view==='rooms'?lights():state.view==='engineering'?engineering():state.view==='statistics'?statisticsView():watch();
  document.documentElement.dataset.view=state.view;
  if(!animate&&$('#main .view'))$('#main .view').style.animation='none';
@@ -589,7 +610,9 @@ function render(animate=true){
    if(revision!==viewRevision||!$('#canvas'))return;
    modelAPI=api;$('#model-loading').hidden=true;
    api.mountModel($('#canvas'),rooms,state,id=>{
-    if(state.view==='model'){state.selected=id;updateDetail();api.updateModel(rooms,state)}else openRoom(id);
+    if(state.view==='model'){state.selected=id;updateDetail();api.updateModel(rooms,state)}
+     else if(state.view==='home'&&activeCardRoom(id))toggleRoomCard(id);
+     else openRoom(id);
    });
   }).catch(error=>{
    if(revision!==viewRevision||!$('#model-loading'))return;
@@ -623,7 +646,7 @@ function refresh(){
   const weatherEntity=Object.values(state.entityStates||{}).find(e=>e.entity_id?.startsWith('weather.')),weatherTemp=weatherEntity?.attributes?.temperature;
   modelAPI?.setModelWeather(weatherTemp<0&&weatherEntity?.state==='snowy'?'snow':weatherTemp<0&&weatherEntity?.state==='rainy'?'rain':null);
   if(state.view==='home'){
-   updateRegion('#home-favorites',favoriteRooms());updateRegion('#home-status',weatherCard()+homeStatus());updateRegion('#home-quick',homeQuick());updateRegion('#home-green',greenChip());updateRegion('#home-light-overview',lightOverviewBadge());updateRegion('#hero-status',heroStatusChip());
+   updateRegion('#home-status',weatherCard()+homeStatus());updateRegion('#home-quick',homeQuick());updateRegion('#home-green',greenChip());updateRegion('#home-light-overview',lightOverviewBadge());updateRegion('#hero-status',heroStatusChip());paintRoomCard();
     const digest=$('#home-digest');if(digest){updateRegion('#home-digest',digestCard());digest.hidden=!digest.querySelector('.digest-card')}
     const alarm=$('#home-alarm');if(alarm){updateRegion('#home-alarm',alarmMarkup());alarm.hidden=!alarm.querySelector('.alarm-card')}
   }else if(state.view==='room'&&$('#room-scenarios'))updateRegion('#room-scenarios',scenarioChipsRow());
@@ -1091,7 +1114,11 @@ function simpleSheet(content){settingsOpen=false;$('#sheet-content').dataset.sta
 document.addEventListener('click',async e=>{
  const li=e.target.closest('.history-timeline li[data-history-event-id]');
  if(li){const f=historyState.focus,id=li.dataset.historyEventId,at=Number(li.dataset.historyEventAt);historyState.focus=f&&f.id===id&&f.at===at?null:{id,at};paintStatistics();return}
- const b=e.target.closest('button');if(!b)return;
+ const b=e.target.closest('button');if(!b){
+  // Клик мимо мини-карточки закрывает её; тап по сцене мог только что открыть/сменить карточку.
+  if(activeRoomCard&&state.view==='home'&&!e.target.closest('#home-room-card')&&(!e.target.closest('#canvas')||Date.now()-cardGuard>80)){activeRoomCard=null;paintRoomCard()}
+  return;
+ }
  if(b.dataset.view)return navigate(b.dataset.view);
  if(b.dataset.historyHours){historyState.hours=Number(b.dataset.historyHours);historyState.data=null;loadStatistics(true);return}
  if(b.dataset.historyMetric){historyState.metric=b.dataset.historyMetric;paintStatistics();return}
@@ -1227,6 +1254,7 @@ document.addEventListener('click',async e=>{
  if(a==='save-device')return saveDevice();
  if(a==='model')return navigate('model');
  if(a==='allrooms')return navigate('rooms');
+ if(a==='close-room-card'){activeRoomCard=null;paintRoomCard();return}
  if(a==='favorites')return openSettings('favorites');
  if(a==='cancel')return closeModal();
  if(a==='standby')return enterIdle();
@@ -1350,6 +1378,7 @@ document.addEventListener('keydown',e=>{
   }
  }
 });
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&activeRoomCard&&state.view==='home'&&$('#overlay').hidden){activeRoomCard=null;paintRoomCard()}});
 let historyResizeTimer;
 window.addEventListener('resize',()=>{clearTimeout(historyResizeTimer);if(state.view==='statistics')historyResizeTimer=setTimeout(paintStatistics,150)});
 $('#master').onclick=master;$('#info').onclick=()=>openSettings();

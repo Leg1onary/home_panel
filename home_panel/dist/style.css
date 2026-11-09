@@ -1329,3 +1329,31 @@ input[type=range]:disabled::-moz-range-thumb{background:var(--faint);border-colo
 .scenario-step-order{display:flex;gap:4px}
 
 .model-loading strong{display:block;font-size:.95rem;margin-bottom:.35rem}.model-error-detail{display:block;color:var(--muted);font-size:.75rem;max-width:260px;margin:0 auto .5rem;word-break:break-word}
+
+/* ─── Aurora 2k27 · wave 4 «Живой дом»: сцена во всю ширину, рейлы поверх, мини-карточка ─── */
+.home-stage-wrap{position:relative;min-width:0}
+.home-stage-wrap .spatial-stage{height:clamp(520px,calc(100dvh - 200px),900px)}
+.home-rail{position:absolute;top:110px;right:var(--space-5);z-index:4;display:flex;flex-direction:column;align-items:flex-end;gap:var(--space-2);max-width:min(300px,44vw);pointer-events:none}
+.home-rail>*{pointer-events:auto}
+.home-rail .green-chip{margin:0}
+.home-rail .digest-card{width:min(300px,44vw);margin-top:0}
+.home-rail .profile-invite{width:min(300px,44vw);margin-top:0;padding:var(--space-3)}
+.rail-allrooms{min-height:36px;font-size:var(--text-xs);color:var(--muted)}
+.home-quick-rail{position:absolute;left:var(--space-5);bottom:calc(var(--space-5) + 100px);z-index:4}
+.home-quick-rail .quick-device{width:52px;min-height:52px;padding:0;justify-content:center;border-radius:var(--radius-md)}
+.home-quick-rail .quick-device>span:not(.quick-device-icon),.home-quick-rail .media-details,.home-quick-rail .station-skip{display:none}
+.home-quick-rail .quick-device .quick-device-icon{margin:0}
+.home-room-card{position:absolute;left:calc(var(--space-5) + 66px);bottom:calc(var(--space-5) + 100px);z-index:5;width:min(330px,72vw);pointer-events:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:0 18px 48px rgba(0,0,0,.35);padding:var(--space-4);animation:room-card-in 180ms ease}
+@keyframes room-card-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.home-room-card .mini-head{display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2)}
+.home-room-card .mini-head strong{font-size:var(--text-base);letter-spacing:-.01em;flex:1;min-width:0}
+.home-room-card .mini-icon{display:inline-flex;color:var(--muted)}
+.home-room-card .mini-icon svg{width:18px;height:18px}
+.home-room-card .mini-climate{display:flex;flex-wrap:wrap;gap:var(--space-1)}
+.home-room-card .mini-climate:empty{display:none}
+.home-room-card .mini-row{padding:var(--space-2) 0;border-top:1px solid var(--border)}
+.home-room-card .mini-empty{font-size:var(--text-xs);color:var(--muted);padding:var(--space-2) 0}
+.home-room-card .mini-open{margin-top:var(--space-3);width:100%}
+@media(max-width:1200px){.home-rail{top:96px;max-width:min(260px,40vw)}.home-rail .digest-card{width:min(260px,40vw)}}
+@media(max-width:900px){.home-rail{position:static;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:flex-end;max-width:none;margin-top:var(--space-3)}.home-rail .digest-card,.home-rail .profile-invite{width:100%}.home-stage-wrap .spatial-stage{height:min(70vh,560px)}}
+
