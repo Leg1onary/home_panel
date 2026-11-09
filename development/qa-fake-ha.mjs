@@ -7,7 +7,10 @@ const states=[
  e('sensor.schetchik_no11080509_consumption','12.4',now-1800000),
  e('sensor.schetchik_no11080509_readings_date','2026-11-08',now),
  e('sensor.schetchik_no11080509_meter_number','11080509',now),
- e('sensor.schetchik_no11080509_signal_level','-60',now)
+ e('sensor.schetchik_no11080509_signal_level','-60',now),
+ // Погодная сущность и батарейка дачика протечки (волна 2: погодный чип + дайджест).
+ e('weather.home','cloudy',now,{temperature:7.3,humidity:60}),
+ e('sensor.vannaia_datchik_protechki_vody_uroven_zariada','15',now,{unit_of_measurement:'%',friendly_name:'Батарейка датчика протечки'})
 ];
 const history=[[
  {entity_id:'sensor.schetchik_no11080509_reading',state:'29554.4',last_changed:new Date(now-30*3600000).toISOString()},
@@ -24,3 +27,7 @@ createServer((req,res)=>{
   res.statusCode=200;res.end(JSON.stringify({}));
  });
 }).listen(9999,'127.0.0.1',()=>console.log('fake HA :9999'));
+// Примечание (волна 2): /api/panel/ha/weather-forecast возвращает 400, потому что
+// fake HA не эмулирует HA WebSocket (weather.get_forecasts). Щиток прогноза при
+// этом открывается и честно показывает «Прогноз недоступен» — путь forecastSheet()
+// не менялся в волне 2.

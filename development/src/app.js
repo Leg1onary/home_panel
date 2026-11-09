@@ -29,6 +29,8 @@ import {shouldAmbient,AMBIENT_AFTER_IDLE} from './ambient.js';
 import {luxValue,autoTheme,AUTO_THEME_UP,AUTO_THEME_DOWN} from './auto-theme.js';
 import {render as preactRender,h as ph} from './preact/kit.js';
 import {EnergyWidget} from './preact/energy-widget.js';
+import {DigestWidget,digestBus} from './preact/digest-widget.js';
+import {WeatherChip,weatherBus,WEATHER_ICON} from './preact/weather-widget.js';
 import {showYardCard,YARD_REFRESH_MS} from './yard-card.js';
 
 import {esc,disabled,timeOf,clock,date,scheduleMinute,PANEL_TIMEZONE} from './dom.js';
@@ -192,6 +194,7 @@ function dayProgress(){
 // Слот живёт внутри #home-status, чтобы частые перерисовки погоды/фактов
 // не сбрасывали загруженный кадр камеры.
 const YARD_SLOT='<span id="yard-slot" class="yard-slot"></span>';
+const WEATHER_SLOT='<span id="weather-slot"></span>';
 const YARD_POLL_MS=3000;
 let yardData=null,yardPoll={at:0,busy:false};
 async function pollYardMotion(){
@@ -214,6 +217,27 @@ function updateEnergyRegion(){
   energy.dataset.preact='1';
  }
  energy.hidden=false; // Preact сам решает: без данных внутри пусто.
+}
+// Дайджест: Preact-компонента (src/preact/digest-widget.js) управляет содержимым
+// #home-digest; app.js только монтирует узел и рассылает deps по digestBus в refresh().
+function updateDigestRegion(){
+ const digest=$('#home-digest');
+ if(!digest||!isLive())return;
+ if(!digest.dataset.preact){
+  preactRender(ph(DigestWidget,{}),digest);
+  digest.dataset.preact='1';
+ }
+ digest.hidden=false; // пустой рендер прячет правило CSS #home-digest:empty.
+}
+// Погодный чип: Preact-компонента (src/preact/weather-widget.js) в слоте hero-facts.
+// Слот пересоздаётся при перерисовке #home-status — dataset.preact теряется, монтаж повторяется.
+function updateWeatherRegion(){
+ const slot=$('#weather-slot');
+ if(!slot||!isLive())return;
+ if(!slot.dataset.preact){
+  preactRender(ph(WeatherChip,{}),slot);
+  slot.dataset.preact='1';
+ }
 }
 function yardMarkup(){
  if(!isLive()||!yardData||yardData.available===false)return '';
@@ -265,7 +289,7 @@ function home(){
  const hero=`<div class="hero-overlay">
  <div class="hero-top"><div class="hero-clock" aria-label="Местное время дома"><div id="hero-clock">${clock()}</div><span id="hero-date">${date()}</span><span id="hero-greeting" class="hero-greeting" hidden></span>${dayProgress()}</div>
  <div class="hero-top-right">${isLive()?voiceButton():''}<span id="hero-status">${heroStatusChip()}</span><button id="reset-model" title="Вернуть исходный ракурс" aria-label="Сбросить ракурс">${I('rotate-ccw')}</button></div></div>
- <div class="hero-facts" id="home-status">${YARD_SLOT}${weatherCard()}${homeStatus()}</div></div>`;
+ <div class="hero-facts" id="home-status">${YARD_SLOT}${WEATHER_SLOT}${homeStatus()}</div></div>`;
  return `<div class="view dashboard-view view-enter">
  <h1 class="visually-hidden">Мой дом</h1>
  <div class="home-stage-wrap">${sceneStage(hero)}
@@ -324,20 +348,6 @@ function compactRoomClimate(id){
 function homeLightSummary(){
  const channels=rooms.flatMap(r=>r.channels.filter(c=>!c.planned));
  return homeSummary({live:isLive(),online:!noConnection(),total:channels.length,unknown:channels.filter(c=>!canControl(c.id)).length,on:countLights()});
-}
-const WEATHER_LABEL={clear:'Ясно',sunny:'Солнечно',cloudy:'Облачно',partlycloudy:'Переменная облачность',rainy:'Дождь',snowy:'Снег',fog:'Туман',windy:'Ветрено',lightning:'Гроза',hail:'Град',drizzle:'Морось',exceptional:'Пасмурно'};
-const WEATHER_ICON={clear:'sun',sunny:'sun',partlycloudy:'cloud-sun',cloudy:'cloudy',rainy:'cloud-rain',snowy:'cloud-snow',fog:'cloud-fog',windy:'wind',lightning:'cloud-lightning',hail:'cloud-hail',drizzle:'cloud-drizzle',exceptional:'cloudy'};
-const WEATHER_DATA={clear:'sunny',sunny:'sunny',partlycloudy:'cloudy',cloudy:'cloudy',rainy:'rain',snowy:'snow',fog:'fog',windy:'cloudy',lightning:'rain',hail:'rain',drizzle:'rain',exceptional:'cloudy'};
-function weatherCard(){
- if(!isLive())return '';
- const e=Object.values(state.entityStates||{}).find(e=>e.entity_id?.startsWith('weather.'));
- if(!e||['unknown','unavailable',''].includes(e.state))return '';
- const label=WEATHER_LABEL[e.state];
- const t=e.attributes?.temperature,h=e.attributes?.humidity;
- if(!label||!Number.isFinite(t))return '';
- const icon=WEATHER_ICON[e.state]||'cloudy';
- const temp=t.toFixed(1).replace('.',','),aria=`Погода: ${label}, температура ${temp} °C${Number.isFinite(h)?', влажность '+Math.round(h)+' %':''}`;
- return `<button class="home-fact weather-chip" data-weather="${WEATHER_DATA[e.state]||'cloudy'}" data-action="weather-forecast" role="img" aria-label="${esc(aria)}. Открыть прогноз" title="Открыть прогноз погоды"><span>${I(icon)}Погода</span><strong>${esc(label)} · ${temp} °C${Number.isFinite(h)?' · '+Math.round(h)+' %':''}</strong></button>`;
 }
 let forecastCache=null,forecastEntity='';
 const forecastWeek=t=>new Intl.DateTimeFormat('ru-RU',{weekday:'short',day:'numeric',month:'short',timeZone:PANEL_TIMEZONE}).format(new Date(t));
@@ -407,13 +417,8 @@ function houseAlerts(){
   .sort((a,b)=>Number(b.alarm)-Number(a.alarm))
   .map(d=>`<button class="house-alert ${d.alarm?'is-alarm':'is-unavailable'}" data-action="leak" data-leak-id="${esc(d.id)}" ${d.alarm?'role="alert"':''}>${I(d.alarm?'triangle-alert':'wifi-off')}<span><strong>${esc(d.alarm?d.name+'!':'Нет данных · '+d.name)}</strong><small>${d.alarm?'Проверь воду и источник протечки':'Датчик недоступен или его состояние неизвестно'}</small></span>${I('chevron-right')}</button>`).join('');
 }
-function digestCard(){
- const items=digestItems(digestArgs());
- if(!items.length)return '';
- return `<div class="digest-card ${items[0].level==='danger'?'is-danger':''}"><h3>${I('info')}Дайджест дома</h3><ul>${items.map(it=>it.action
-  ?`<li class="digest-item digest-${it.level}"><button class="digest-action" ${it.action.open?`data-digest-open="${it.action.open}"`:`data-room="${esc(it.action.room)}"`} aria-label="${esc(it.text)} · ${esc(it.action.label)}">${I(it.icon)}<span>${esc(it.text)}</span><small>${esc(it.action.label)}</small></button></li>`
-  :`<li class="digest-item digest-${it.level}">${I(it.icon)}<span>${esc(it.text)}</span></li>`).join('')}</ul></div>`;
-}
+// Волна 2: разметка digestCard() перенесена в src/preact/digest-widget.js
+// (digestMarkup); данные рассылаются в refresh() через digestBus.notify(digestArgs()).
 // Волна 3 «Умное поведение»: адаптивные акценты главной. Один источник аргументов
 // для дайджеста — карточка в рейле и ночная сводка в hero показывают одно и то же.
 function digestArgs(){
@@ -780,8 +785,14 @@ function refresh(){
   const weatherEntity=Object.values(state.entityStates||{}).find(e=>e.entity_id?.startsWith('weather.')),weatherTemp=weatherEntity?.attributes?.temperature;
   modelAPI?.setModelWeather(weatherTemp<0&&weatherEntity?.state==='snowy'?'snow':weatherTemp<0&&weatherEntity?.state==='rainy'?'rain':null);
   if(state.view==='home'){
-   updateRegion('#home-status',YARD_SLOT+weatherCard()+homeStatus());paintYardChip();pollYardMotion();updateRegion('#home-quick',homeQuick());updateRegion('#home-light-overview',lightOverviewBadge());updateRegion('#hero-status',heroStatusChip());voiceSync();paintRoomCard();
-    const digest=$('#home-digest');if(digest){updateRegion('#home-digest',digestCard());digest.hidden=!digest.querySelector('.digest-card')}
+   updateRegion('#home-status',YARD_SLOT+WEATHER_SLOT+homeStatus());paintYardChip();pollYardMotion();updateRegion('#home-quick',homeQuick());updateRegion('#home-light-overview',lightOverviewBadge());updateRegion('#hero-status',heroStatusChip());voiceSync();paintRoomCard();
+    updateWeatherRegion();
+    // Погодный чип на Preact: notify только в live-режиме (в демо чипа нет — deps null).
+    if(isLive())weatherBus.notify({entityStates:state.entityStates||{},now:Date.now()});
+    updateDigestRegion();
+    // Пустой liveOnline (демопревью без HA или обрыв связи) → notify не шлём:
+    // hero-статус уже сообщает о потере связи, дайджест остаётся пустым.
+    if(state.liveOnline)digestBus.notify(digestArgs()); // пустые items → узел пуст → CSS #home-digest:empty прячет.
     const alarm=$('#home-alarm');if(alarm){updateRegion('#home-alarm',alarmMarkup());alarm.hidden=!alarm.querySelector('.alarm-card')}
     const energy=$('#home-energy');if(energy)updateEnergyRegion();
     updateHeroTime();
