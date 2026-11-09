@@ -25,6 +25,16 @@ const project=([x,y])=>[(x-390)/78,(y-470)/78];
 const sceneEnv={hour:null,weather:null};
 const panelHour=()=>+new Intl.DateTimeFormat('en-GB',{hour:'numeric',hourCycle:'h23',timeZone:PANEL_TIMEZONE}).format(Date.now());
 const centroid=pts=>pts.reduce((a,p)=>[a[0]+p[0]/pts.length,a[1]+p[1]/pts.length],[0,0]);
+// Terrace motion state lives at module scope: updateModel() runs outside mountModel.
+let lastMotionPulse=0,terraceActive=false;
+function terraceMotion(state){
+ if(state.mode!=='live'){
+  const d=state.devices?.find(d=>d.id==='terrace-motion'&&d.status==='installed');
+  return !state.demoOffline&&binaryValue('motion',d?.demoValue)===true;
+ }
+ const b=state.bindings?.['terrace-motion'],d=state.devices?.find(d=>d.id==='terrace-motion'&&d.status==='installed');
+ return Boolean(d&&b?.verified&&motionObservation(state.entityStates?.[b.entityId]).kind==='active');
+}
 // Day/evening/night look of the whole scene. Recomputed on hour change only.
 function dayPalette(h){return h>=22||h<8?{ambient:['#33406e',.4],hemi:['#2a3558','#161d33',.55],sun:['#5a6aa8',.55]}:h>=17?{ambient:['#d9b98a',.85],hemi:['#eccfa0','#3a2f3a',1.4],sun:['#ff9f5e',1.7]}:{ambient:['#c5cce8',1.1],hemi:['#d7dff4','#353349',2],sun:['#ffe3b9',3]}}
 export function setModelTime(hour){sceneEnv.hour=hour;if(current)current.applyTime(hour)}
@@ -167,20 +177,12 @@ export function mountModel(canvas,rooms,state,onSelect){
   }
  }
  // Terrace motion: brief light wave, at most one pulse per 10s.
- let terraceGlow=null,terracePulseAt=0,lastMotionPulse=0,terraceActive=false;
+ let terraceGlow=null,terracePulseAt=0;
  const startTerracePulse=()=>{
   terraceGlow=terraceGlow||ensureLight('__terracePulse','#e4a65c',.9);
   if(!terraceGlow)return;
   terracePulseAt=performance.now();lastMotionPulse=terracePulseAt;invalidate();
  };
- function terraceMotion(state){
-  if(state.mode!=='live'){
-   const d=state.devices?.find(d=>d.id==='terrace-motion'&&d.status==='installed');
-   return !state.demoOffline&&binaryValue('motion',d?.demoValue)===true;
-  }
-  const b=state.bindings?.['terrace-motion'],d=state.devices?.find(d=>d.id==='terrace-motion'&&d.status==='installed');
-  return Boolean(d&&b?.verified&&motionObservation(state.entityStates?.[b.entityId]).kind==='active');
- }
  // Weather particles: round canvas sprites, never square points.
  const weather={kind:null,points:null};
  let dropSprite=null;
@@ -208,10 +210,6 @@ export function mountModel(canvas,rooms,state,onSelect){
   hemisphere.color.set(p.hemi[0]);hemisphere.groundColor.set(p.hemi[1]);hemisphere.intensity=p.hemi[2];
   sun.color.set(p.sun[0]);sun.intensity=p.sun[1];invalidate();
  };
- current.applyTime=applyTime;
- current.applyWeather=applyWeather;
- current.applyRoomLights=applyRoomLights;
- applyTime(sceneEnv.hour);applyWeather(sceneEnv.weather);
  function invalidate(){
   if(!raf&&!dead&&!paused&&!document.hidden)raf=requestAnimationFrame(draw);
  }
@@ -309,6 +307,14 @@ export function mountModel(canvas,rooms,state,onSelect){
    pinLayer.remove();tweens.clear();lightTweens.clear();
   }
  };
+ current.applyTime=applyTime;
+ current.applyWeather=applyWeather;
+ current.applyRoomLights=applyRoomLights;
+ current.motionPulse=active=>{
+  if(active&&!terraceActive&&!reduceMotion&&performance.now()-lastMotionPulse>10000)startTerracePulse();
+  terraceActive=active;
+ };
+ applyTime(sceneEnv.hour);applyWeather(sceneEnv.weather);
  updateModel(rooms,state);
 }
 export function updateModel(rooms,state){
@@ -324,9 +330,7 @@ export function updateModel(rooms,state){
   current.paintFloor(m,floorVisual(c?[c]:[],state));
  });
  current.applyRoomLights(rooms,state);
- const motionActive=terraceMotion(state);
- if(motionActive&&!terraceActive&&!reduceMotion&&performance.now()-lastMotionPulse>10000)startTerracePulse();
- terraceActive=motionActive;
+ current.motionPulse(terraceMotion(state));
  for(const [id,outline]of Object.entries(outlines))outline.visible=state.selected===id;
  const focusRoom=state.view==='room'&&floorPoints[state.selected]?state.selected:undefined;
  current.scene.traverse(o=>{
