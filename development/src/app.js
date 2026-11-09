@@ -27,7 +27,8 @@ import {duoUI,assistantView} from './assistant-ui.js';
 import {scenarioChipsRow,handleScenarioClick,bindScenarioPainter,bindScenarioHost} from './scenarios-ui.js';
 import {shouldAmbient,AMBIENT_AFTER_IDLE} from './ambient.js';
 import {luxValue,autoTheme,AUTO_THEME_UP,AUTO_THEME_DOWN} from './auto-theme.js';
-import {energyCard,findMeterEntities} from './energy.js';
+import {render as preactRender,h as ph} from './preact/kit.js';
+import {EnergyWidget} from './preact/energy-widget.js';
 import {showYardCard,YARD_REFRESH_MS} from './yard-card.js';
 
 import {esc,disabled,timeOf,clock,date,scheduleMinute,PANEL_TIMEZONE} from './dom.js';
@@ -201,37 +202,18 @@ async function pollYardMotion(){
  try{const data=await api('ha/yard-motion');if(data){yardData=data;paintYardChip()}}catch{/* детектор недоступен — чип просто не показываем */}
  finally{yardPoll.busy=false}
 }
-// Расход электроэнергии: ленивая загрузка ha/energy при первом рендере карточки
-// и по кнопке обновления; клиентский кеш 60 с, как серверный.
-const ENERGY_POLL_MS=60000;
-let energyData=null,energyPoll={at:0,busy:false};
-function energyExtra(){
- if(!energyData)return undefined;
- return {readingsDate:energyData.readingsDate||null,deltas:energyData.deltas?{day:energyData.deltas.day,week:energyData.deltas.week}:null};
-}
+// Энергокарточка: Preact-компонента (src/preact/energy-widget.js) сама опрашивает
+// ha/energy (кеш 60 с) и управляет содержимым #home-energy. Сюда остаётся только
+// одноразовый монтаж узла и флаг для дайджеста.
+let meterKnownFromWidget=false;
 function updateEnergyRegion(){
- const energy=$('#home-energy');if(!energy||!isLive())return;
- // ТНС «мигает» (пометит сущности unavailable между опросами): если сервер помнит
- // последние валидные значения — рисуем карточку из них с пометкой stale.
- let entities=findMeterEntities(state.entityStates||{});
- let staleFlag=false,extra=energyExtra();
- if(energyData?.stale&&Number.isFinite(energyData.reading?.value)){
-  const u=energyData.reading.updatedAt;
-  entities={reading:{entity_id:energyData.reading.entityId,state:String(energyData.reading.value),last_updated:u},
-   consumption:energyData.consumption!==null&&Number.isFinite(energyData.consumption)?{entity_id:'synthetic',state:String(energyData.consumption),last_updated:u}:null};
-  staleFlag=true;extra={...extra,stale:true,staleSince:energyData.staleSince,readingsDate:energyData.readingsDate};
+ const energy=$('#home-energy');
+ if(!energy||!isLive())return;
+ if(!energy.dataset.preact){
+  preactRender(ph(EnergyWidget,{onMeterKnown:v=>{meterKnownFromWidget=v}}),energy);
+  energy.dataset.preact='1';
  }
- updateRegion('#home-energy',energyCard(entities,Date.now(),extra,staleFlag));
- energy.hidden=!energy.querySelector('.energy-card');icons();
-}
-async function pollEnergy(force=false){
- if(!isLive()||energyPoll.busy)return;
- const now=Date.now();
- if(!force&&now-energyPoll.at<ENERGY_POLL_MS)return;
- energyPoll.busy=true;energyPoll.at=now;
- try{energyData=await api('ha/energy')}catch{/* история расхода недоступна — карточка остаётся с показаниями */}
- finally{energyPoll.busy=false}
- if(state.view==='home')updateEnergyRegion();
+ energy.hidden=false; // Preact сам решает: без данных внутри пусто.
 }
 function yardMarkup(){
  if(!isLive()||!yardData||yardData.available===false)return '';
@@ -435,7 +417,7 @@ function digestCard(){
 // Волна 3 «Умное поведение»: адаптивные акценты главной. Один источник аргументов
 // для дайджеста — карточка в рейле и ночная сводка в hero показывают одно и то же.
 function digestArgs(){
- return {mode:state.mode,liveOnline:state.liveOnline,devices:state.devices,bindings:state.bindings,entityStates:state.entityStates||{},now:Date.now(),alarmState:alarmEntity()?.state,meterKnown:Boolean(energyData?.stale&&Number.isFinite(energyData?.reading?.value))};
+ return {mode:state.mode,liveOnline:state.liveOnline,devices:state.devices,bindings:state.bindings,entityStates:state.entityStates||{},now:Date.now(),alarmState:alarmEntity()?.state,meterKnown:meterKnownFromWidget};
 }
 const digestSummary=()=>{const items=digestItems(digestArgs());return items.length?items.slice(0,2).map(i=>i.text).join(' · '):''};
 const dayPhase=hour=>hour>=6&&hour<11?'morning':hour>=11&&hour<17?'day':hour>=17&&hour<22?'evening':'night';
@@ -773,6 +755,7 @@ function render(animate=true){
  }
 }
 function updateRegion(selector,markup){
+ if(selector==='#home-energy')return; // энергокарточка на Preact — содержимым управляет виджет
  const node=$(selector);if(!node||node.dataset.rendered===markup)return;
  // Не перекрашиваем тапабельные рельсы под пальцем: кнопка может «уехать» между pointerdown и click.
  if(Date.now()-lastPointerDown<400&&(selector==='#home-quick'||selector==='#home-status'||selector==='#home-room-card')){setTimeout(()=>{if($(selector)&&$(selector).dataset.rendered!==markup)updateRegion(selector,markup)},450);return}
@@ -800,7 +783,7 @@ function refresh(){
    updateRegion('#home-status',YARD_SLOT+weatherCard()+homeStatus());paintYardChip();pollYardMotion();updateRegion('#home-quick',homeQuick());updateRegion('#home-light-overview',lightOverviewBadge());updateRegion('#hero-status',heroStatusChip());voiceSync();paintRoomCard();
     const digest=$('#home-digest');if(digest){updateRegion('#home-digest',digestCard());digest.hidden=!digest.querySelector('.digest-card')}
     const alarm=$('#home-alarm');if(alarm){updateRegion('#home-alarm',alarmMarkup());alarm.hidden=!alarm.querySelector('.alarm-card')}
-    const energy=$('#home-energy');if(energy){updateEnergyRegion();pollEnergy()}
+    const energy=$('#home-energy');if(energy)updateEnergyRegion();
     updateHeroTime();
   }else if(state.view==='room'&&$('#room-scenarios'))updateRegion('#room-scenarios',scenarioChipsRow());
  }else if(state.view!=='statistics')render(false);
@@ -1390,7 +1373,7 @@ async function dispatchAction(e){
  if(a==='weather-forecast')return forecastSheet();
  if(a==='model-retry'){state.modelError='';render(false);return}
  if(b.hasAttribute('data-forecast-reload'))return loadForecast(true);
-  if(b.hasAttribute('data-energy-reload'))return pollEnergy(true);
+  if(b.hasAttribute('data-energy-reload'))return; // кнопку обновления обрабатывает Preact-виджет
 
  if(a==='history-reload')return loadStatistics(true);
  if(a==='history-focus-clear'){historyState.focus=null;paintStatistics();return}

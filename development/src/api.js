@@ -1,5 +1,6 @@
 const port='__PORT_3010__';
-const local=['127.0.0.1','localhost','[::1]'].includes(location.hostname);
+// В Node (тесты через esbuild-bundle) location отсутствует — считаем нелокальным контекстом.
+const local=typeof location!=='undefined'&&['127.0.0.1','localhost','[::1]'].includes(location.hostname);
 const base=local||port.startsWith('__')?'':port;
 let proof='';
 let refreshingProof;

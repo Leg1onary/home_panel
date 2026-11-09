@@ -1,0 +1,16 @@
+mode-setting present: 1
+body snippet: К управлению домом Главная Свет Датчики Системы Статистика Настройки Новоживотинное Демонстрационный режим Мой дом 20.4° демо 20:21 понедельник, 9 ноября Добрый вечер Демо · без Home Assistant Входная
+has home? true
+html: <!DOCTYPE html><html lang="ru" data-theme="dark" data-kiosk="false" data-mode="demo" data-night="false" data-view="home" data-leak-alert="false"><head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#101323">
+  <title>Дом · пространство под контролем</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+energy node: 1 card: 1 text: ЭЛЕКТРОЭНЕРГИЯ 29 558,0 кВт·ч Счётчик · обновлено 19:50 Дата показаний: 08.11 Потребление 12,4 кВт·ч Сутки 1,9 кВт·ч Неделя 3,6 кВт·ч
+after click card: 1
+errors: [
+  'console: Failed to load resource: the server responded with a status of 404 (Not Found)'
+]
