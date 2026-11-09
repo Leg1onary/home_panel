@@ -30,11 +30,14 @@ import {luxValue,autoTheme,AUTO_THEME_UP,AUTO_THEME_DOWN} from './auto-theme.js'
 import {render as preactRender,h as ph} from './preact/kit.js';
 import {EnergyWidget} from './preact/energy-widget.js';
 import {DigestWidget,digestBus} from './preact/digest-widget.js';
-import {WeatherChip,weatherBus,WEATHER_ICON} from './preact/weather-widget.js';
+import {WeatherChip,weatherBus} from './preact/weather-widget.js';
 import {QuickWidget,quickBus} from './preact/quick-widget.js';
 import {FactsWidget,factsBus} from './preact/facts-widget.js';
 import {RoomCardWidget,RoomSheetWidget,roomBus} from './preact/room-widget.js';
 import {YARD_REFRESH_MS} from './yard-card.js';
+import {loadShopping,paintShopping,shoppingMutate,shoppingState,shoppingCardMarkup} from './shopping.js';
+import {paintAlarm,alarmMarkup,alarmEntity,alarmAction} from './alarm.js';
+import {forecastSheet,loadForecast} from './weather-sheet.js';
 
 import {esc,disabled,timeOf,clock,date,scheduleMinute,PANEL_TIMEZONE} from './dom.js';
 import {voiceButton,voiceSync,bindVoice} from './voice.js';
@@ -409,37 +412,7 @@ function homeLightSummary(){
  const channels=rooms.flatMap(r=>r.channels.filter(c=>!c.planned));
  return homeSummary({live:isLive(),online:!noConnection(),total:channels.length,unknown:channels.filter(c=>!canControl(c.id)).length,on:countLights()});
 }
-let forecastCache=null,forecastEntity='';
-const forecastWeek=t=>new Intl.DateTimeFormat('ru-RU',{weekday:'short',day:'numeric',month:'short',timeZone:PANEL_TIMEZONE}).format(new Date(t));
-function forecastMarkup(list,error,busy){
- const retry=`<div class="sheet-actions"><button class="secondary" data-forecast-reload>${I('rotate-ccw')}Обновить</button></div>`;
- if(error)return `<p class="description forecast-error">Прогноз недоступен: ${esc(error)}</p>${retry}`;
- if(!list)return `<div class="forecast-status" aria-busy="true"><i data-lucide="loader-circle" class="spin"></i>Загружаем прогноз…</div>`;
- if(!list.length)return `<p class="description forecast-error">Прогноз недоступен: Home Assistant не вернул пункты прогноза.</p>${retry}`;
- return `<ul class="forecast-list">${list.map(f=>`<li class="forecast-row"><span class="forecast-day">${esc(forecastWeek(f.datetime))}</span>${I(WEATHER_ICON[f.condition]||'cloudy')}<b>${Math.round(f.temperature)}°${Number.isFinite(f.templow)?' / '+Math.round(f.templow)+'°':''}</b>${Number.isFinite(f.precipitationProbability)?`<span class="forecast-prec" title="Вероятность осадков">${I('droplets')}${f.precipitationProbability} %</span>`:''}</li>`).join('')}</ul>${retry}`;
-}
-function paintForecast(list,error,busy){
- const node=$('[data-forecast-sheet]');
- if(node){node.innerHTML=forecastMarkup(list,error,busy);icons()}
-}
-async function loadForecast(force=false){
- if(force)forecastCache=null;
- if(!forecastEntity)return paintForecast(null,'Нет сущности погоды.');
- if(forecastCache&&!force&&Date.now()-forecastCache.at<15*60*1000)return paintForecast(forecastCache.data);
- paintForecast(null,null,true);
- try{
-  const result=await api('ha/weather-forecast'+(forecastEntity?`?entity=${encodeURIComponent(forecastEntity)}`:''));
-  forecastCache={at:Date.now(),data:result.forecast};
-  paintForecast(result.forecast);
- }catch(error){paintForecast(null,error.message)}
-}
-function forecastSheet(){
- const e=Object.values(state.entityStates||{}).find(e=>e.entity_id?.startsWith('weather.'));
- forecastEntity=e?.entity_id||'';
- simpleSheet(`<h2>Прогноз погоды</h2><div data-forecast-sheet>${forecastMarkup(null,null,true)}</div>`);
- if(!isLive()||!forecastEntity)return paintForecast(null,'Home Assistant не настроен.');
- loadForecast();
-}
+// Прогноз погоды: волна 5 — блок перенесён в src/weather-sheet.js (loadForecast/forecastSheet).
 // Волна 3: разметка homeStatus() перенесена в src/preact/facts-widget.js
 // (factsMarkup); данные рассылаются через factsBus.notify(factsArgs()).
 function lightOverview(){
@@ -491,76 +464,8 @@ function updateHeroTime(){
   greeting.textContent=text;greeting.hidden=!text;
  }
 }
-// Список покупок: данные только с сервера (todo/get_items), без опроса каждые 5 секунд.
-let shoppingState={loaded:false,items:[],busy:false,error:'',note:'',truncated:false};
-function shoppingMarkup(){
- const items=shoppingState.items.slice(0,5);
- return `<div class="digest-card shopping-card"><div class="title-line"><h3>${I('box')}Покупки${shoppingState.truncated?' · первые 5':''}</h3><button class="text-button" data-action="shopping-refresh" aria-label="Обновить список покупок" ${disabled(shoppingState.busy||!isLive())}>${I('rotate-ccw')}Обновить</button></div>
- <ul class="shopping-list">${shoppingState.error?`<li class="shopping-empty">${esc(shoppingState.error)}</li>`:items.length?items.map(i=>`<li><button class="shopping-check" data-shopping-complete="${esc(i.uid)}" aria-label="Отметить купленным: ${esc(i.summary)}" ${disabled(shoppingState.busy||!isLive())}></button><span class="shopping-text">${esc(i.summary)}</span></li>`).join(''):'<li class="shopping-empty">Список пуст</li>'}</ul>
- <div class="shopping-add"><input id="shopping-input" maxlength="80" placeholder="Добавить покупку" aria-label="Новая позиция списка покупок" ${disabled(shoppingState.busy||!isLive())}/><button class="secondary" data-action="shopping-add" ${disabled(shoppingState.busy||!isLive())}>Добавить</button></div>
- ${shoppingState.note?`<p class="description">${esc(shoppingState.note)}</p>`:''}</div>`;
-}
-function paintShopping(){
- // Регион покупок теперь живёт в шите станции (#sheet-shopping); updateRegion
- // с dataset.rendered-guard не перерисовывает одинаковый DOM, фокус input сохраняется.
- const m=shoppingState.loaded?shoppingMarkup():'<p class="description">Загружаем список покупок…</p>';
- if($('#sheet-shopping'))updateRegion('#sheet-shopping',m);
-}
-async function loadShopping(){
- if(!isLive()){shoppingState={...shoppingState,loaded:true,error:'Список покупок работает в рабочем режиме с подключённым Home Assistant.',note:''};paintShopping();return}
- if(shoppingState.busy)return;
- shoppingState.busy=true;paintShopping();
- try{const d=await api('ha/shopping');shoppingState={...shoppingState,loaded:true,items:d.items||[],truncated:!!d.truncated,error:'',note:''}}
- catch(error){shoppingState={...shoppingState,loaded:true,error:error.message,note:''}}
- finally{shoppingState.busy=false;paintShopping()}
-}
-async function shoppingMutate(action,target){
- const input=$('#shopping-input'),draft=input?.value||'';
- shoppingState.busy=true;paintShopping();
- try{
-  const r=await api('ha/shopping',{method:'POST',body:{action,target}});
-  shoppingState={...shoppingState,items:r.items||[],note:r.message,error:''};toast(r.message);
- }catch(error){shoppingState={...shoppingState,note:error.message};toast(error.message)}
- finally{shoppingState.busy=false;paintShopping();const i=$('#shopping-input');if(i)i.value=action==='add'?'':draft}
-}
-// Охрана (alarm_control_panel): статус и подтверждаемые команды с PIN-кодом.
-let alarmUI={askPin:false,service:'',busy:false,error:''};
-const alarmEntity=()=>Object.values(state.entityStates||{}).find(e=>e.entity_id?.startsWith('alarm_control_panel.'));
-const alarmLabels={disarmed:'Снята',armed_away:'Под охраной (вне дома)',armed_home:'Под охраной (дома)',arming:'Ставится…',pending:'Ожидание…',triggered:'ТРЕВОГА'};
-function alarmMarkup(){
- const e=alarmEntity();
- if(!e||!['disarmed','armed_away','armed_home','arming','pending','triggered'].includes(e.state))return '';
- const s=e.state,needsCode=(e.attributes?.code_format||'None')!=='None';
- const btn=(service,label)=>`<button class="secondary" data-alarm-service="${service}" ${disabled(alarmUI.busy)}>${label}</button>`;
- const pin=alarmUI.askPin?`<div class="alarm-pin"><input id="alarm-pin" type="password" inputmode="numeric" maxlength="16" placeholder="PIN-код" aria-label="PIN-код охраны" ${disabled(alarmUI.busy)} autocomplete="off"/><button class="primary" data-alarm-service="${esc(alarmUI.service)}" data-alarm-confirm ${disabled(alarmUI.busy)}>Подтвердить</button><button class="text-button" data-alarm-cancel ${disabled(alarmUI.busy)}>Отмена</button></div>`:'';
- return `<div class="digest-card alarm-card ${s==='triggered'?'is-danger':''}" ${s==='triggered'?'role="alert"':''}><div class="title-line"><h3>${I('shield')}Охрана</h3></div>
- <p class="alarm-status">${esc(alarmLabels[s]||e.state)}</p>
- ${s==='disarmed'?`<div class="alarm-actions">${btn('arm_away','Поставить (вне дома)')}${btn('arm_home','Поставить (дома)')}</div>`:s==='triggered'?'':`<div class="alarm-actions">${btn('disarm','Снять с охраны')}</div>`}
- ${needsCode?pin:''}
- ${alarmUI.error?`<p class="description alarm-error">${esc(alarmUI.error)}</p>`:''}
- <p class="description">${e.attributes?.changed_by?'Изменено: '+esc(e.attributes.changed_by):'Home Assistant · alarm_control_panel'}</p></div>`;
-}
-function paintAlarm(){
- const node=$('#home-alarm');if(!node)return;
- const m=alarmMarkup();
- if(m){updateRegion('#home-alarm',m);node.hidden=false}else node.hidden=true;
-}
-async function alarmCommand(service,code){
- const draft=$('#alarm-pin')?.value||'';
- alarmUI.busy=true;alarmUI.error='';paintAlarm();
- try{
-  const r=await api('ha/alarm',{method:'POST',body:{service,code}});
-  alarmUI.askPin=false;alarmUI.service='';
-  toast(r.message||(r.confirmed?'Охрана: состояние подтверждено.':'Охрана: команда принята, статус не подтверждён.'));
- }catch(error){alarmUI.error=error.message;toast(error.message)}
- finally{
-  alarmUI.busy=false;paintAlarm();
-  // Ошибка команды не должна стирать введённый PIN: перерисовка пересоздаёт
-  // поле ввода, поэтому возвращаем черновик и возвращаем фокус.
-  const input=$('#alarm-pin');
-  if(input&&alarmUI.askPin&&!input.value&&draft){input.value=draft;input.focus()}
- }
-}
+// Покупки (волна 5): блок перенесён в src/shopping.js (loadShopping/shoppingMutate/paintShopping).
+// Охрана (волна 5): блок перенесён в src/alarm.js (paintAlarm/alarmEntity/alarmAction).
 async function sendTTS(){
  const input=$('#tts-text'),status=$('#tts-status'),button=$('[data-action="tts-send"]');
  if(!input||!status)return;
@@ -942,7 +847,7 @@ function stationSheet(){
  <div class="control-group"><div class="control-row"><div><h3>Воспроизведение</h3><p>Команды только через media_player в HA</p></div><button class="icon-button" data-action="station-play" aria-label="${state.stationPlaying?'Пауза':'Воспроизвести'}" ${disabled(!stationSupports(e,'playing',!state.stationPlaying)||hasPending())}>${I(state.stationPlaying?'pause':'play')}</button></div>${phaseLine('station:playing')}</div>
  <div class="rgb-control"><label for="station-volume">Громкость <span id="station-volume-label">${Number.isFinite(e?.attributes.volume_level)?state.stationVolume+' %':'Недоступна'}</span></label><input id="station-volume" type="range" min="0" max="100" value="${state.stationVolume}" ${disabled(!stationSupports(e,'volume')||hasPending())}/>${phaseLine('station:volume')}</div>
  ${stationSkipButtons()}${phaseLine('station:previous')}${phaseLine('station:next')}
- <div id="sheet-shopping">${shoppingState.loaded?shoppingMarkup():'<p class="description">Загружаем список покупок…</p>'}</div>
+ <div id="sheet-shopping">${shoppingState.loaded?shoppingCardMarkup():'<p class="description">Загружаем список покупок…</p>'}</div>
  <div class="control-group tts-block"><h3>Сказать на станции</h3>
   <div class="tts-presets">${['Гость пришёл','Ужин готов','Пора домой'].map(t=>`<button class="tts-preset" data-tts-preset="${esc(t)}" ${disabled(!state.liveOnline)}>${esc(t)}</button>`).join('')}</div>
   <label for="tts-text">Своя фраза · до 100 символов</label>
@@ -1415,13 +1320,7 @@ async function dispatchAction(e){
  }
  const a=b.dataset.action;
  if(b.dataset.shoppingComplete)return shoppingMutate('complete',b.dataset.shoppingComplete);
- if(b.hasAttribute('data-alarm-confirm'))return alarmCommand(b.dataset.alarmService,$('#alarm-pin')?.value||'');
- if(b.hasAttribute('data-alarm-cancel')){alarmUI={...alarmUI,askPin:false,service:'',error:''};paintAlarm();return}
- if(b.dataset.alarmService){
-  const needs=(alarmEntity()?.attributes?.code_format||'None')!=='None';
-  if(needs&&(!alarmUI.askPin||alarmUI.service!==b.dataset.alarmService)){alarmUI={...alarmUI,askPin:true,service:b.dataset.alarmService,error:''};paintAlarm();$('#alarm-pin')?.focus();return}
-  return alarmCommand(b.dataset.alarmService,needs?($('#alarm-pin')?.value||''):'');
- }
+ if(b.hasAttribute('data-alarm-confirm')||b.hasAttribute('data-alarm-cancel')||b.dataset.alarmService)return alarmAction(b);
  if(a==='shopping-add')return shoppingMutate('add',$('#shopping-input')?.value||'');
  if(a==='shopping-refresh')return loadShopping();
  if(b.dataset.ttsPreset){const i=$('#tts-text');if(i){i.value=b.dataset.ttsPreset;const c=$('#tts-count');if(c)c.textContent=b.dataset.ttsPreset.length+'/100'}return}
@@ -1667,3 +1566,7 @@ bindScenarioHost({
 setInterval(()=>{updateClocks();applyNight();if(state.view==='home'&&!state.idle&&!hasPending())refresh()},10000);
 $('#main').innerHTML='<div class="boot-state" role="status">Подготавливаем твою панель…</div>';
 loadStorage().then(()=>{applyAppearance();startLive(refresh);render();updateClocks();armIdle();window.__homePanelReady=true});
+
+// Общие хелперы для вынесенных в волне 5 модулей (shopping.js / alarm.js / weather-sheet.js).
+// Циклический импорт безопасен: модули используют их только внутри функций во время работы.
+export {$,I,icons,toast,simpleSheet,updateRegion};
