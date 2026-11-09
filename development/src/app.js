@@ -87,6 +87,7 @@ function applyAutoTheme(){
  $('#theme').innerHTML=I(next==='dark'?'sun':'moon');
  updateThemeButton();icons();
  if(state.view==='statistics')paintStatistics();
+ persist();
 }
 function updateThemeButton(){
  const b=$('#theme');if(!b)return;
@@ -214,6 +215,9 @@ function miniRoomCard(){
 }
 function paintRoomCard(){
  const node=$('#home-room-card');if(!node)return;
+ // Пока команда из карточки в полёте (optimistic apply + pending), перерисовка
+ // по опросу может заменить кнопку между pointerdown и click — пропускаем.
+ if(activeRoomCard&&hasPending())return;
  updateRegion('#home-room-card',miniRoomCard());node.hidden=!activeRoomCard;icons();
 }
 function toggleRoomCard(id){
