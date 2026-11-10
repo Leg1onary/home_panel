@@ -1,6 +1,7 @@
 // Компактная сводка только реальных сигналов. Отсутствующие данные молча пропускаются.
 import {areaName} from './catalog.js';
 import {binaryValue} from './sensor-state.js';
+import {WEATHER_LABEL,WEATHER_ICON} from './weather-const.js';
 import {numericReading,stateTimes} from './readings.js';
 import {findMeterEntities,meterValue} from './energy.js';
 const plural=(n,one,few,many)=>n%10===1&&n%100!==11?one:n%10>=2&&n%10<=4&&(n%100<12||n%100>14)?few:many;
@@ -40,4 +41,30 @@ const openSensors={label:'Открыть датчики',open:'sensors'};
  const coreUpdate=Object.values(entityStates).find(e=>e.state==='on'&&typeof e.entity_id==='string'&&e.entity_id.startsWith('update.')&&e.entity_id.includes('home_assistant_core_update'));
  if(coreUpdate)items.push({level:'warn',icon:'download',text:'Доступно обновление Home Assistant',action:{label:'Открыть системы',open:'systems'}});
  return items.sort((a,b)=>({danger:0,warn:1,info:2})[a.level]-({danger:0,warn:1,info:2})[b.level]);
+}
+// Волна D 3.2.3: утренний брифинг — сводка дня сверху дайджеста. Максимум 4 пункта
+// по приоритету; ничего нет → «Всё спокойно». Ночью прогноз не показываем.
+export const BRIEF_ICONS=new Set(['sun','moon','zap','video','thermometer','alert-triangle','door','shield',
+ 'cloud-sun','cloudy','cloud-rain','cloud-snow','cloud-fog','wind','cloud-lightning','cloud-hail','cloud-drizzle']);
+export function digestBriefing({entityStates={},devices=[],bindings={},yardClips=[],forecast,now=Date.now(),isNightNow=false,alarmState}={}){
+ const deps={devices,bindings,entityStates,now},items=[];
+ // 1. Прогноз на сегодня (днём): «Сегодня: Облачно, +7°».
+ if(!isNightNow&&forecast&&Number.isFinite(forecast.temperature)&&WEATHER_LABEL[forecast.condition]){
+  const t=Math.round(forecast.temperature),sign=t>0?'+':'';
+  items.push({icon:WEATHER_ICON[forecast.condition]||'sun',text:`Сегодня: ${WEATHER_LABEL[forecast.condition]}, ${sign}${t}°`});
+ }
+ // 2. Забытый свет: включённые линии света по биндингам.
+ const lightsOn=devices.filter(d=>['light','rgb'].includes(d.type)&&d.status==='installed'&&read(deps,d.id)?.state==='on');
+ if(lightsOn.length)items.push({icon:'zap',text:lightsOn.length===1?`Свет горит: 1 (${areaName(lightsOn[0].room)})`:`Свет горит: ${lightsOn.length}`});
+ // 3. Двор за последние 12 часов; кликабельный пункт (камера двора).
+ const yard=(Array.isArray(yardClips)?yardClips:[]).filter(c=>now-Number(c.at)>=0&&now-Number(c.at)<=12*3600000).length;
+ if(yard)items.push({icon:'video',text:`Двор: ${yard} событий за 12 ч`,action:{label:'Открыть камеру двора',open:'yard'}});
+ // 4. Дверь приоткрыта (дверные биндинги, binary on = открыто).
+ const doorOpen=devices.some(d=>d.type==='door'&&d.status==='installed'&&binaryValue('door',read(deps,d.id)?.state)===true);
+ if(doorOpen)items.push({icon:'alert-triangle',text:'Дверь приоткрыта'});
+ // 5. Охрана активна (armed_*; тревога уже есть в digestItems).
+ if(alarmState==='armed_away'||alarmState==='armed_home')items.push({icon:'shield',text:'Охрана активна'});
+ // Валидация иконок (неизвестное имя отбрасывается вместе с пунктом) и максимум 4.
+ const valid=items.filter(it=>BRIEF_ICONS.has(it.icon)).slice(0,4);
+ return valid.length?valid:[{icon:'moon',text:'Всё спокойно'}];
 }

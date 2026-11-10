@@ -1246,6 +1246,14 @@ button:not(:disabled):active{filter:brightness(1.12)}
 .digest-info{color:var(--muted)}.digest-info svg{color:var(--muted)}
 .digest-card.is-danger{border-color:rgba(229,99,79,.55)}
 .digest-card.is-danger h3{color:#e5634f}
+/* 3.2.3: сводка дня (утренний брифинг) сверху дайджеста, разделитель от списка */
+.digest-brief{display:flex;flex-direction:column;margin-top:var(--space-3);padding-bottom:var(--space-2);border-bottom:1px solid var(--border)}
+.digest-brief-item{display:flex;align-items:center;gap:var(--space-2);font-size:var(--text-xs);line-height:1.4;padding:var(--space-1) 0;color:var(--muted);text-align:left;background:none;border:0}
+.digest-brief-item svg{width:16px;height:16px;flex-shrink:0;color:var(--accent-teal)}
+.digest-brief-item span{min-width:0;overflow-wrap:anywhere}
+button.digest-brief-item{cursor:pointer;font:inherit}
+button.digest-brief-item:hover{color:var(--text)}
+
 /* Энергия v1: карточка счётчика в правой рельсе главной. */
 .energy-card .energy-reading{display:flex;flex-direction:column;gap:2px;margin:var(--space-3) 0 0}
 .energy-card .energy-reading strong{font-size:var(--text-lg);font-weight:600}

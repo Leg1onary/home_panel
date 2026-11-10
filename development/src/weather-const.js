@@ -1,0 +1,5 @@
+// Константы погодных состояний HA (переезд из weather-widget.js, 3.2.3):
+// digest.js не может импортировать preact-модуль без риска циклов.
+export const WEATHER_LABEL={clear:'Ясно',sunny:'Солнечно',cloudy:'Облачно',partlycloudy:'Переменная облачность',rainy:'Дождь',snowy:'Снег',fog:'Туман',windy:'Ветрено',lightning:'Гроза',hail:'Град',drizzle:'Морось',exceptional:'Пасмурно'};
+export const WEATHER_ICON={clear:'sun',sunny:'sun',partlycloudy:'cloud-sun',cloudy:'cloudy',rainy:'cloud-rain',snowy:'cloud-snow',fog:'cloud-fog',windy:'wind',lightning:'cloud-lightning',hail:'cloud-hail',drizzle:'cloud-drizzle',exceptional:'cloudy'};
+export const WEATHER_DATA={clear:'sunny',sunny:'sunny',partlycloudy:'cloudy',cloudy:'cloudy',rainy:'rain',snowy:'snow',fog:'fog',windy:'cloudy',lightning:'rain',hail:'rain',drizzle:'rain',exceptional:'cloudy'};

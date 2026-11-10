@@ -1,0 +1,8 @@
+brief: Сегодня: Облачно, +7°Свет горит: 2Дверь приоткрыта
+capture: 200 {"id":1,"at":1794346241377,"source":"onvif","frameCount":1}
+energy probe: 200 {"reading":{"value":12345.6,"entityId":"sensor.schetchik_tns_reading","updatedAt":"2026-11-10T21:30:35.418Z"},"consumption":null,"meterNumber":null,"readingsDate":null,"deltas":{"day":null,"week":null
+forecast probe: 200 {"entityId":"weather.home","forecast":[{"datetime":"2026-11-10T21:30:36.510Z","condition":"cloudy","temperature":7.3,"templow":3},{"datetime":"2026-11-11T21:30:36.510Z","condition":"rainy","temperatur
+yard brief item: 1 Сегодня: Облачно, +7°Свет горит: 2Двор: 1 событий за 12 чДверь приоткрыта
+yard sheet: Двор · Tapo C320WS
+errors: none
+QA OK

@@ -458,7 +458,10 @@ function houseAlerts(){
 // Волна 3 «Умное поведение»: адаптивные акценты главной. Один источник аргументов
 // для дайджеста — карточка в рейле и ночная сводка в hero показывают одно и то же.
 function digestArgs(){
- return {mode:state.mode,liveOnline:state.liveOnline,devices:state.devices,bindings:state.bindings,entityStates:state.entityStates||{},now:Date.now(),alarmState:alarmEntity()?.state,meterKnown:meterKnownFromWidget};
+ // Волна D: брифингу нужен флаг ночи (ночью прогноз не показываем).
+ const time=new Intl.DateTimeFormat('en-GB',{hour:'numeric',minute:'2-digit',hourCycle:'h23',timeZone:PANEL_TIMEZONE}).format(Date.now());
+ const [h,m]=time.split(':').map(Number);
+ return {mode:state.mode,liveOnline:state.liveOnline,devices:state.devices,bindings:state.bindings,entityStates:state.entityStates||{},now:Date.now(),alarmState:alarmEntity()?.state,meterKnown:meterKnownFromWidget,isNightNow:isNight(h*60+m,state.nightStart,state.nightEnd,state.nightMode)};
 }
 const digestSummary=()=>{const items=digestItems(digestArgs());return items.length?items.slice(0,2).map(i=>i.text).join(' · '):''};
 const dayPhase=hour=>hour>=6&&hour<11?'morning':hour>=11&&hour<17?'day':hour>=17&&hour<22?'evening':'night';

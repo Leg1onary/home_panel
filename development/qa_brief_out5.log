@@ -1,0 +1,13 @@
+brief: Сегодня: Облачно, +7°Свет горит: 2Дверь приоткрыта
+capture: 200 {"id":1,"at":1794346124459,"source":"onvif","frameCount":1}
+energy probe: 200 {"reading":{"value":12345.6,"entityId":"sensor.schetchik_tns_reading","updatedAt":null},"consumption":null,"meterNumber":null,"readingsDate":null,"deltas":{"day":null,"week":null},"stale":false}
+forecast probe: 200 {"entityId":"weather.home","forecast":[{"datetime":"2026-11-10T21:28:39.585Z","condition":"cloudy","temperature":7.3,"templow":3},{"datetime":"2026-11-11T21:28:39.585Z","condition":"rainy","temperatur
+yard brief item: 1 Сегодня: Облачно, +7°Свет горит: 2Двор: 1 событий за 12 чДверь приоткрыта
+yard sheet: Двор · Tapo C320WS
+errors: [
+  'pageerror: Invalid time value | RangeError: Invalid time value ~     at x (http://127.0.0.1:8080/chunk-4PVWNUOQ.js:1:1590) ~     at p (http://127.0.0.1:8080/app.js:21:6247)',
+  'pageerror: Invalid time value | RangeError: Invalid time value ~     at x (http://127.0.0.1:8080/chunk-4PVWNUOQ.js:1:1590) ~     at p (http://127.0.0.1:8080/app.js:21:6247)',
+  'pageerror: Invalid time value | RangeError: Invalid time value ~     at x (http://127.0.0.1:8080/chunk-4PVWNUOQ.js:1:1590) ~     at p (http://127.0.0.1:8080/app.js:21:6247)',
+  'pageerror: Invalid time value | RangeError: Invalid time value ~     at x (http://127.0.0.1:8080/chunk-4PVWNUOQ.js:1:1590) ~     at p (http://127.0.0.1:8080/app.js:21:6247)'
+]
+QA FAILED
