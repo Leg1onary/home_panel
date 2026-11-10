@@ -3668,6 +3668,116 @@ async function unsubscribe(pullPoint, creds, t) {
 }
 var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// server/yard-clips.js
+var import_jpeg_js2 = __toESM(require_jpeg_js());
+var RING = 3;
+var TICK_MS = 8e3;
+var DEDUP_MS = 15e3;
+var POST_DELAYS = [3e3, 9e3];
+var KEEP = 30;
+var BLANK = import_jpeg_js2.default.encode({ data: Buffer.alloc(4, 255), width: 1, height: 1 }, 80).data.toString("base64");
+var YardClips = class {
+  constructor({ ha: ha2, db: db2, notify = null, getEntityId = () => null } = {}) {
+    this.ha = ha2;
+    this.notify = notify;
+    this.getEntityId = getEntityId;
+    this.ring = [];
+    this.timer = null;
+    this.busy = false;
+    this.lastClipAt = 0;
+    db2.exec("CREATE TABLE IF NOT EXISTS yard_clips (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, source TEXT NOT NULL, frames BLOB NOT NULL);");
+    this.insert = db2.prepare("INSERT INTO yard_clips(at,source,frames) VALUES(?,?,?)");
+    this.prune = db2.prepare("DELETE FROM yard_clips WHERE id NOT IN (SELECT id FROM yard_clips ORDER BY at DESC, id DESC LIMIT ?)");
+    this.byId = db2.prepare("SELECT * FROM yard_clips WHERE id=?");
+    this.recent = db2.prepare("SELECT id,at,source,frames FROM yard_clips ORDER BY at DESC, id DESC LIMIT ?");
+  }
+  start() {
+    if (this.timer) return;
+    this.timer = setInterval(() => this.tick(), TICK_MS);
+    this.timer.unref();
+  }
+  stop() {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+  }
+  async tick() {
+    if (this.busy) return;
+    this.busy = true;
+    try {
+      await this.capture();
+    } catch {
+    } finally {
+      this.busy = false;
+    }
+  }
+  // Один кадр камеры тем же путём, что yard-motion: base64 jpeg или null.
+  async capture() {
+    const entityId = this.getEntityId();
+    if (!entityId || !this.ha?.enabled) return null;
+    let raw = null;
+    try {
+      raw = await this.ha.requestRaw("/api/camera_proxy/" + entityId + "?width=320&height=180");
+    } catch {
+      return null;
+    }
+    if (!raw || raw.type !== "image/jpeg" || !raw.bytes?.length) return null;
+    const b64 = Buffer.from(raw.bytes).toString("base64");
+    this.ring.push(b64);
+    if (this.ring.length > RING) this.ring = this.ring.slice(-RING);
+    return b64;
+  }
+  // Событие движения → клип. Дедуп: <15с от последнего клипа — окно продлевается,
+  // новый клип не создаётся. pre-кадры из кольца, пост-кадры через POST_DELAYS.
+  async record({ at = Date.now(), source = "onvif", dedup = true, posts = true } = {}) {
+    if (dedup && this.lastClipAt && at - this.lastClipAt < DEDUP_MS) {
+      this.lastClipAt = at;
+      return null;
+    }
+    this.lastClipAt = at;
+    const frames = [...this.ring];
+    if (!frames.length) {
+      const f = await this.capture();
+      if (f) frames.push(f);
+    }
+    if (!frames.length) frames.push(BLANK);
+    if (posts) {
+      for (const ms of POST_DELAYS) {
+        const timer = setTimeout(async () => {
+          try {
+            const f = await this.capture();
+            if (f) frames.push(f);
+          } catch {
+          }
+        }, ms);
+        timer.unref?.();
+      }
+      await new Promise((r) => setTimeout(r, Math.max(...POST_DELAYS) + 500));
+    }
+    const info = this.insert.run(at, source, Buffer.from(JSON.stringify(frames)));
+    this.prune.run(KEEP);
+    const result = { id: Number(info.lastInsertRowid), at, source, frameCount: frames.length };
+    this.notify?.(result);
+    return result;
+  }
+  // Тест-хук: клип сразу, без ожидания пост-кадров; дедуп по флагу.
+  testCapture(opts = {}) {
+    return this.record({ posts: false, ...opts });
+  }
+  list(limit = 20) {
+    const n = Math.min(KEEP, Math.max(1, Number(limit) || 20));
+    return this.recent.all(n).map(({ id, at, source, frames }) => ({ id, at, source, frameCount: JSON.parse(frames.toString("utf8")).length }));
+  }
+  frame(id, idx) {
+    const row = this.byId.get(id);
+    if (!row) return null;
+    const frames = JSON.parse(row.frames.toString("utf8"));
+    if (!Number.isInteger(idx) || idx < 0 || idx >= frames.length) return null;
+    return Buffer.from(frames[idx], "base64");
+  }
+};
+
 // src/dom.js
 var PANEL_TIMEZONE = "Europe/Moscow";
 
@@ -4454,7 +4564,11 @@ var yardOnvifEnsure = (prefs) => {
     ...port2 ? { port: port2 } : {},
     user,
     pass,
-    onMotion: () => yardMotion.externalMotion(),
+    onMotion: () => {
+      yardMotion.externalMotion();
+      yardClips.record().catch(() => {
+      });
+    },
     onError: (error) => console.log("Yard ONVIF fallback to jpeg diff:", error?.message || error)
   });
   return true;
@@ -4468,6 +4582,14 @@ var forecastKey = "";
 var shoppingCache = null;
 var energyCache = null;
 var energyLastKnown = null;
+var yardEntityHint = null;
+var yardClips = new YardClips({
+  ha,
+  db,
+  getEntityId: () => yardEntityHint,
+  notify: (info) => live.broadcast("yard-clip", JSON.stringify(info))
+});
+yardClips.start();
 var getProfile = (id) => {
   let row = db.prepare("SELECT * FROM profiles WHERE id=?").get(id);
   if (!row) {
@@ -4645,7 +4767,25 @@ var server = http.createServer(async (req, res) => {
       if (route === "ha/states" && req.method === "GET") return json(res, 200, { states: await ha.states(), receivedAt: Date.now() });
       if (route === "ha/yard-motion" && req.method === "GET") {
         yardOnvifEnsure(p.preferences);
-        return json(res, 200, { ...await yardMotion.check(yardCameraEntity(p.preferences)), checkedAt: Date.now() });
+        const entity = yardCameraEntity(p.preferences);
+        if (entity) yardEntityHint = entity;
+        return json(res, 200, { ...await yardMotion.check(entity), checkedAt: Date.now() });
+      }
+      if (route === "yard-clips" && req.method === "GET") {
+        const limit = Math.min(30, Math.max(1, Number(url.searchParams.get("limit")) || 20));
+        return json(res, 200, yardClips.list(limit));
+      }
+      const clipRoute = /^yard-clip\/(\d+)\/([0-3])$/.exec(route);
+      if (clipRoute && req.method === "GET") {
+        const frame = yardClips.frame(Number(clipRoute[1]), Number(clipRoute[2]));
+        if (!frame) return json(res, 404, { error: "\u041A\u0430\u0434\u0440 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D." });
+        res.writeHead(200, { "Content-Type": "image/jpeg", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
+        return res.end(frame);
+      }
+      if (route === "yard-clips-capture" && req.method === "POST" && process.env.PANEL_TEST_HOOKS === "1") {
+        const request = JSON.parse((await body(req)).toString() || "{}");
+        const clip = await yardClips.testCapture({ ...!Number.isFinite(request?.at) ? {} : { at: request.at }, ...request?.dedup === false ? { dedup: false } : {} });
+        return json(res, 200, clip ? { id: clip.id, at: clip.at, source: clip.source, frameCount: clip.frameCount } : { created: false });
       }
       if (route === "yard-onvif" && req.method === "GET") {
         const enabled = p.preferences.yard_onvif_enabled !== false;

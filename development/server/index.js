@@ -12,6 +12,7 @@ import {CameraRTC} from './rtc.js';
 import {LiveFeed} from './live-stream.js';
 import {YardMotion} from './yard-motion.js';
 import {onvifWatch} from './yard-onvif.js';
+import {YardClips} from './yard-clips.js';
 import {meterValue} from '../src/energy.js';
 import {energyDeltas} from './ha.js';
 
@@ -64,7 +65,7 @@ const yardOnvifEnsure=prefs=>{
  if(yardOnvifWatch)yardOnvifWatch.stop();
  yardOnvifConfigKey=key;
  yardOnvifWatch=onvifWatch({host,...(port?{port}:{}) ,user,pass,
-  onMotion:()=>yardMotion.externalMotion(),
+  onMotion:()=>{yardMotion.externalMotion();yardClips.record().catch(()=>{})},
   onError:error=>console.log('Yard ONVIF fallback to jpeg diff:',error?.message||error)});
  return true;
 };
@@ -72,6 +73,13 @@ const yardOnvifEnsure=prefs=>{
 const proofs=new Map(),pendingScopes=new Map();
 const live=new LiveFeed({ha}),liveIds=new Map();
 let forecastCache=null,forecastKey='',shoppingCache=null,energyCache=null,energyLastKnown=null;
+// Кольцевой буфер кадров двора → клипы по движению (ONVIF и jpeg-диффер — общий путь).
+// Сущность камеры — подсказка от последнего опроса детектора (разрешается из
+// проверенного биндинга camera-yard профиля на каждый вызов ha/yard-motion).
+let yardEntityHint=null;
+const yardClips=new YardClips({ha,db,getEntityId:()=>yardEntityHint,
+ notify:info=>live.broadcast('yard-clip',JSON.stringify(info))});
+yardClips.start();
 const getProfile=id=>{
  let row=db.prepare('SELECT * FROM profiles WHERE id=?').get(id);
  if(!row){db.prepare('INSERT INTO profiles(id,preferences) VALUES(?,?)').run(id,JSON.stringify(defaultPreferences()));row=db.prepare('SELECT * FROM profiles WHERE id=?').get(id)}
@@ -225,7 +233,24 @@ const server=http.createServer(async(req,res)=>{
    // Панельный детектор двора: кадр камеры сравнивается на сервере (jpeg-js), троттлинг внутри check().
    if(route==='ha/yard-motion'&&req.method==='GET'){
     yardOnvifEnsure(p.preferences);
-    return json(res,200,{...(await yardMotion.check(yardCameraEntity(p.preferences))),checkedAt:Date.now()});
+    const entity=yardCameraEntity(p.preferences);if(entity)yardEntityHint=entity;
+    return json(res,200,{...(await yardMotion.check(entity)),checkedAt:Date.now()});
+   }
+   // Клипы двора: список без байтов и кадр по индексу (0..3).
+   if(route==='yard-clips'&&req.method==='GET'){
+    const limit=Math.min(30,Math.max(1,Number(url.searchParams.get('limit'))||20));
+    return json(res,200,yardClips.list(limit));
+   }
+   const clipRoute=/^yard-clip\/(\d+)\/([0-3])$/.exec(route);
+   if(clipRoute&&req.method==='GET'){
+    const frame=yardClips.frame(Number(clipRoute[1]),Number(clipRoute[2]));
+    if(!frame)return json(res,404,{error:'Кадр не найден.'});
+    res.writeHead(200,{'Content-Type':'image/jpeg','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});return res.end(frame);
+   }
+   if(route==='yard-clips-capture'&&req.method==='POST'&&process.env.PANEL_TEST_HOOKS==='1'){
+    const request=JSON.parse((await body(req)).toString()||'{}');
+    const clip=await yardClips.testCapture({...(!Number.isFinite(request?.at)?{}:{at:request.at}),...(request?.dedup===false?{dedup:false}:{})});
+    return json(res,200,clip?{id:clip.id,at:clip.at,source:clip.source,frameCount:clip.frameCount}:{created:false});
    }
    // Диагностика ONVIF-детектора двора: статус для живой панели (без пароля).
    if(route==='yard-onvif'&&req.method==='GET'){

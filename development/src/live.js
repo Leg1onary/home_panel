@@ -45,7 +45,9 @@ function applySnapshot(list){
    checkedAt:state.liveUpdatedAt,quality:temperature.available?'live':'unavailable'};
  }
 }
-let timer,busy=false,revision=0,sse=null;
+let timer,busy=false,revision=0,sse=null,yardClipHandler=null;
+// Клипы двора: сервер шлёт 'yard-clip' по тому же SSE-каналу состояний.
+export const setYardClipHandler=f=>{yardClipHandler=typeof f==='function'?f:null};
 export async function pollLive(onChange=()=>{}){
  if(!isLive()||busy)return;busy=true;const rev=revision;
  try{
@@ -78,6 +80,9 @@ function startSSE(onChange=()=>{}){
   source.addEventListener('patch',e=>{
    try{for(const s of JSON.parse(e.data))state.entityStates[s.entity_id]=s;applySnapshot(Object.values(state.entityStates))}catch{return}
    stopFallback();state.liveOnline=true;state.liveError='';state.liveUpdatedAt=Date.now();onChange();
+  });
+  source.addEventListener('yard-clip',e=>{
+   try{const clip=JSON.parse(e.data);if(clip&&yardClipHandler)yardClipHandler(clip)}catch{return}
   });
   source.addEventListener('error',e=>{
    if(e.data){try{state.liveError=JSON.parse(e.data).message}catch{}state.liveOnline=false;onChange()}

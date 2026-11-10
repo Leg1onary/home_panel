@@ -1,0 +1,18 @@
+sheet h2: Двор · Tapo C320WS
+slot html: <span id="yard-clips-slot" data-preact="1"><section class="yard-clips"><p class="yard-clips-empty">Событий пока нет</p></section></span>
+yard-clips slot: 1
+empty state before capture: 1
+capture: 200 {"id":1,"at":1794340267779,"source":"onvif","frameCount":1}
+clip rows: 1
+clip thumbs: 1
+sheet frames: 1 sheet open: 1
+errors: [
+  'HTTP 400 http://127.0.0.1:8099/api/panel/ha/energy',
+  'console: Failed to load resource: the server responded with a status of 400 (Bad Request)',
+  'HTTP 400 http://127.0.0.1:8099/api/panel/ha/rtc/start',
+  'console: Failed to load resource: the server responded with a status of 400 (Bad Request)',
+  'HTTP 400 http://127.0.0.1:8099/api/panel/ha/stream/start',
+  'console: Failed to load resource: the server responded with a status of 400 (Bad Request)'
+]
+preview errors: none
+QA OK

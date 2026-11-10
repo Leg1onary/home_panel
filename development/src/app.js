@@ -9,7 +9,7 @@ import {rooms,state,getRoom,countLights,channelsFor,sensors} from './schema.js';
 import {sendCommand,commandFor,hasPending} from './commands.js';
 import {preferences,loadStorage,saveStorage,flushStorage,savePhoto,removePhoto,applyPreferences} from './storage.js';
 import {bindingDefinitions,validatePreferences} from './preferences.js';
-import {isLive,canControl,observed,startLive,discover,readiness} from './live.js';
+import {isLive,canControl,observed,startLive,discover,readiness,setYardClipHandler} from './live.js';
 import {areas,areaName,deviceTypes,sensorTypes,samePhysicalDevice} from './catalog.js';
 import {api} from './api.js';
 import {startCameraPlayer} from './camera-player.js';
@@ -34,6 +34,7 @@ import {WeatherChip,weatherBus} from './preact/weather-widget.js';
 import {QuickWidget,quickBus} from './preact/quick-widget.js';
 import {FactsWidget,factsBus} from './preact/facts-widget.js';
 import {RoomCardWidget,RoomSheetWidget,roomBus} from './preact/room-widget.js';
+import {YardClipsWidget,yardClipsBus} from './preact/yard-clips-widget.js';
 import {YARD_REFRESH_MS} from './yard-card.js';
 import {loadShopping,paintShopping,shoppingMutate,shoppingState,shoppingCardMarkup} from './shopping.js';
 import {paintAlarm,alarmMarkup,alarmEntity,alarmAction} from './alarm.js';
@@ -277,6 +278,18 @@ function updateQuickRegion(){
   rail.dataset.preact='1';
  }
 }
+// Лента клипов двора: Preact-виджет (src/preact/yard-clips-widget.js) в слоте
+// вкладки «Двор». Слот пересоздаётся при перерисовке #room-equipment — монтаж
+// повторяется, как у погодного слота. Демо: live=false → виджет не рендерится.
+function updateYardClipsRegion(){
+ const slot=$('#yard-clips-slot');
+ if(!slot||!isLive())return;
+ if(!slot.dataset.preact){
+  preactRender(ph(YardClipsWidget,{live:isLive()}),slot);
+  slot.dataset.preact='1';
+ }
+}
+setYardClipHandler(info=>yardClipsBus.notify({kind:'new',clip:info}));
 function quickArgs(){
  const camera=state.devices.find(d=>d.type==='camera'&&d.room==='yard'&&d.status==='installed');
  const media=state.devices.find(d=>d.id==='station'&&d.status==='installed');
@@ -540,7 +553,7 @@ function roomPage(){
 function roomEquipment(r){
  const cards=logicalSensorCards(r.id);
  return `${state.devices.some(d=>d.id==='station'&&d.room===r.id&&d.status==='installed')?station():''}
- ${cards}${state.devices.filter(d=>d.room===r.id&&['curtain','vacuum'].includes(d.type)).map(sensorCard).join('')}`;
+ ${cards}${state.devices.filter(d=>d.room===r.id&&['curtain','vacuum'].includes(d.type)).map(sensorCard).join('')}${r.id==='yard'?'<span id="yard-clips-slot"></span>':''}`;
 }
 function lights(){
  return `<div class="view"><div class="view-title"><div><div class="eyebrow">Управление</div><h1>Свет в доме</h1><p>Выбери комнату. Все линии доступны независимо.</p></div>
@@ -625,11 +638,29 @@ function openYardCamera(){
  if(d)return cameraSheet(d.id);
  simpleSheet('<h2>Камера двора</h2><p class="description">Добавь установленную камеру в зону «Двор» и привяжи её к проверенной сущности camera.* в настройках панели.</p>');
 }
+// Щиток клипа двора: все кадры события крупнее + дата/время. Кадры грузятся
+// через yard-clip/<id>/<idx>, объектные URL живут до следующего открытия.
+let yardClipUrls=[];
+async function openYardClipSheet(b){
+ const id=Number(b.dataset.clipId),at=Number(b.dataset.clipAt),count=Math.min(4,Number(b.dataset.clipCount)||1),source=b.dataset.clipSource||'';
+ if(!Number.isFinite(id)||!Number.isFinite(at))return;
+ for(const u of yardClipUrls)URL.revokeObjectURL(u);yardClipUrls=[];
+ const frames=Array.from({length:count},(_,i)=>`<div class="yard-clip-frame" data-clip-idx="${i}"><span>Загрузка…</span></div>`).join('');
+ simpleSheet(`<div class="yard-clip-sheet"><div class="eyebrow">Двор</div><h2>Событие · ${esc(timeOf(at))}</h2><p class="description">${esc(source==='frames'?'Движение по кадрам камеры':'Датчик камеры · ONVIF')} · ${esc(new Date(at).toLocaleString())}</p><div class="yard-clip-frames">${frames}</div></div>`);
+ for(let i=0;i<count;i++){
+  try{
+   const blob=await api(`yard-clip/${id}/${i}`,{image:true});
+   const url=URL.createObjectURL(blob);yardClipUrls.push(url);
+   const slot=$(`.yard-clip-frames [data-clip-idx="${i}"]`);if(slot)slot.innerHTML=`<img src="${url}" alt="Кадр ${i+1}"/>`;
+  }catch{const slot=$(`.yard-clip-frames [data-clip-idx="${i}"]`);if(slot)slot.innerHTML='<span>Кадр недоступен</span>'}
+ }
+}
 function cameraSheet(id){
  const d=state.devices.find(d=>d.id===id);if(!d)return;
  const e=observed(id),enabled=isLive()&&!state.preview&&d.status==='installed'&&e&&!['unknown','unavailable'].includes(e.state);
- modal(`<div class="eyebrow">${esc(areaName(d.room))}</div><h2>${esc(d.name)}</h2><p class="description">${d.status==='planned'?'Камера ещё не установлена.':'Прямой эфир по запросу. Закрой окно, чтобы остановить просмотр.'}</p><div id="camera-frame" class="camera-frame"><span>${enabled?'Подключаем видео…':'Сначала привяжи и проверь сущность камеры в настройках'}</span></div><p id="camera-status" role="status">${enabled?'Подключаем прямой эфир…':'Подключение камеры ещё не проверено'}</p><div class="camera-actions"><button class="primary" data-camera-start="${id}" ${disabled(!enabled)}>${I('play')}Прямой эфир</button><button class="secondary" data-action="camera-stop" ${disabled(!enabled)}>${I('pause')}Стоп</button><button class="secondary" data-action="camera-fullscreen" ${disabled(!enabled)}>${I('maximize')}На весь экран</button><button class="text-button" data-camera-hls="${id}" ${disabled(!enabled)}>HLS · резерв</button><button class="text-button" data-camera-frame="${id}" ${disabled(!enabled)}>${I('camera')}Снимок</button></div>`);
+ modal(`<div class="eyebrow">${esc(areaName(d.room))}</div><h2>${esc(d.name)}</h2><p class="description">${d.status==='planned'?'Камера ещё не установлена.':'Прямой эфир по запросу. Закрой окно, чтобы остановить просмотр.'}</p><div id="camera-frame" class="camera-frame"><span>${enabled?'Подключаем видео…':'Сначала привяжи и проверь сущность камеры в настройках'}</span></div><p id="camera-status" role="status">${enabled?'Подключаем прямой эфир…':'Подключение камеры ещё не проверено'}</p><div class="camera-actions"><button class="primary" data-camera-start="${id}" ${disabled(!enabled)}>${I('play')}Прямой эфир</button><button class="secondary" data-action="camera-stop" ${disabled(!enabled)}>${I('pause')}Стоп</button><button class="secondary" data-action="camera-fullscreen" ${disabled(!enabled)}>${I('maximize')}На весь экран</button><button class="text-button" data-camera-hls="${id}" ${disabled(!enabled)}>HLS · резерв</button><button class="text-button" data-camera-frame="${id}" ${disabled(!enabled)}>${I('camera')}Снимок</button></div>${d.room==='yard'?'<span id="yard-clips-slot"></span>':''}`);
  $('.sheet').classList.add('camera-sheet');$('#overlay').classList.add('camera-overlay');cameraDevice=id;
+ updateYardClipsRegion();
  if(enabled)cameraStart(id);
 }
 function cameraStart(id,transport='auto'){
@@ -716,6 +747,7 @@ function updateDetail(){
  if($('#room-climate'))$('#room-climate').innerHTML=roomClimate(state.selected);
  updateRegion('.zone-stage .room-climate',roomClimate(state.selected));
  if($('#room-equipment')&&!editingRange)updateRegion('#room-equipment',roomEquipment(getRoom(state.selected)));
+ updateYardClipsRegion();
  if(!$('#overlay').hidden&&$('#sheet-content').dataset.room)updateRoomSheet();
  icons();
 }
@@ -1470,6 +1502,7 @@ async function dispatchAction(e){
   <div class="inline-note">Проверь срабатывание вручную: намочи контакты датчика и убедись, что состояние меняется.</div>`);
  }
  if(a==='camera')return openYardCamera();
+ if(a==='yard-clip')return openYardClipSheet(b);
  if(b.id==='reset-model')return modelAPI?.resetModel();
 }
 document.addEventListener('change',async e=>{

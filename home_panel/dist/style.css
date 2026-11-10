@@ -863,6 +863,22 @@ html[data-view=home] .shell>footer[data-storage=saved]{display:none}
 .yard-chip.is-leaving{opacity:0;transform:scale(.92)}
 .yard-chip .yard-thumb{width:72px;height:72px;border-radius:var(--radius-md);overflow:hidden;display:flex;align-items:center;justify-content:center;background:var(--surface);color:var(--muted)}
 .yard-chip .yard-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+/* Клипы двора: лента событий во вкладке «Двор» (3.2.1). */
+.yard-clips{margin-top:var(--space-5)}
+.yard-clips .section-heading{margin-bottom:var(--space-3)}
+.yard-clips-empty{color:var(--muted);font-size:var(--text-sm);padding:var(--space-3) 0}
+.yard-clip-list{display:flex;flex-direction:column;gap:var(--space-2)}
+.yard-clip-row{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-2) var(--space-3);border-radius:var(--radius-lg,18px);background:var(--surface);border:1px solid var(--border);text-align:left;color:var(--text);cursor:pointer}
+.yard-clip-row:hover{background:var(--surface-2)}
+.yard-clip-row svg{color:var(--faint);flex-shrink:0}
+.yard-clip-thumb{width:64px;height:64px;border-radius:var(--radius-md);overflow:hidden;display:flex;align-items:center;justify-content:center;background:var(--surface-2);color:var(--muted);flex-shrink:0}
+.yard-clip-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.yard-clip-meta{display:flex;flex-direction:column;gap:2px;min-width:0}
+.yard-clip-meta strong{font-size:var(--text-base)}
+.yard-clip-meta small{color:var(--muted);font-size:var(--text-xs)}
+.yard-clip-frames{display:flex;flex-direction:column;gap:var(--space-3)}
+.yard-clip-frame{aspect-ratio:16/9;border-radius:var(--radius-md);overflow:hidden;background:var(--surface-2);display:flex;align-items:center;justify-content:center;color:var(--muted)}
+.yard-clip-frame img{width:100%;height:100%;object-fit:cover;display:block}
 [data-theme=light] .weather-card{background:var(--surface)}
 .light-overview-badge{display:flex;align-items:center;justify-content:center;gap:var(--space-1);min-height:44px;padding:var(--space-2);background:none;border:0;border-radius:var(--radius-sm);font-size:var(--text-xs);color:var(--muted);white-space:nowrap}
 .light-overview-badge.has-light{color:var(--accent)}.light-overview-badge svg{width:14px;height:14px}
@@ -1323,7 +1339,7 @@ input[type=range]:disabled::-moz-range-thumb{background:var(--faint);border-colo
 
 
 
-/* ������ ������� (�������� � ������ ������� �������) */
+/* ?????? ??????? (?????????? ?????? ? ???????? ??????) */
 .shopping-card{margin-top:12px}
 .shopping-list{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
 .shopping-list li{display:flex;align-items:center;gap:10px}
@@ -1335,7 +1351,7 @@ input[type=range]:disabled::-moz-range-thumb{background:var(--faint);border-colo
 .shopping-add{display:flex;gap:8px;margin-top:10px}
 .shopping-add input{flex:1;min-width:0}
 
-/* ������� TTS-����� � �������� ������� */
+/* ?????? TTS-???? ? ??????????? ??????????? */
 .tts-block{margin-top:14px}
 .tts-presets{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 10px}
 .tts-preset{border:1px solid var(--line,#d8dbe0);background:none;border-radius:999px;padding:6px 12px;cursor:pointer;font:inherit;font-size:13px}
@@ -1400,7 +1416,7 @@ input[type=range]:disabled::-moz-range-thumb{background:var(--faint);border-colo
 @media(max-width:900px){.home-rail{position:static;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:flex-end;max-width:none;margin-top:var(--space-3)}.home-rail .digest-card,.home-rail .profile-invite{width:100%}.home-stage-wrap .spatial-stage{height:min(70vh,560px)}.home-room-card{left:var(--space-4);right:var(--space-4);width:auto;transform:none;bottom:calc(var(--space-4) + 120px);top:auto}}
 
 
-/* --- Aurora 2k27 � wave 2 ������� (ambient-�����) --- */
+/* --- Aurora 2k27 ? wave 2 ?????????? (ambient-???????) --- */
 .setting-check{flex-direction:row;align-items:center;gap:var(--space-2)}
 .setting-check input{accent-color:var(--accent,currentColor)}
 .idle-screen{transition:background .6s ease,backdrop-filter .6s ease}
