@@ -23,6 +23,9 @@ import {StationAssistant} from './assistant.js';
 import {runScenario,runUserScenario} from './scenarios.js';
 
 const port=Number(process.env.PORT||8080),preview=process.env.PANEL_PREVIEW==='1';
+const startedAt=Date.now();
+let PANEL_VERSION='3.2.0';
+try{PANEL_VERSION=JSON.parse(await readFile(resolve('addon/home-panel/manifest.json'),'utf8')).version||PANEL_VERSION}catch{}
 const addon=process.env.PANEL_ADDON==='1';
 if(addon&&preview)throw new Error('Home Panel: add-on must not run in preview mode.');
 const root=resolve(process.env.PANEL_ROOT||'dist'),data=resolve(process.env.PANEL_DATA||'data');
@@ -47,6 +50,9 @@ let yardOnvifWatch=null,yardOnvifConfigKey='';
 const clientPreferences=prefs=>{const c={...prefs};delete c.yard_onvif_pass;return c};
 const yardOnvifStatus=()=>yardOnvifWatch?.status?.()||null;
 const yardOnvifEnsure=prefs=>{
+ // Тумблер ONVIF-датчика (preferences.yard_onvif_enabled, по умолчанию включено):
+ // выключен → watcher останавливается, движение двора ловит jpeg-диффер (резерв).
+ if(prefs.yard_onvif_enabled===false){if(yardOnvifWatch){yardOnvifWatch.stop();yardOnvifWatch=null;yardOnvifConfigKey=''}return false}
  let host=String(prefs.yard_onvif_host||'').trim()||'192.168.8.204',port;
  // host может быть 'ip:port' (как в статусе живой камеры): разделяем, иначе порт 2020.
  const colon=host.match(/^([\w.\[\]:-]+):(\d+)$/);
@@ -201,6 +207,8 @@ const server=http.createServer(async(req,res)=>{
      }
     }
     db.prepare('UPDATE profiles SET preferences=? WHERE id=?').run(JSON.stringify(next),id);
+    // Тумблер ONVIF-датчика применяется сразу: сервер перезапускает/останавливает watcher.
+    yardOnvifEnsure(next);
     return json(res,200,{saved:true,preferences:clientPreferences(next),rejected,offline});
    }
    if(route==='photo'){
@@ -221,11 +229,28 @@ const server=http.createServer(async(req,res)=>{
    }
    // Диагностика ONVIF-детектора двора: статус для живой панели (без пароля).
    if(route==='yard-onvif'&&req.method==='GET'){
+    const enabled=p.preferences.yard_onvif_enabled!==false;
     const configured=yardOnvifEnsure(p.preferences);
     const s=yardOnvifStatus()||{};
-    return json(res,200,{configured,alive:!!s.alive,eventService:s.eventService||null,
+    return json(res,200,{enabled,configured,alive:!!s.alive,eventService:s.eventService||null,
      subscription:s.subscription||null,lastMotionAt:s.lastMotionAt||null,lastError:s.lastError||null,
      restarts:s.restarts||0,fallback:!configured||!s.alive});
+   }
+   // Агрегированное здоровье системы: один GET, те же права, что у остальных API.
+   if(route==='health'&&req.method==='GET'){
+    const onvifOk=yardOnvifEnsure(p.preferences),onvifStatus=yardOnvifStatus()||{};
+    let sqliteKB=0;
+    try{sqliteKB=Math.round((await stat(resolve(data,'panel.sqlite'))).size/1024)}catch{}
+    return json(res,200,{
+     ha:{enabled:ha.enabled,connected:ha.enabled&&live.states.length>0,lastError:live.lastError||null,latencyMs:live.lastLatencyMs},
+     onvif:{enabled:p.preferences.yard_onvif_enabled!==false,configured:onvifOk,alive:!!onvifStatus.alive,
+      subscription:onvifStatus.subscription||null,lastMotionAt:onvifStatus.lastMotionAt||null,
+      lastError:onvifStatus.lastError||null,fallback:!onvifOk||!onvifStatus.alive},
+     sse:{clients:live.clients.size},
+     disk:{sqliteKB,backups:db.prepare('SELECT COUNT(*) c FROM profile_backups').get().c},
+     uptime:{seconds:Math.floor((Date.now()-startedAt)/1000)},
+     version:PANEL_VERSION
+    });
    }
    if(route==='ha/weather-forecast'&&req.method==='GET'){
     const asked=url.searchParams.get('entity')||'',entityId=/^weather\.[a-z0-9_]+$/.test(asked)?asked:(await ha.states()).find(e=>e.entity_id.startsWith('weather.'))?.entity_id||'';

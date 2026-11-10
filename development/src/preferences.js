@@ -10,7 +10,7 @@ export const defaultPreferences=()=>({
  userScenarios:[],
  // ONVIF-события движения двора: creds хранятся серверно (в профиле SQLite),
  // пароль не отдаётся клиенту — index.js вырезает его из ответов API.
- yard_onvif_user:'',yard_onvif_pass:'',yard_onvif_host:'192.168.8.204'
+ yard_onvif_user:'',yard_onvif_pass:'',yard_onvif_host:'192.168.8.204',yard_onvif_enabled:true
 });
 // Пользовательские сценарии: строгие лимиты, неизвестные поля отбрасываем,
 // целиком невалидные сценарии молча не сохраняем — остальной профиль не страдает.
@@ -61,6 +61,8 @@ export function validatePreferences(input,{importing=false}={}){
  p.yard_onvif_user=typeof raw.yard_onvif_user==='string'?raw.yard_onvif_user.trim().slice(0,64):'';
  p.yard_onvif_pass=typeof raw.yard_onvif_pass==='string'?raw.yard_onvif_pass.slice(0,120):'';
  p.yard_onvif_host=typeof raw.yard_onvif_host==='string'&&raw.yard_onvif_host.trim()?raw.yard_onvif_host.trim().slice(0,120):'192.168.8.204';
+ // Тумблер ONVIF-датчика: отсутствие ключа = включено (обратная совместимость со старыми профилями).
+ p.yard_onvif_enabled=raw.yard_onvif_enabled!==false;
 
  const used=new Set();p.bindings={};
  for(const definition of bindingDefinitions(p.devices)){

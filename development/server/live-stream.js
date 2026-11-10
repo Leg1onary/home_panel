@@ -1,7 +1,7 @@
 // Common server-side poller: one interval for all SSE clients.
 export class LiveFeed{
  constructor({ha}){
-  this.ha=ha;this.clients=new Set();this.last=new Map();this.states=[];this.timer=null;this.hb=null
+  this.ha=ha;this.clients=new Set();this.last=new Map();this.states=[];this.timer=null;this.hb=null;this.lastError=null;this.lastLatencyMs=null
   if(ha.enabled){
    this.poll()
    this.timer=setInterval(()=>this.poll(),5000);this.timer.unref()
@@ -16,7 +16,9 @@ export class LiveFeed{
  async poll(){
   if(!this.ha.enabled)return
   let states
-  try{states=await this.ha.states()}catch(error){this.broadcast('error',JSON.stringify({message:error.message}));return}
+  const started=Date.now()
+  try{states=await this.ha.states()}catch(error){this.lastError=error.message;this.broadcast('error',JSON.stringify({message:error.message}));return}
+  this.lastError=null;this.lastLatencyMs=Date.now()-started
   const next=new Map(states.map(e=>[e.entity_id,JSON.stringify(e)]))
   const changed=states.filter(e=>this.last.get(e.entity_id)!==next.get(e.entity_id))
   this.last=next;this.states=states

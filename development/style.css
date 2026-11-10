@@ -300,6 +300,18 @@ code{font-family:ui-monospace,monospace;font-size:.92em;background:var(--surface
 .binding-card[data-health=ok] .binding-health{color:var(--text)}
 .binding-card[data-health=offline]{border-color:var(--warning)}.binding-card[data-health=offline] .binding-health{color:var(--warning)}
 .binding-card[data-health=bad]{border-color:var(--danger,var(--warning))}.binding-card[data-health=bad] .binding-health{color:var(--danger,var(--warning))}
+/* Волна A 3.2.0: индикаторы здоровья системы */
+.health-list{display:flex;flex-direction:column;gap:var(--space-2);margin:var(--space-4) 0}
+.health-row{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-2) var(--space-3);border:1px solid var(--border,var(--muted));border-radius:var(--radius-sm);background:rgba(255,255,255,.02)}
+.health-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;background:var(--muted)}
+.health-dot.is-ok{background:var(--lit,var(--accent));box-shadow:0 0 8px var(--lit,var(--accent))}
+.health-dot.is-warn{background:var(--warning);box-shadow:0 0 8px var(--warning)}
+.health-dot.is-bad{background:var(--danger,var(--warning));box-shadow:0 0 8px var(--danger,var(--warning))}
+.health-text{display:flex;flex-direction:column;min-width:0;flex:1}
+.health-text strong{font-size:var(--text-sm)}
+.health-text span{font-size:var(--text-xs);color:var(--muted);overflow-wrap:anywhere}
+.health-row small{font-size:var(--text-xs);color:var(--muted);max-width:40%;overflow-wrap:anywhere;text-align:right}
+
 .binding-suggest{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-1) var(--space-2);margin-top:var(--space-2);font-size:var(--text-xs);color:var(--muted)}
 .binding-suggest .text-button{min-height:44px;font-size:var(--text-xs);overflow-wrap:anywhere;text-align:left}
 .binding-outcome{margin:var(--space-1) 0 0;font-size:var(--text-xs);line-height:1.4}

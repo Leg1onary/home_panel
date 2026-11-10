@@ -2508,7 +2508,8 @@ var defaultPreferences = () => ({
   // пароль не отдаётся клиенту — index.js вырезает его из ответов API.
   yard_onvif_user: "",
   yard_onvif_pass: "",
-  yard_onvif_host: "192.168.8.204"
+  yard_onvif_host: "192.168.8.204",
+  yard_onvif_enabled: true
 });
 var USER_SCENARIO_LIMITS = { max: 8, maxSteps: 12, minBrightness: 30, maxBrightness: 100 };
 var scenarioIdOk = (id) => typeof id === "string" && /^[a-z0-9-]{1,40}$/.test(id);
@@ -2562,6 +2563,7 @@ function validatePreferences(input, { importing = false } = {}) {
   p.yard_onvif_user = typeof raw.yard_onvif_user === "string" ? raw.yard_onvif_user.trim().slice(0, 64) : "";
   p.yard_onvif_pass = typeof raw.yard_onvif_pass === "string" ? raw.yard_onvif_pass.slice(0, 120) : "";
   p.yard_onvif_host = typeof raw.yard_onvif_host === "string" && raw.yard_onvif_host.trim() ? raw.yard_onvif_host.trim().slice(0, 120) : "192.168.8.204";
+  p.yard_onvif_enabled = raw.yard_onvif_enabled !== false;
   const used = /* @__PURE__ */ new Set();
   p.bindings = {};
   for (const definition of bindingDefinitions(p.devices)) {
@@ -3329,6 +3331,8 @@ var LiveFeed = class {
     this.states = [];
     this.timer = null;
     this.hb = null;
+    this.lastError = null;
+    this.lastLatencyMs = null;
     if (ha2.enabled) {
       this.poll();
       this.timer = setInterval(() => this.poll(), 5e3);
@@ -3354,12 +3358,16 @@ data: ${data2}
   async poll() {
     if (!this.ha.enabled) return;
     let states;
+    const started = Date.now();
     try {
       states = await this.ha.states();
     } catch (error) {
+      this.lastError = error.message;
       this.broadcast("error", JSON.stringify({ message: error.message }));
       return;
     }
+    this.lastError = null;
+    this.lastLatencyMs = Date.now() - started;
     const next = new Map(states.map((e) => [e.entity_id, JSON.stringify(e)]));
     const changed = states.filter((e) => this.last.get(e.entity_id) !== next.get(e.entity_id));
     this.last = next;
@@ -4380,6 +4388,12 @@ async function runUserScenario(id, ha2, p) {
 // server/index.js
 var port = Number(process.env.PORT || 8080);
 var preview = process.env.PANEL_PREVIEW === "1";
+var startedAt = Date.now();
+var PANEL_VERSION = "3.2.0";
+try {
+  PANEL_VERSION = JSON.parse(await readFile(resolve("addon/home-panel/manifest.json"), "utf8")).version || PANEL_VERSION;
+} catch {
+}
 var addon = process.env.PANEL_ADDON === "1";
 if (addon && preview) throw new Error("Home Panel: add-on must not run in preview mode.");
 var root = resolve(process.env.PANEL_ROOT || "dist");
@@ -4408,6 +4422,14 @@ var clientPreferences = (prefs) => {
 };
 var yardOnvifStatus = () => yardOnvifWatch?.status?.() || null;
 var yardOnvifEnsure = (prefs) => {
+  if (prefs.yard_onvif_enabled === false) {
+    if (yardOnvifWatch) {
+      yardOnvifWatch.stop();
+      yardOnvifWatch = null;
+      yardOnvifConfigKey = "";
+    }
+    return false;
+  }
   let host = String(prefs.yard_onvif_host || "").trim() || "192.168.8.204", port2;
   const colon = host.match(/^([\w.\[\]:-]+):(\d+)$/);
   if (colon) {
@@ -4600,6 +4622,7 @@ var server = http.createServer(async (req, res) => {
           }
         }
         db.prepare("UPDATE profiles SET preferences=? WHERE id=?").run(JSON.stringify(next), id);
+        yardOnvifEnsure(next);
         return json(res, 200, { saved: true, preferences: clientPreferences(next), rejected, offline });
       }
       if (route === "photo") {
@@ -4625,9 +4648,11 @@ var server = http.createServer(async (req, res) => {
         return json(res, 200, { ...await yardMotion.check(yardCameraEntity(p.preferences)), checkedAt: Date.now() });
       }
       if (route === "yard-onvif" && req.method === "GET") {
+        const enabled = p.preferences.yard_onvif_enabled !== false;
         const configured = yardOnvifEnsure(p.preferences);
         const s = yardOnvifStatus() || {};
         return json(res, 200, {
+          enabled,
           configured,
           alive: !!s.alive,
           eventService: s.eventService || null,
@@ -4636,6 +4661,30 @@ var server = http.createServer(async (req, res) => {
           lastError: s.lastError || null,
           restarts: s.restarts || 0,
           fallback: !configured || !s.alive
+        });
+      }
+      if (route === "health" && req.method === "GET") {
+        const onvifOk = yardOnvifEnsure(p.preferences), onvifStatus = yardOnvifStatus() || {};
+        let sqliteKB = 0;
+        try {
+          sqliteKB = Math.round((await stat(resolve(data, "panel.sqlite"))).size / 1024);
+        } catch {
+        }
+        return json(res, 200, {
+          ha: { enabled: ha.enabled, connected: ha.enabled && live.states.length > 0, lastError: live.lastError || null, latencyMs: live.lastLatencyMs },
+          onvif: {
+            enabled: p.preferences.yard_onvif_enabled !== false,
+            configured: onvifOk,
+            alive: !!onvifStatus.alive,
+            subscription: onvifStatus.subscription || null,
+            lastMotionAt: onvifStatus.lastMotionAt || null,
+            lastError: onvifStatus.lastError || null,
+            fallback: !onvifOk || !onvifStatus.alive
+          },
+          sse: { clients: live.clients.size },
+          disk: { sqliteKB, backups: db.prepare("SELECT COUNT(*) c FROM profile_backups").get().c },
+          uptime: { seconds: Math.floor((Date.now() - startedAt) / 1e3) },
+          version: PANEL_VERSION
         });
       }
       if (route === "ha/weather-forecast" && req.method === "GET") {

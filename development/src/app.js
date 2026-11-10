@@ -1,6 +1,6 @@
 import {deviceId} from './compat.js';
 import {
- createIcons,House,Box,Lightbulb,Power,ScanEye,SlidersHorizontal,Sun,Moon,X,ArrowRight,ArrowUpRight,Zap,
+ createIcons,House,Box,Lightbulb,Power,ScanEye,SlidersHorizontal,Sun,Moon,X,ArrowRight,ArrowUpRight,Zap,Activity,
  AudioLines,Camera,ChevronRight,CircleCheck,DoorClosed,Droplets,Heater,Leaf,Radio,RotateCcw,Thermometer,Shield,
  Trees,Archive,Armchair,Bath,BedDouble,Blocks,DoorOpen,MoveUpRight,Sofa,MoonStar,Star,ChevronUp,
  ChevronDown,Check,LoaderCircle,TriangleAlert,WifiOff,Play,Pause,SkipBack,SkipForward,ChartNoAxesCombined,Volume2,ImagePlus,Settings2,Info,Maximize,Minimize,Download,Upload,Cloud,Cloudy,CloudSun,CloudRain,CloudSnow,CloudFog,CloudLightning,CloudDrizzle,CloudHail,Wind,LogOut,Film,Sparkles
@@ -43,7 +43,7 @@ import {esc,disabled,timeOf,clock,date,scheduleMinute,PANEL_TIMEZONE} from './do
 import {voiceButton,voiceSync,bindVoice} from './voice.js';
 const $=s=>document.querySelector(s);
 const I=name=>`<i data-lucide="${name}"></i>`;
-const iconSet={House,Box,Lightbulb,Power,ScanEye,SlidersHorizontal,Sun,Moon,X,ArrowRight,ArrowUpRight,Zap,
+const iconSet={House,Box,Lightbulb,Power,ScanEye,SlidersHorizontal,Sun,Moon,X,ArrowRight,ArrowUpRight,Zap,Activity,
  AudioLines,Camera,ChevronRight,CircleCheck,DoorClosed,Droplets,Heater,Leaf,Radio,RotateCcw,Thermometer,Shield,
  Trees,Archive,Armchair,Bath,BedDouble,Blocks,DoorOpen,MoveUpRight,Sofa,MoonStar,Star,ChevronUp,
  ChevronDown,Check,LoaderCircle,TriangleAlert,WifiOff,Play,Pause,SkipBack,SkipForward,ChartNoAxesCombined,Volume2,ImagePlus,Settings2,Info,Maximize,Minimize,Download,Upload,Cloud,Cloudy,CloudSun,CloudRain,CloudSnow,CloudFog,CloudLightning,CloudDrizzle,CloudHail,Wind,LogOut,Film,Sparkles};
@@ -1013,6 +1013,52 @@ async function saveEquipmentModel(next){
   applyPreferences(old);techMessage='Структура не изменена: '+error.message;updateTechnical();
  }
 }
+// Волна A 3.2.0: статус ONVIF-датчика двора и лист «Здоровье системы».
+let techOnvif=null,healthBusy=false;
+function loadTechOnvif(){
+ api('yard-onvif').then(v=>{techOnvif=v;if(state.techOpen)updateTechnical()}).catch(()=>{techOnvif=null});
+}
+function yardOnvifLine(){
+ if(state.yard_onvif_enabled===false)return 'Выключено. Резерв: детект по кадрам камеры.';
+ if(!techOnvif)return 'Статус запрашивается…';
+ if(techOnvif.configured&&techOnvif.alive)return `В системе · подписка активна${techOnvif.lastMotionAt?' · движение: '+timeOf(new Date(techOnvif.lastMotionAt)):''}`;
+ if(techOnvif.configured)return 'События недоступны — работает резерв: детект по кадрам.';
+ return 'Не настроен: укажи логин камеры. Резерв: детект по кадрам.';
+}
+function healthRow(name,status,detail,tone){
+ return `<div class="health-row"><span class="health-dot is-${tone}"></span><div class="health-text"><strong>${esc(name)}</strong><span>${esc(status)}</span></div><small>${esc(detail)}</small></div>`;
+}
+function healthMarkup(h,error){
+ if(error||!h)return `<p class="setting-help">Здоровье системы сейчас не получить: ${esc(error||'нет данных')}.</p><button class="secondary full-width" data-health-reload ${disabled(healthBusy)}>Обновить</button>`;
+ const ha=h.ha||{},on=h.onvif||{};
+ const haTone=ha.connected?'ok':ha.enabled?'warn':'warn';
+ const haStatus=ha.connected?'Состояния поступают':ha.enabled?(ha.lastError?'Нет связи: '+ha.lastError:'Ждём первое обновление'):'Не настроен · деморежим';
+ const haDetail=ha.latencyMs!=null?`задержка ${ha.latencyMs} мс`:'—';
+ const onTone=on.configured&&on.alive?'ok':'warn';
+ const onStatus=!on.enabled?'Выключено · резерв по кадрам':on.configured&&on.alive?'События ONVIF активны':on.configured?'События недоступны · резерв по кадрам':'Не настроен · резерв по кадрам';
+ const onDetail=on.lastError?on.lastError.slice(0,120):on.subscription?on.subscription.slice(0,60):'—';
+ const sse=(h.sse&&h.sse.clients)||0,disk=h.disk||{},up=(h.uptime&&h.uptime.seconds)||0;
+ return `<div class="health-list">
+  ${healthRow('Home Assistant',haStatus,haDetail,haTone)}
+  ${healthRow('Датчик двора (ONVIF)',onStatus,onDetail,onTone)}
+  ${healthRow('Прямая трансляция (SSE)','Клиентов: '+sse,'канал состояний',sse>=0?'ok':'warn')}
+  ${healthRow('Данные',`SQLite: ${disk.sqliteKB||0} КБ`,`резервных копий: ${disk.backups||0}`,'ok')}
+  ${healthRow('Время работы','с старта сервера: '+up+' с','процесс панели','ok')}
+  ${healthRow('Версия',h.version||'—','панель','ok')}
+ </div><button class="secondary full-width" data-health-reload ${disabled(healthBusy)}>${I('rotate-ccw')}Обновить</button>`;
+}
+async function loadHealth(){
+ healthBusy=true;paintHealth();
+ try{healthData=await api('health')}catch(error){healthError=error.message}
+ healthBusy=false;paintHealth();
+}
+let healthData=null,healthError='';
+function paintHealth(){const box=$('[data-health-sheet]');if(box){box.innerHTML=healthMarkup(healthData,healthError);icons()}}
+function openHealth(){
+ healthData=null;healthError='';
+ simpleSheet(`<h2>Здоровье системы</h2><p class="description">Живые данные локального сервера: подключение, датчик двора, клиенты, данные.</p><div data-health-sheet>${healthMarkup(null,'Загружаем…')}</div>`);
+ loadHealth();
+}
 function technical(){
  const ready=readiness();
  const tabs=[['connection','Связь'],['structure','Устройства'],['catalog','Каталог'],['bindings','Привязки'],['diagnostics','Проверка'],['backup','Копия'],['checklist','На месте']];
@@ -1024,6 +1070,12 @@ function technical(){
   <label class="setting-field setting-check"><input id="auto-theme-setting" type="checkbox" ${state.autoTheme?'checked':''} ${disabled(!state.autoTheme&&terraceLux()===null)}/>Тема по освещённости</label>
   <p class="setting-help">${terraceLux()!==null?`Освещённость террасы сейчас ${Math.round(terraceLux())} лк: от ${AUTO_THEME_UP} лк — светлая тема, ниже ${AUTO_THEME_DOWN} лк — тёмная. Пока авто-тема работает, ручной переключатель темы заблокирован.`:'Нужна проверенная привязка «Освещённость террасы» и число лк из Home Assistant — без данных опция недоступна.'}</p>
   <div class="inline-note">В рабочем режиме нет подстановки демоданных: до получения состояния линии и датчики недоступны.</div>
+   <div class="setting-block onvif-block">
+    <label class="setting-field setting-check"><input id="yard-onvif-setting" type="checkbox" ${state.yard_onvif_enabled!==false?'checked':''} ${disabled(hasPending())}/>Датчик движения камеры (ONVIF)</label>
+    <p class="setting-help" data-yard-onvif-status>${esc(yardOnvifLine())}</p>
+    <p class="setting-help">При выключении движение двора определяется по кадрам камеры (jpeg-диффер) — резерв без событий железа.</p>
+   </div>
+   <button class="secondary full-width" data-action="health-sheet">${I('activity')}Здоровье системы</button>
   ${state.addon?'<ol class="setup-list"><li>Home Panel работает на системнике Home Assistant OS.</li><li>Доступ к HA настроен автоматически через Supervisor. .env и личный токен не нужны.</li><li>Во вкладке «Привязки» загрузи сущности и проверь соответствие каждой линии.</li></ol><p class="setting-help">Настройки сохраняются в /data/homepanel. Панель доступна в доверенной домашней сети; порт 8090 не выставляй в интернет.</p>':'<ol class="setup-list"><li>Локальный запуск через <code>Запустить.cmd</code>.</li><li>На месте создай <code>.env</code> по примеру. Адрес и токен вводятся только в локальный файл, не в браузер и не в чат.</li><li>Перезапусти сервер, загрузи список сущностей и проверь каждую привязку.</li></ol><p class="setting-help">Токен не включается в сборку и резервную копию. Локальный сервер слушает только этот компьютер; сетевой доступ для отдельного планшета настроим позже безопасным способом.</p>'}`;
  if(techTab==='catalog')content=catalogSettings();
  if(techTab==='structure')content=deviceStructure(preferences(),{editing:equipmentEdit,esc,areaName,areas,blocked:hasPending()});
@@ -1072,6 +1124,7 @@ function houseProfileReview(){
 function openTechnical(tab='connection'){
  settingsOpen=false;state.techOpen=true;techTab=tab;techMessage='';bindingDraft={};bindingOutcome={};$('#sheet-content').dataset.station='';
  modal(technical());$('.sheet').classList.add('settings-sheet');state.techOpen=true;
+ loadTechOnvif();
 }
 function updateTechnical({keepForm=true}={}){
  if(!state.techOpen)return;
@@ -1386,6 +1439,8 @@ async function dispatchAction(e){
    .catch(error=>{techMessage=error.message;updateTechnical()});return;
  }
  if(a==='reconnect'){startLive(refresh);techMessage=isLive()?'Проверяем связь…':'Выбран деморежим. Подключение к дому не выполняется.';updateTechnical();return}
+  if(a==='health-sheet')return openHealth();
+  if(b.hasAttribute('data-health-reload'))return loadHealth();
  if(a==='save-photo'){
   if(!photoBlob)return;
   savePhoto(photoBlob).then(()=>{toast('Фото сохранено в локальную базу этого компьютера.');photoBlob=null;refresh()}).catch(error=>toast(error.message));return;
@@ -1426,6 +1481,7 @@ document.addEventListener('change',async e=>{
  if(id==='idle-setting'){state.idleSeconds=+e.target.value;armIdle();persist()}
  if(id==='ambient-setting'){state.ambientMode=e.target.checked;if(state.idle&&!state.ambientMode)exitAmbient();persist()}
  if(id==='auto-theme-setting'){state.autoTheme=e.target.checked;autoThemeZone=null;persist();applyAutoTheme();updateThemeButton();updateTechnical();return}
+  if(id==='yard-onvif-setting'){state.yard_onvif_enabled=e.target.checked;persist();updateTechnical();return}
  if(id==='night-setting'){state.nightMode=e.target.value;applyNight();persist()}
  if(id==='kiosk-setting'){state.kiosk=e.target.value==='on';applyAppearance();persist()}
  if(id==='network-setting'&&!isLive()){state.demoOffline=e.target.value==='offline';refresh();updateTechnical()}
