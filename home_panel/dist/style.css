@@ -1444,3 +1444,14 @@ body.is-ambient .aurora-blob{opacity:.25;filter:blur(90px) saturate(.6)}
 /* Авто-тема: заблокированный ручной переключатель честно выглядит заблокированным. */
 .icon-button:disabled{opacity:.4;cursor:default}
 #theme[title^="Авто по освещённости"]{position:relative}
+
+/* ─── Волна C «Ночной режим»: тёплый приглушённый экран, расписание ─── */
+.night-times{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3)}
+html[data-night=true]::after{content:'';position:fixed;inset:0;z-index:99;pointer-events:none;
+ background:linear-gradient(180deg,rgba(46,26,6,.28),rgba(24,13,3,.34));opacity:1;transition:opacity 2.4s ease}
+html[data-night=false]::after{content:'';position:fixed;inset:0;z-index:99;pointer-events:none;
+ background:linear-gradient(180deg,rgba(46,26,6,.28),rgba(24,13,3,.34));opacity:0;transition:opacity 2.4s ease}
+html[data-night=true] .hero-clock>div{transform:scale(1.12);transform-origin:left top}
+.hero-clock>div{transition:transform 2.4s ease}
+html[data-night=true] svg{animation:none !important}
+html[data-night=true] .aurora-blob{animation:none;opacity:.3}

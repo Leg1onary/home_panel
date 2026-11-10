@@ -26,6 +26,7 @@ import {numericReading,stateTimes} from './readings.js';
 import {duoUI,assistantView} from './assistant-ui.js';
 import {scenarioChipsRow,handleScenarioClick,bindScenarioPainter,bindScenarioHost} from './scenarios-ui.js';
 import {shouldAmbient,AMBIENT_AFTER_IDLE} from './ambient.js';
+import {isNight,isTime,nightLabel} from './night.js';
 import {luxValue,autoTheme,AUTO_THEME_UP,AUTO_THEME_DOWN} from './auto-theme.js';
 import {render as preactRender,h as ph} from './preact/kit.js';
 import {EnergyWidget} from './preact/energy-widget.js';
@@ -965,7 +966,9 @@ function panelSettings(){
  <button class="secondary full-width" data-action="standby">${I('moon-star')}Посмотреть экран ожидания</button>
  <label class="setting-field setting-check"><input id="ambient-setting" type="checkbox" ${state.ambientMode!==false?'checked':''}/>Тихий режим</label>
  <p class="setting-help">Через минуту после экрана ожидания панель затихает: только большие часы, дата и температура. Любое касание возвращает обычный режим.</p>
- <label class="setting-field">Ночной интерфейс<select id="night-setting">${[['auto','Автоматически · 22:00–07:00 МСК'],['on','Всегда включён'],['off','Выключен']].map(([v,l])=>`<option value="${v}" ${state.nightMode===v?'selected':''}>${l}</option>`).join('')}</select></label>
+ <label class="setting-field">Ночной интерфейс<select id="night-setting">${[['auto','Автоматически · по расписанию'],['on','Всегда включён'],['off','Выключен']].map(([v,l])=>`<option value="${v}" ${state.nightMode===v?'selected':''}>${l}</option>`).join('')}</select></label>
+ <div class="night-times"><label class="setting-field">Ночь с<input id="night-start" type="time" value="${state.nightStart||'23:00'}"/></label><label class="setting-field">Ночь до<input id="night-end" type="time" value="${state.nightEnd||'07:00'}"/></label></div>
+ <p class="setting-help" id="night-status">${nightLabel(new Date().getHours()*60+new Date().getMinutes(),state.nightStart||'23:00',state.nightEnd||'07:00',state.nightMode)}</p>
  <p class="setting-help">Приглушается оформление панели, не аппаратная яркость планшета. Свет в доме не переключается.</p>
  </section><section class="settings-section"><h3>Оформление и обслуживание</h3><label class="setting-field">Постоянный экран<select id="kiosk-setting"><option value="off" ${!state.kiosk?'selected':''}>Обычная панель</option><option value="on" ${state.kiosk?'selected':''}>Компактный режим для экрана</option></select></label>
  <button class="secondary full-width" data-action="fullscreen">${I('maximize')}Полный экран</button>
@@ -1270,10 +1273,12 @@ function about(){
  <ul><li>Настройки сохраняются в SQLite локального сервера. Состояния устройств не сохраняются как актуальные.</li><li>При обычном HTTP-сервере без backend работает только макет, без сохранения.</li><li>У температур есть источник и время пакета.</li><li>3D загружается по требованию и не отрисовывается постоянно.</li><li>Размеры и мебель условные.</li><li>Насос и газовый котёл заблокированы.</li><li>Станция и камера требуют отдельной проверки интеграций на месте.</li></ul>`);
 }
 function applyNight(){
- const hour=+new Intl.DateTimeFormat('en-GB',{hour:'numeric',hourCycle:'h23',timeZone:PANEL_TIMEZONE}).format(Date.now());
- if(applyNight.hour!==hour){applyNight.hour=hour;modelAPI?.setModelTime(hour)}
- const night=state.nightMode==='on'||state.nightMode==='auto'&&(hour>=22||hour<7);
- document.documentElement.dataset.night=String(night);
+ const time=new Intl.DateTimeFormat('en-GB',{hour:'numeric',minute:'2-digit',hourCycle:'h23',timeZone:PANEL_TIMEZONE}).format(Date.now());
+ const [h,m]=time.split(':').map(Number);
+ if(applyNight.hour!==h){applyNight.hour=h;modelAPI?.setModelTime(h)}
+ const night=isNight(h*60+m,state.nightStart,state.nightEnd,state.nightMode);
+ if(document.documentElement.dataset.night!==String(night))document.documentElement.dataset.night=String(night);
+ const status=$('#night-status');if(status)status.textContent=nightLabel(h*60+m,state.nightStart,state.nightEnd,state.nightMode);
 }
 function updateClocks(){
  for(const id of ['clock','idle-clock','hero-clock'])if($('#'+id))$('#'+id).textContent=clock();
@@ -1516,6 +1521,14 @@ document.addEventListener('change',async e=>{
  if(id==='auto-theme-setting'){state.autoTheme=e.target.checked;autoThemeZone=null;persist();applyAutoTheme();updateThemeButton();updateTechnical();return}
   if(id==='yard-onvif-setting'){state.yard_onvif_enabled=e.target.checked;persist();updateTechnical();return}
  if(id==='night-setting'){state.nightMode=e.target.value;applyNight();persist()}
+ if(id==='night-start'||id==='night-end'){
+  const v=e.target.value;
+  if(!isTime(v))return;
+  const other=id==='night-start'?state.nightEnd:state.nightStart;
+  if(v===other){toast('Начало и конец ночи не должны совпадать.');e.target.value=id==='night-start'?state.nightStart:state.nightEnd;return}
+  if(id==='night-start')state.nightStart=v;else state.nightEnd=v;
+  applyNight();persist();
+ }
  if(id==='kiosk-setting'){state.kiosk=e.target.value==='on';applyAppearance();persist()}
  if(id==='network-setting'&&!isLive()){state.demoOffline=e.target.value==='offline';refresh();updateTechnical()}
  if(id==='station-setting'&&!isLive()){state.stationMode=e.target.value;refresh();updateTechnical()}

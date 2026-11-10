@@ -1,11 +1,12 @@
 import {defaultDevices,validateDevices,bindingDefinitions,areas} from './catalog.js';
+import {isTime} from './night.js';
 import {deviceTypes} from './device-types.js';
 import {validateDeviceModel} from './device-model.js';
 export {bindingDefinitions} from './catalog.js';
 
 export const defaultPreferences=()=>({
  version:3,theme:'dark',favorites:['living','hall','terrace','bedroom','office','bath'],
- nightMode:'auto',idleSeconds:90,kiosk:false,mode:'demo',ambientMode:true,autoTheme:false,devices:defaultDevices(),
+ nightMode:'auto',nightStart:'23:00',nightEnd:'07:00',idleSeconds:90,kiosk:false,mode:'demo',ambientMode:true,autoTheme:false,devices:defaultDevices(),
  bindings:Object.fromEntries(defaultDevices().map(d=>[d.id,{entityId:'',verified:false}])),
  userScenarios:[],
  // ONVIF-события движения двора: creds хранятся серверно (в профиле SQLite),
@@ -50,11 +51,15 @@ export function validatePreferences(input,{importing=false}={}){
  p.houseProfileConfirmed=!importing&&raw.houseProfileConfirmed===true;
  if(!['dark','light'].includes(raw.theme))throw new Error('Неизвестная тема.');
  if(!['auto','on','off'].includes(raw.nightMode))throw new Error('Неизвестный ночной режим.');
+ if(raw.nightStart!==undefined||raw.nightEnd!==undefined){
+  if(!isTime(raw.nightStart)||!isTime(raw.nightEnd))throw new Error('Время ночи указывается строкой ЧЧ:ММ.');
+  if(raw.nightStart===raw.nightEnd)throw new Error('Начало и конец ночи не должны совпадать.');
+ }
  if(![0,10,60,90,180].includes(raw.idleSeconds))throw new Error('Неверная задержка ожидания.');
  if(raw.ambientMode!==undefined&&typeof raw.ambientMode!=='boolean')throw new Error('Неверный тихий режим.');
  if(!Array.isArray(raw.favorites)||raw.favorites.length>6||new Set(raw.favorites).size!==raw.favorites.length||raw.favorites.some(id=>!areas.some(r=>r.id===id)))throw new Error('Проверь список избранных комнат.');
  if(!['demo','live'].includes(raw.mode))throw new Error('Неизвестный источник данных.');
- Object.assign(p,{theme:raw.theme,nightMode:raw.nightMode,idleSeconds:raw.idleSeconds,favorites:[...raw.favorites],kiosk:raw.kiosk===true,mode:importing?'demo':raw.mode,ambientMode:raw.ambientMode!==false,devices:validateDevices(raw.devices)});
+ Object.assign(p,{theme:raw.theme,nightMode:raw.nightMode,nightStart:raw.nightStart===undefined?p.nightStart:raw.nightStart,nightEnd:raw.nightEnd===undefined?p.nightEnd:raw.nightEnd,idleSeconds:raw.idleSeconds,favorites:[...raw.favorites],kiosk:raw.kiosk===true,mode:importing?'demo':raw.mode,ambientMode:raw.ambientMode!==false,devices:validateDevices(raw.devices)});
  p.deviceModel=validateDeviceModel(raw.deviceModel,p.devices,areas);
  p.autoTheme=raw.autoTheme===true;
  // ONVIF двора: строки, host по умолчанию, пустой user — детектор не конфигурирован.

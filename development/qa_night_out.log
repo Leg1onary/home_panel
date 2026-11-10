@@ -1,0 +1,10 @@
+BEFORE: {"night":"true","overlay":"1"}
+BOOT: {"preferences":{"version":3,"theme":"dark","favorites":["living","hall","terrace","bedroom","office","bath"],"nightMode":"auto","nightStart":"23:00","nightEnd":"07:00","idleSeconds":90,"kiosk":false,"
+PUT on → 200
+ON: {"night":"true","overlayOpacity":"1","overlayPointer":"none","heroClock":{"h":81,"fs":"76.16px","color":"rgb(229, 232, 243)"},"svgAnim":[],"animAll":["view dashboard-view view-enter","home-room-card"]}
+BOOT: {"preferences":{"version":3,"theme":"dark","favorites":["living","hall","terrace","bedroom","office","bath"],"nightMode":"on","nightStart":"23:00","nightEnd":"07:00","idleSeconds":90,"kiosk":false,"mo
+PUT off → 200
+OFF: {"night":"false","overlay":"0"}
+BOOT: {"preferences":{"version":3,"theme":"dark","favorites":["living","hall","terrace","bedroom","office","bath"],"nightMode":"off","nightStart":"23:00","nightEnd":"07:00","idleSeconds":90,"kiosk":false,"m
+UI: {"nightStart":true,"nightEnd":true,"status":"Сейчас ночь"}
+ERRORS: []
