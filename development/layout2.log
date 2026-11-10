@@ -1,0 +1,9 @@
+{
+ "hfDisplay": "flex",
+ "dir": "row",
+ "width": 1100,
+ "parentClass": "hero-overlay",
+ "slotParentClass": "hero-facts",
+ "slotHTML": "<span class=\"facts-widget-root\"><button class=\"home-fact  is-faint\" data-action=\"door\" aria-label=\"Входная дверь: Нет да",
+ "homeStatus": "hero-facts"
+}

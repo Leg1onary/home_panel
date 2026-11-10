@@ -843,8 +843,10 @@ html[data-view=home] .shell>footer[data-storage=saved]{display:none}
 .weather-card>span{font-size:var(--text-xs);color:var(--muted);line-height:1.3}
 .weather-card>strong{font-size:var(--text-sm);font-weight:500;line-height:1.4}
 .yard-slot{display:contents}
-/* Preact-слоты волны 2: пустой рендер компоненты (digest/weather) прячет узел сам. */
-#home-digest:empty,#weather-slot:empty{display:none!important}
+/* Preact-слоты волн 2-4: корни виджетов и слоты не должны ломать flex-ряды фактов
+   (display:contents), пустой рендер компоненты прячет узел сам. */
+#facts-slot,#weather-slot,.yard-slot,.facts-widget-root,.weather-widget-root{display:contents}
+#home-digest:empty,#weather-slot:empty,#facts-slot:empty{display:none!important}
 .yard-chip{transition:opacity .45s ease,transform .45s ease}
 .yard-chip.is-leaving{opacity:0;transform:scale(.92)}
 .yard-chip .yard-thumb{width:72px;height:72px;border-radius:var(--radius-md);overflow:hidden;display:flex;align-items:center;justify-content:center;background:var(--surface);color:var(--muted)}
