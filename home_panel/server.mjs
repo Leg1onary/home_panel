@@ -2185,7 +2185,7 @@ import { readFile, stat, mkdir } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 import { spawn } from "node:child_process";
 import { isIP } from "node:net";
-import { randomBytes as randomBytes3, createHash as createHash2, timingSafeEqual } from "node:crypto";
+import { randomBytes as randomBytes4, createHash as createHash3, timingSafeEqual } from "node:crypto";
 import Database from "better-sqlite3";
 
 // config/house.json
@@ -2503,7 +2503,12 @@ var defaultPreferences = () => ({
   autoTheme: false,
   devices: defaultDevices(),
   bindings: Object.fromEntries(defaultDevices().map((d) => [d.id, { entityId: "", verified: false }])),
-  userScenarios: []
+  userScenarios: [],
+  // ONVIF-события движения двора: creds хранятся серверно (в профиле SQLite),
+  // пароль не отдаётся клиенту — index.js вырезает его из ответов API.
+  yard_onvif_user: "",
+  yard_onvif_pass: "",
+  yard_onvif_host: "192.168.8.204"
 });
 var USER_SCENARIO_LIMITS = { max: 8, maxSteps: 12, minBrightness: 30, maxBrightness: 100 };
 var scenarioIdOk = (id) => typeof id === "string" && /^[a-z0-9-]{1,40}$/.test(id);
@@ -2554,6 +2559,9 @@ function validatePreferences(input, { importing = false } = {}) {
   Object.assign(p, { theme: raw.theme, nightMode: raw.nightMode, idleSeconds: raw.idleSeconds, favorites: [...raw.favorites], kiosk: raw.kiosk === true, mode: importing ? "demo" : raw.mode, ambientMode: raw.ambientMode !== false, devices: validateDevices(raw.devices) });
   p.deviceModel = validateDeviceModel(raw.deviceModel, p.devices, areas);
   p.autoTheme = raw.autoTheme === true;
+  p.yard_onvif_user = typeof raw.yard_onvif_user === "string" ? raw.yard_onvif_user.trim().slice(0, 64) : "";
+  p.yard_onvif_pass = typeof raw.yard_onvif_pass === "string" ? raw.yard_onvif_pass.slice(0, 120) : "";
+  p.yard_onvif_host = typeof raw.yard_onvif_host === "string" && raw.yard_onvif_host.trim() ? raw.yard_onvif_host.trim().slice(0, 120) : "192.168.8.204";
   const used = /* @__PURE__ */ new Set();
   p.bindings = {};
   for (const definition of bindingDefinitions(p.devices)) {
@@ -3426,6 +3434,13 @@ var YardMotion = class {
   result(available, motion, score) {
     return { available, motion, lastMotionAt: this.lastMotionAt || null, score };
   }
+  // Событие от внешнего детектора (ONVIF): тот же путь, что и jpeg-дифф —
+  // общий lastMotionAt и общий троттлинг через cache, без дублирования логики.
+  externalMotion(at = Date.now()) {
+    this.lastMotionAt = at;
+    this.cache = { available: true, motion: true, lastMotionAt: at, score: this.cache?.score ?? 0 };
+    this.lastCheck = Date.now();
+  }
   // entityId разрешается на каждый вызов (маршрут тянет его из активного профиля);
   // null/ошибка HA → available:false, без исключений наружу.
   async check(entityId = this.cameraId) {
@@ -3469,6 +3484,181 @@ var YardMotion = class {
     }
   }
 };
+
+// server/yard-onvif.js
+import { createHash, randomBytes as randomBytes3 } from "node:crypto";
+var WSSE = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd";
+var WSU = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd";
+var DIGEST_DEFAULTS = {
+  pullIntervalMs: 1e3,
+  responseTimeoutMs: 6e3,
+  renewIntervalMs: 2 * 60 * 1e3,
+  retryLimit: 3,
+  restartPausesMs: [5e3, 15e3, 6e4],
+  motionThrottleMs: 2e3
+};
+var enc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+function usernameTokenEnvelope(user, pass, bodyXml, created, nonceB64) {
+  const raw = Buffer.from(nonceB64, "base64");
+  const digest = createHash("sha1").update(Buffer.concat([raw, Buffer.from(created, "utf8"), Buffer.from(pass, "utf8")])).digest("base64");
+  return `<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:wsse="${WSSE}" xmlns:wsu="${WSU}"><s:Header><wsse:Security s:mustUnderstand="1"><wsse:UsernameToken><wsse:Username>${enc(user)}</wsse:Username><wsse:Password Type="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordDigest">${digest}</wsse:Password><wsse:Nonce EncodingType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary">${nonceB64}</wsse:Nonce><wsu:Created>${created}</wsu:Created></wsse:UsernameToken></wsse:Security></s:Header><s:Body>${bodyXml}</s:Body></s:Envelope>`;
+}
+async function soapPost(url, bodyXml, { user, pass }, timeoutMs = 5e3, { created, nonce } = {}) {
+  const body2 = usernameTokenEnvelope(user, pass, bodyXml, created || (/* @__PURE__ */ new Date()).toISOString(), nonce || randomBytes3(16).toString("base64"));
+  const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { method: "POST", signal: ctrl.signal, headers: {
+      "Content-Type": "application/soap+xml; charset=utf-8",
+      "Content-Length": String(Buffer.byteLength(body2))
+    }, body: body2 });
+    const text = await res.text();
+    if (!res.ok) throw new Error(`SOAP ${res.status} ${url}: ${text.slice(0, 200)}`);
+    if (/:Fault[\s>]|<Fault[\s>]/.test(text.slice(0, 4e3))) throw new Error(`SOAP Fault: ${text.replace(/\s+/g, " ").slice(0, 300)}`);
+    return text;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+async function probeDeviceTime(url, creds, timeoutMs) {
+  const body2 = '<tds:GetSystemDateAndTime xmlns:tds="http://www.onvif.org/ver10/device/wsdl"/>';
+  const text = await soapPost(url, body2, creds, timeoutMs);
+  const tag = text.match(/<[\w:.-]*UTCDateTime[\s\S]{0,400}?<\/[\w:.-]*UTCDateTime>/)?.[0];
+  let offset = 0;
+  if (tag) {
+    const num = (k) => Number(tag.match(new RegExp(`<[^>]*:${k}>(-?\\d+)</`))?.[1] ?? NaN);
+    const h = num("Hour"), m = num("Minute"), s = num("Second"), y = num("Year"), mo = num("Month"), d = num("Day");
+    if ([h, m, s, y, mo, d].every(Number.isFinite)) {
+      const cam = new Date(Date.UTC(y, mo - 1, d, h, m, s, 0)).getTime();
+      const local = new Date(Date.UTC(
+        (/* @__PURE__ */ new Date()).getUTCFullYear(),
+        (/* @__PURE__ */ new Date()).getUTCMonth(),
+        (/* @__PURE__ */ new Date()).getUTCDate(),
+        (/* @__PURE__ */ new Date()).getUTCHours(),
+        (/* @__PURE__ */ new Date()).getUTCMinutes(),
+        (/* @__PURE__ */ new Date()).getUTCSeconds(),
+        0
+      )).getTime();
+      offset = cam - local;
+    }
+  }
+  return { offset };
+}
+function onvifWatch({ host, port: port2 = 2020, user, pass, onMotion, onError, onReady, log = () => {
+}, ...timing } = {}) {
+  const t = { ...DIGEST_DEFAULTS, ...timing };
+  let stopped = false, restarts = 0, pullFailures = 0;
+  let status = { alive: false, eventService: null, subscription: null, lastMotionAt: 0, lastError: null };
+  const state = () => ({ ...status, alive: !stopped && status.alive, restarts });
+  const controller = { status: state, stop: () => {
+    stopped = true;
+    status = { ...status, alive: false };
+  } };
+  const fail = (error) => {
+    status = { ...status, alive: false, lastError: String(error?.message || error).slice(0, 300) };
+    onError?.(error);
+  };
+  (async () => {
+    const base = `http://${host}:${port2}`;
+    let deviceService = base + "/onvif/device_service";
+    while (!stopped) {
+      let pullPoint = null, offset = 0;
+      try {
+        ({ offset } = await probeDeviceTime(deviceService, { user, pass }, t.responseTimeoutMs));
+        const creds = { user, pass }, opts = () => ({ created: new Date(Date.now() + offset).toISOString() });
+        const caps = await soapPost(
+          deviceService,
+          '<tds:GetCapabilities xmlns:tds="http://www.onvif.org/ver10/device/wsdl"><tds:Category>Device</tds:Category></tds:GetCapabilities>',
+          creds,
+          t.responseTimeoutMs,
+          opts()
+        );
+        const eventAddr = caps.match(/EventXAddr[^>]*>([^<]+)</)?.[1] || caps.match(/<[^>]*Events[^>]*>[\s\S]{0,600}?<[^>]*XAddr[^>]*>(https?:\/\/[^<]+)</)?.[1];
+        if (eventAddr) deviceService = eventAddr;
+        status = { ...status, eventService: deviceService };
+        const sub = await soapPost(
+          deviceService,
+          '<tev:CreatePullPointSubscription xmlns:tev="http://www.onvif.org/ver10/events/wsdl"/>',
+          creds,
+          t.responseTimeoutMs,
+          opts()
+        );
+        pullPoint = sub.match(/SubscriptionReference[\s\S]{0,800}?Address[^>]*>([^<]+)</)?.[1] || sub.match(/https?:\/\/[^<\s"]+/)?.[0];
+        if (!pullPoint) throw new Error("PullPoint address not found in CreatePullPointSubscription response");
+        status = { ...status, subscription: pullPoint, alive: true, lastError: null };
+        pullFailures = 0;
+        restarts = 0;
+        onReady?.({ eventService: deviceService, subscription: pullPoint });
+        let lastMotion = 0, lastRenew = Date.now();
+        while (!stopped) {
+          let text = null, error = null;
+          try {
+            text = await soapPost(
+              pullPoint,
+              '<tev:PullMessages xmlns:tev="http://www.onvif.org/ver10/events/wsdl"><tev:Timeout>PT5S</tev:Timeout><tev:MessageLimit>10</tev:MessageLimit></tev:PullMessages>',
+              creds,
+              t.responseTimeoutMs,
+              opts()
+            );
+          } catch (e) {
+            error = e;
+          }
+          if (stopped) break;
+          if (error) {
+            pullFailures++;
+            status = { ...status, lastError: String(error?.message || error).slice(0, 300) };
+            log("pull failure", pullFailures, error?.message);
+            if (pullFailures >= t.retryLimit) {
+              fail(error);
+              break;
+            }
+            await sleep(Math.min(1e3, t.responseTimeoutMs));
+            continue;
+          }
+          pullFailures = 0;
+          if (/MotionDetected|MotionAlarm/.test(text) || /IsMotion[^>]*>\s*(true|1)\s*</i.test(text)) {
+            const now = Date.now();
+            status = { ...status, lastMotionAt: now };
+            if (now - lastMotion >= t.motionThrottleMs) {
+              lastMotion = now;
+              onMotion?.();
+            }
+          }
+          if (Date.now() - lastRenew >= t.renewIntervalMs) {
+            lastRenew = Date.now();
+            try {
+              await soapPost(
+                pullPoint,
+                '<tev:Renew xmlns:tev="http://www.onvif.org/ver10/events/wsdl"><tev:TerminationTime>PT5M</tev:TerminationTime></tev:Renew>',
+                creds,
+                t.responseTimeoutMs,
+                opts()
+              );
+            } catch (e) {
+              status = { ...status, lastError: "renew: " + String(e?.message || e).slice(0, 250) };
+            }
+          }
+          await sleep(t.pullIntervalMs);
+        }
+      } catch (error) {
+        fail(error);
+      }
+      if (pullPoint) await unsubscribe(pullPoint, { user, pass }, t);
+      if (stopped) break;
+      const pause = t.restartPausesMs[Math.min(restarts, t.restartPausesMs.length - 1)];
+      restarts++;
+      log("restart", restarts, "pause", pause);
+      for (let waited = 0; waited < pause && !stopped; waited += 250) await sleep(Math.min(250, pause - waited));
+    }
+  })();
+  return controller;
+}
+async function unsubscribe(pullPoint, creds, t) {
+  try {
+    await soapPost(pullPoint, '<tev:Unsubscribe xmlns:tev="http://www.onvif.org/ver10/events/wsdl"/>', creds, t.responseTimeoutMs, {});
+  } catch {
+  }
+}
+var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // src/dom.js
 var PANEL_TIMEZONE = "Europe/Moscow";
@@ -3806,7 +3996,7 @@ async function loadHistory(ha2, p, hoursText) {
 }
 
 // server/assistant.js
-import { createHash } from "node:crypto";
+import { createHash as createHash2 } from "node:crypto";
 
 // src/readings.js
 function stateTimes(e, now = Date.now()) {
@@ -3970,7 +4160,7 @@ var StationAssistant = class {
   async execute(id, p, r) {
     this.requireLive(p);
     this.validateAction(r);
-    const fingerprint = createHash("sha256").update(JSON.stringify(r)).digest("hex");
+    const fingerprint = createHash2("sha256").update(JSON.stringify(r)).digest("hex");
     const previous = this.db.prepare("SELECT * FROM assistant_requests WHERE profile_id=? AND request_id=?").get(id, r.requestId);
     if (previous) {
       if (previous.fingerprint !== fingerprint) throw new Error("\u0418\u0434\u0435\u043D\u0442\u0438\u0444\u0438\u043A\u0430\u0442\u043E\u0440 \u0443\u0436\u0435 \u043F\u0440\u0438\u043D\u0430\u0434\u043B\u0435\u0436\u0438\u0442 \u0434\u0440\u0443\u0433\u043E\u043C\u0443 \u0437\u0430\u043F\u0440\u043E\u0441\u0443.");
@@ -4066,7 +4256,7 @@ var StationAssistant = class {
           const due = d.type === "leak" ? s.leakAlerts : s.doorAlerts && now - row.opened_at >= s.doorMinutes * 6e4 && (!s.quietNight || hour >= 8 && hour < 22);
           if (!due || !canSpeak) continue;
           this.db.prepare("UPDATE assistant_observations SET notified=1 WHERE profile_id=? AND device_id=? AND entity_id=?").run(...key);
-          const requestId = "alert_" + createHash("sha256").update(JSON.stringify([...key, row.opened_at])).digest("hex");
+          const requestId = "alert_" + createHash2("sha256").update(JSON.stringify([...key, row.opened_at])).digest("hex");
           this.db.prepare("INSERT OR IGNORE INTO assistant_requests VALUES(?,?,?,?,?,?,?)").run(id, requestId, requestId, "alert", "running", null, now);
           let result;
           try {
@@ -4209,6 +4399,44 @@ var yardCameraEntity = (p) => {
   return p?.mode === "live" && b?.verified && /^camera\.[a-z0-9_]+$/.test(b.entityId || "") ? b.entityId : null;
 };
 var yardMotion = new YardMotion({ ha });
+var yardOnvifWatch = null;
+var yardOnvifConfigKey = "";
+var clientPreferences = (prefs) => {
+  const c = { ...prefs };
+  delete c.yard_onvif_pass;
+  return c;
+};
+var yardOnvifStatus = () => yardOnvifWatch?.status?.() || null;
+var yardOnvifEnsure = (prefs) => {
+  let host = String(prefs.yard_onvif_host || "").trim() || "192.168.8.204", port2;
+  const colon = host.match(/^([\w.\[\]:-]+):(\d+)$/);
+  if (colon) {
+    host = colon[1].replace(/^\[|\]$/g, "");
+    port2 = Number(colon[2]);
+  }
+  const user = String(prefs.yard_onvif_user || "").trim(), pass = String(prefs.yard_onvif_pass || "");
+  if (!user) {
+    if (yardOnvifWatch) {
+      yardOnvifWatch.stop();
+      yardOnvifWatch = null;
+      yardOnvifConfigKey = "";
+    }
+    return false;
+  }
+  const key = host + "|" + port2 + "|" + user + "|" + pass;
+  if (yardOnvifWatch && key === yardOnvifConfigKey) return true;
+  if (yardOnvifWatch) yardOnvifWatch.stop();
+  yardOnvifConfigKey = key;
+  yardOnvifWatch = onvifWatch({
+    host,
+    ...port2 ? { port: port2 } : {},
+    user,
+    pass,
+    onMotion: () => yardMotion.externalMotion(),
+    onError: (error) => console.log("Yard ONVIF fallback to jpeg diff:", error?.message || error)
+  });
+  return true;
+};
 var proofs = /* @__PURE__ */ new Map();
 var pendingScopes = /* @__PURE__ */ new Map();
 var live = new LiveFeed({ ha });
@@ -4264,7 +4492,7 @@ function identify(req) {
   }
   const host = req.headers.host || "", direct = /^(localhost|127\.0\.0\.1|\[::1\]):\d+$/.test(host);
   const visitor = req.headers["x-visitor-id"];
-  if (preview && visitor) return "preview:" + createHash2("sha256").update(String(visitor)).digest("hex");
+  if (preview && visitor) return "preview:" + createHash3("sha256").update(String(visitor)).digest("hex");
   if (direct && ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(req.socket.remoteAddress)) return "local";
   throw new Error("\u0414\u043E\u0441\u0442\u0443\u043F \u0440\u0430\u0437\u0440\u0435\u0448\u0451\u043D \u0442\u043E\u043B\u044C\u043A\u043E \u0441 \u044D\u0442\u043E\u0433\u043E \u043A\u043E\u043C\u043F\u044C\u044E\u0442\u0435\u0440\u0430 \u0438\u043B\u0438 \u0447\u0435\u0440\u0435\u0437 \u043F\u0440\u0438\u0432\u0430\u0442\u043D\u043E\u0435 \u043F\u0440\u0435\u0432\u044C\u044E.");
 }
@@ -4287,15 +4515,15 @@ var server = http.createServer(async (req, res) => {
     if (path.startsWith("/api/panel/")) {
       const id = identify(req), p = getProfile(id), route = path.slice("/api/panel/".length);
       if (req.method === "GET" && route === "session") {
-        if (!proofs.has(id)) proofs.set(id, randomBytes3(32).toString("hex"));
+        if (!proofs.has(id)) proofs.set(id, randomBytes4(32).toString("hex"));
         return json(res, 200, { proof: proofs.get(id) });
       }
       if (req.method === "GET" && route === "bootstrap") {
-        if (!proofs.has(id)) proofs.set(id, randomBytes3(32).toString("hex"));
-        return json(res, 200, { preferences: p.preferences, photo: !!p.photo, proof: proofs.get(id), preview, addon, haConfigured: ha.enabled });
+        if (!proofs.has(id)) proofs.set(id, randomBytes4(32).toString("hex"));
+        return json(res, 200, { preferences: clientPreferences(p.preferences), photo: !!p.photo, proof: proofs.get(id), preview, addon, haConfigured: ha.enabled });
       }
       if (req.method === "GET" && route === "profile/export") {
-        const data2 = Buffer.from(JSON.stringify({ exportedAt: (/* @__PURE__ */ new Date()).toISOString(), version: 3, preferences: p.preferences }, null, 2));
+        const data2 = Buffer.from(JSON.stringify({ exportedAt: (/* @__PURE__ */ new Date()).toISOString(), version: 3, preferences: clientPreferences(p.preferences) }, null, 2));
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Content-Disposition": 'attachment; filename="home-panel-profile.json"', "Cache-Control": "no-store" });
         return res.end(data2);
       }
@@ -4334,6 +4562,8 @@ var server = http.createServer(async (req, res) => {
       if (route === "preferences" && req.method === "PUT") {
         if (pendingScopes.has(id)) throw new Error("\u0421\u043D\u0430\u0447\u0430\u043B\u0430 \u0434\u043E\u0436\u0434\u0438\u0441\u044C \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u044F \u043A\u043E\u043C\u0430\u043D\u0434\u044B.");
         const input = JSON.parse((await body(req)).toString());
+        if (input && typeof input === "object" && Array.isArray(input.devices) && input.yard_onvif_pass === void 0)
+          input.yard_onvif_pass = p.preferences.yard_onvif_pass;
         if (input && typeof input === "object" && input.deviceModel === void 0 && Array.isArray(input.devices)) {
           const ids = new Set(input.devices.map((d) => d?.id));
           input.deviceModel = { ...p.preferences.deviceModel, groups: p.preferences.deviceModel.groups.map((g) => ({ ...g, members: g.members.filter((id2) => ids.has(id2)) })).filter((g) => g.members.length) };
@@ -4370,7 +4600,7 @@ var server = http.createServer(async (req, res) => {
           }
         }
         db.prepare("UPDATE profiles SET preferences=? WHERE id=?").run(JSON.stringify(next), id);
-        return json(res, 200, { saved: true, preferences: next, rejected, offline });
+        return json(res, 200, { saved: true, preferences: clientPreferences(next), rejected, offline });
       }
       if (route === "photo") {
         if (req.method === "GET" && p.photo) {
@@ -4390,7 +4620,24 @@ var server = http.createServer(async (req, res) => {
         }
       }
       if (route === "ha/states" && req.method === "GET") return json(res, 200, { states: await ha.states(), receivedAt: Date.now() });
-      if (route === "ha/yard-motion" && req.method === "GET") return json(res, 200, { ...await yardMotion.check(yardCameraEntity(p.preferences)), checkedAt: Date.now() });
+      if (route === "ha/yard-motion" && req.method === "GET") {
+        yardOnvifEnsure(p.preferences);
+        return json(res, 200, { ...await yardMotion.check(yardCameraEntity(p.preferences)), checkedAt: Date.now() });
+      }
+      if (route === "yard-onvif" && req.method === "GET") {
+        const configured = yardOnvifEnsure(p.preferences);
+        const s = yardOnvifStatus() || {};
+        return json(res, 200, {
+          configured,
+          alive: !!s.alive,
+          eventService: s.eventService || null,
+          subscription: s.subscription || null,
+          lastMotionAt: s.lastMotionAt || null,
+          lastError: s.lastError || null,
+          restarts: s.restarts || 0,
+          fallback: !configured || !s.alive
+        });
+      }
       if (route === "ha/weather-forecast" && req.method === "GET") {
         const asked = url.searchParams.get("entity") || "", entityId = /^weather\.[a-z0-9_]+$/.test(asked) ? asked : (await ha.states()).find((e) => e.entity_id.startsWith("weather."))?.entity_id || "";
         if (!entityId) return json(res, 400, { error: "\u0421\u0443\u0449\u043D\u043E\u0441\u0442\u044C \u043F\u043E\u0433\u043E\u0434\u044B \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u0430 \u0432 Home Assistant." });

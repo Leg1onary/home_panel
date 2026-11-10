@@ -7,7 +7,10 @@ export const defaultPreferences=()=>({
  version:3,theme:'dark',favorites:['living','hall','terrace','bedroom','office','bath'],
  nightMode:'auto',idleSeconds:90,kiosk:false,mode:'demo',ambientMode:true,autoTheme:false,devices:defaultDevices(),
  bindings:Object.fromEntries(defaultDevices().map(d=>[d.id,{entityId:'',verified:false}])),
- userScenarios:[]
+ userScenarios:[],
+ // ONVIF-события движения двора: creds хранятся серверно (в профиле SQLite),
+ // пароль не отдаётся клиенту — index.js вырезает его из ответов API.
+ yard_onvif_user:'',yard_onvif_pass:'',yard_onvif_host:'192.168.8.204'
 });
 // Пользовательские сценарии: строгие лимиты, неизвестные поля отбрасываем,
 // целиком невалидные сценарии молча не сохраняем — остальной профиль не страдает.
@@ -54,6 +57,10 @@ export function validatePreferences(input,{importing=false}={}){
  Object.assign(p,{theme:raw.theme,nightMode:raw.nightMode,idleSeconds:raw.idleSeconds,favorites:[...raw.favorites],kiosk:raw.kiosk===true,mode:importing?'demo':raw.mode,ambientMode:raw.ambientMode!==false,devices:validateDevices(raw.devices)});
  p.deviceModel=validateDeviceModel(raw.deviceModel,p.devices,areas);
  p.autoTheme=raw.autoTheme===true;
+ // ONVIF двора: строки, host по умолчанию, пустой user — детектор не конфигурирован.
+ p.yard_onvif_user=typeof raw.yard_onvif_user==='string'?raw.yard_onvif_user.trim().slice(0,64):'';
+ p.yard_onvif_pass=typeof raw.yard_onvif_pass==='string'?raw.yard_onvif_pass.slice(0,120):'';
+ p.yard_onvif_host=typeof raw.yard_onvif_host==='string'&&raw.yard_onvif_host.trim()?raw.yard_onvif_host.trim().slice(0,120):'192.168.8.204';
 
  const used=new Set();p.bindings={};
  for(const definition of bindingDefinitions(p.devices)){

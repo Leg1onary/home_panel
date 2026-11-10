@@ -27,10 +27,11 @@ PASS: stale proof refresh, concurrent single-flight, exactly one safe retry, no 
 PASS: SW api-exclusion and strategies, registration, allowlist, build pipeline, profile export endpoint and UI.
 ambient: ok
 PASS: yard-motion — сетка-диф (0/порог), детектор на requestRaw, endpoint ha/yard-motion, троттлинг 3с, недоступность без паники.
+yard-onvif: ok
 PASS: clean v3 initialization, no migration schema, old formats rejected, persistence, CSRF, verified mappings, stable reorder, move resets verification, HA command/readback, locked engineering, camera images, secret filtering, unknown format leaves database unchanged, preview isolation.
 PASS: local manifest, Supervisor token, correct /core/api routes, LAN Host/Origin/CSRF, shared SQLite profile, saved theme/favorites/mode/bindings after restart, light command/readback, camera frame, secret filtering, HA auth error, health.
 PASS: WS auth/stream command, verified camera only, CSRF, HLS rewrites incl init/parts, progressive first bytes before upstream completion, secret filtering, query/file allowlists, SSRF rejection, stop invalidates session, mode change blocks existing stream.
 PASS: SSE snapshot then minimal patch, cross-site 403, error event on HA outage with connection alive, subscriber removed on close while poller keeps ticking.
 PASS: panel scenarios (leave/evening/cinema), per-line readback, unavailable line fails alone, verified-only batching, room scoping, dim fallback honesty, bad id 400, proof required.
 PASS: user scenarios — strict validation drops bad id/name/steps, 8/12 limits enforced, ordered run with readback, unavailable line fails alone, brightness fallback honesty, unknown id 400, CRUD through preferences endpoint.
-All thirty-five test suites passed.
+All thirty-six test suites passed.

@@ -24,6 +24,13 @@ export class YardMotion{
  result(available,motion,score){
   return {available,motion,lastMotionAt:this.lastMotionAt||null,score};
  }
+ // Событие от внешнего детектора (ONVIF): тот же путь, что и jpeg-дифф —
+ // общий lastMotionAt и общий троттлинг через cache, без дублирования логики.
+ externalMotion(at=Date.now()){
+  this.lastMotionAt=at;
+  this.cache={available:true,motion:true,lastMotionAt:at,score:this.cache?.score??0};
+  this.lastCheck=Date.now();
+ }
  // entityId разрешается на каждый вызов (маршрут тянет его из активного профиля);
  // null/ошибка HA → available:false, без исключений наружу.
  async check(entityId=this.cameraId){

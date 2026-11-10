@@ -11,6 +11,7 @@ import {CameraStreams} from './stream.js';
 import {CameraRTC} from './rtc.js';
 import {LiveFeed} from './live-stream.js';
 import {YardMotion} from './yard-motion.js';
+import {onvifWatch} from './yard-onvif.js';
 import {meterValue} from '../src/energy.js';
 import {energyDeltas} from './ha.js';
 
@@ -40,6 +41,27 @@ setInterval(()=>rtc.prune(),30000).unref();
 // нет проверенной привязки → детектор unavailable.
 const yardCameraEntity=p=>{const b=p?.bindings['camera-yard'];return p?.mode==='live'&&b?.verified&&/^camera\.[a-z0-9_]+$/.test(b.entityId||'')?b.entityId:null};
 const yardMotion=new YardMotion({ha});
+// ONVIF-события движения двора (события железа вместо jpeg-диффа). Creds — из
+// preferences-профиля (серверно), ошибки → jpeg-диффер остаётся fallback-ом.
+let yardOnvifWatch=null,yardOnvifConfigKey='';
+const clientPreferences=prefs=>{const c={...prefs};delete c.yard_onvif_pass;return c};
+const yardOnvifStatus=()=>yardOnvifWatch?.status?.()||null;
+const yardOnvifEnsure=prefs=>{
+ let host=String(prefs.yard_onvif_host||'').trim()||'192.168.8.204',port;
+ // host может быть 'ip:port' (как в статусе живой камеры): разделяем, иначе порт 2020.
+ const colon=host.match(/^([\w.\[\]:-]+):(\d+)$/);
+ if(colon){host=colon[1].replace(/^\[|\]$/g,'');port=Number(colon[2])}
+ const user=String(prefs.yard_onvif_user||'').trim(),pass=String(prefs.yard_onvif_pass||'');
+ if(!user){if(yardOnvifWatch){yardOnvifWatch.stop();yardOnvifWatch=null;yardOnvifConfigKey=''}return false}
+ const key=host+'|'+port+'|'+user+'|'+pass;
+ if(yardOnvifWatch&&key===yardOnvifConfigKey)return true;
+ if(yardOnvifWatch)yardOnvifWatch.stop();
+ yardOnvifConfigKey=key;
+ yardOnvifWatch=onvifWatch({host,...(port?{port}:{}) ,user,pass,
+  onMotion:()=>yardMotion.externalMotion(),
+  onError:error=>console.log('Yard ONVIF fallback to jpeg diff:',error?.message||error)});
+ return true;
+};
 
 const proofs=new Map(),pendingScopes=new Map();
 const live=new LiveFeed({ha}),liveIds=new Map();
@@ -108,10 +130,10 @@ const server=http.createServer(async(req,res)=>{
    }
    if(req.method==='GET'&&route==='bootstrap'){
     if(!proofs.has(id))proofs.set(id,randomBytes(32).toString('hex'));
-    return json(res,200,{preferences:p.preferences,photo:!!p.photo,proof:proofs.get(id),preview,addon,haConfigured:ha.enabled});
+    return json(res,200,{preferences:clientPreferences(p.preferences),photo:!!p.photo,proof:proofs.get(id),preview,addon,haConfigured:ha.enabled});
    }
    if(req.method==='GET'&&route==='profile/export'){
-    const data=Buffer.from(JSON.stringify({exportedAt:new Date().toISOString(),version:3,preferences:p.preferences},null,2));
+    const data=Buffer.from(JSON.stringify({exportedAt:new Date().toISOString(),version:3,preferences:clientPreferences(p.preferences)},null,2));
     res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Content-Disposition':'attachment; filename="home-panel-profile.json"','Cache-Control':'no-store'});
     return res.end(data);
    }
@@ -143,6 +165,9 @@ const server=http.createServer(async(req,res)=>{
    if(route==='preferences'&&req.method==='PUT'){
     if(pendingScopes.has(id))throw new Error('Сначала дождись завершения команды.');
     const input=JSON.parse((await body(req)).toString());
+    // Клиент никогда не видел yard_onvif_pass — пустое поле в PUT не затирает пароль.
+    if(input&&typeof input==='object'&&Array.isArray(input.devices)&&input.yard_onvif_pass===undefined)
+     input.yard_onvif_pass=p.preferences.yard_onvif_pass;
     // A still-open older client does not know the additive layer. Its theme or
     // binding save must not erase newer groups. Legacy channel deletion detaches
     // that channel explicitly; malformed current-schema requests still reject.
@@ -176,7 +201,7 @@ const server=http.createServer(async(req,res)=>{
      }
     }
     db.prepare('UPDATE profiles SET preferences=? WHERE id=?').run(JSON.stringify(next),id);
-    return json(res,200,{saved:true,preferences:next,rejected,offline});
+    return json(res,200,{saved:true,preferences:clientPreferences(next),rejected,offline});
    }
    if(route==='photo'){
     if(req.method==='GET'&&p.photo){res.writeHead(200,{'Content-Type':'image/jpeg','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});return res.end(p.photo)}
@@ -190,7 +215,18 @@ const server=http.createServer(async(req,res)=>{
    }
    if(route==='ha/states'&&req.method==='GET')return json(res,200,{states:await ha.states(),receivedAt:Date.now()});
    // Панельный детектор двора: кадр камеры сравнивается на сервере (jpeg-js), троттлинг внутри check().
-   if(route==='ha/yard-motion'&&req.method==='GET')return json(res,200,{...(await yardMotion.check(yardCameraEntity(p.preferences))),checkedAt:Date.now()});
+   if(route==='ha/yard-motion'&&req.method==='GET'){
+    yardOnvifEnsure(p.preferences);
+    return json(res,200,{...(await yardMotion.check(yardCameraEntity(p.preferences))),checkedAt:Date.now()});
+   }
+   // Диагностика ONVIF-детектора двора: статус для живой панели (без пароля).
+   if(route==='yard-onvif'&&req.method==='GET'){
+    const configured=yardOnvifEnsure(p.preferences);
+    const s=yardOnvifStatus()||{};
+    return json(res,200,{configured,alive:!!s.alive,eventService:s.eventService||null,
+     subscription:s.subscription||null,lastMotionAt:s.lastMotionAt||null,lastError:s.lastError||null,
+     restarts:s.restarts||0,fallback:!configured||!s.alive});
+   }
    if(route==='ha/weather-forecast'&&req.method==='GET'){
     const asked=url.searchParams.get('entity')||'',entityId=/^weather\.[a-z0-9_]+$/.test(asked)?asked:(await ha.states()).find(e=>e.entity_id.startsWith('weather.'))?.entity_id||'';
     if(!entityId)return json(res,400,{error:'Сущность погоды не найдена в Home Assistant.'});
