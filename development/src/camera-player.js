@@ -1,5 +1,4 @@
 import {api} from './api.js';
-import {frameLoss} from './camera-policy.js';
 import {startHlsCameraPlayer} from './hls-camera-player.js';
 
 export function startCameraPlayer(id,video,status,{transport='auto'}={}){
@@ -24,8 +23,26 @@ export function startCameraPlayer(id,video,status,{transport='auto'}={}){
   if(stopped||rtcClosed)return;
   const result=video.play();result?.catch(()=>message('WebRTC подключён. Нажми ▶ на видео.'));
  };
- const playing=()=>{if(stopped||rtcClosed)return;clearTimeout(startTimer);message(`Прямой эфир · WebRTC · ${video.videoWidth}×${video.videoHeight} · пропущено кадров ${frameLoss(video)}`)};
+ const playing=()=>{if(stopped||rtcClosed)return;clearTimeout(startTimer);message(`Прямой эфир · WebRTC · ${video.videoWidth}×${video.videoHeight}`)};
  const waiting=()=>message('WebRTC · ожидаем видеоданные…');
+ // Телеметрия WebRTC: потери/джиттер/RTT из getStats — видно, где затык (сеть или декодер).
+ const rtcStats=async()=>{
+  if(!peer)return'';
+  try{
+   const report=await peer.getStats();
+   let lost=0,received=0,jitter=0,rtt='',dropped=0,fps=0;
+   report.forEach(rep=>{
+    if(rep.type==='inbound-rtp'&&rep.kind==='video'){
+     lost+=rep.packetsLost||0;received+=rep.packetsReceived||0;
+     if(rep.jitter)jitter=Math.max(jitter,rep.jitter*1000);
+     dropped+=rep.framesDropped||0;
+     if(rep.framesPerSecond)fps=rep.framesPerSecond;
+    }else if(rep.type==='candidate-pair'&&rep.nominated&&rep.currentRoundTripTime)rtt=Math.round(rep.currentRoundTripTime*1000)+' мс';
+   });
+   const lossPct=received+lost>0?Math.round(lost*1000/(received+lost))/10:0;
+   return` · джиттер ${Math.round(jitter)} мс · потери ${lossPct}%${rtt?' · RTT '+rtt:''} · дроп кадров ${dropped}${fps?' · '+Math.round(fps)+' к/с':''}`;
+  }catch{return''}
+ };
  const flushLocal=async()=>{
   if(flushing||!sessionReady||stopped||rtcClosed)return;flushing=true;
   try{while(local.length&&!stopped&&!rtcClosed)await api('ha/rtc/'+session.key+'/candidate',{method:'POST',body:{candidate:local.shift()}})}
@@ -71,6 +88,9 @@ export function startCameraPlayer(id,video,status,{transport='auto'}={}){
    peer.ontrack=e=>{
     if(stopped||rtcClosed)return;
     if(e.track.kind==='audio'&&video.muted)return;
+    // Джиттер-буфер приёмника сглаживает сетевые рывки (цена — ~0,1 с задержки).
+    // Старые WebView не поддерживают — молча пропускаем.
+    try{if(e.track.kind==='video'&&typeof e.receiver.jitterBufferTarget==='number')e.receiver.jitterBufferTarget=0.12}catch{}
     stream.addTrack(e.track);video.srcObject=stream;play();
    };
    peer.onicecandidate=e=>{
@@ -86,7 +106,11 @@ export function startCameraPlayer(id,video,status,{transport='auto'}={}){
     }else clearTimeout(disconnectTimer);
    };
    video.addEventListener('playing',playing);video.addEventListener('waiting',waiting);
-   statsTimer=setInterval(()=>{if(!stopped&&!rtcClosed&&!video.paused&&video.readyState>=2)playing()},1000);
+   statsTimer=setInterval(async()=>{
+    if(stopped||rtcClosed||video.paused||video.readyState<2)return;
+    clearTimeout(startTimer);
+    message(`Прямой эфир · WebRTC · ${video.videoWidth}×${video.videoHeight}${await rtcStats()}`);
+   },1000);
    peer.addTransceiver('audio',{direction:'recvonly'});peer.addTransceiver('video',{direction:'recvonly'});
    const offer=await peer.createOffer();
    if(stopped||rtcClosed)return;
