@@ -3635,6 +3635,7 @@ function onvifWatch({ host, port: port2 = 2020, user, pass, onMotion, onError, o
             continue;
           }
           pullFailures = 0;
+          if (status.lastError) status = { ...status, lastError: null };
           if (/MotionDetected|MotionAlarm/.test(text) || /IsMotion[^>]*>\s*(true|1)\s*</i.test(text)) {
             const now = Date.now();
             status = { ...status, lastMotionAt: now };

@@ -107,6 +107,7 @@ export function onvifWatch({host,port=2020,user,pass,onMotion,onError,onReady,lo
       await sleep(Math.min(1000,t.responseTimeoutMs));continue;
      }
      pullFailures=0;
+     if(status.lastError)status={...status,lastError:null}; // успешный цикл — прошлые сетевые ошибки сбрасываем
      // Движение: topic/data содержит MotionDetected|MotionAlarm или SimpleItem IsMotion=true.
      if(/MotionDetected|MotionAlarm/.test(text)||/IsMotion[^>]*>\s*(true|1)\s*</i.test(text)){
       const now=Date.now();
