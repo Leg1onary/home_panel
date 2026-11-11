@@ -1276,6 +1276,15 @@ button.digest-brief-item:hover{color:var(--text)}
 .energy-card .energy-delta{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-2);margin:var(--space-2) 0 0;font-size:var(--text-sm);color:var(--text)}
 .energy-card .energy-delta span{color:var(--muted);font-size:var(--text-xs)}
 .energy-card .energy-delta strong{font-weight:600}
+.energy-card .energy-delta small{margin-left:var(--space-2);color:var(--muted);font-size:var(--text-xs);font-weight:400}
+/* Тех.раздел: справочник показаний счётчика ТНС. */
+.energy-reading-row{display:flex;align-items:center;gap:var(--space-2);padding:3px 0;font-size:var(--text-sm)}
+.energy-reading-row span{color:var(--muted);font-size:var(--text-xs);min-width:3.5em}
+.energy-reading-row strong{font-weight:600}
+.energy-reading-del{margin-left:auto;background:none;border:0;color:var(--muted);cursor:pointer;padding:2px 6px;font-size:var(--text-xs)}
+.energy-reading-del:hover,.energy-reading-del:focus-visible{color:var(--text)}
+.energy-reading-add{display:flex;gap:var(--space-2);margin-top:var(--space-2)}
+.energy-reading-add input{min-width:0;flex:1}
 .energy-card .energy-deltas{min-height:0}
 .energy-card .energy-deltas .is-faint,.energy-card .energy-deltas.is-faint{margin:var(--space-2) 0 0;color:var(--muted);font-size:var(--text-xs);font-weight:400}
 .energy-card .energy-reload{margin-left:auto;background:none;border:0;padding:2px;color:var(--muted);cursor:pointer;display:inline-flex;align-items:center}

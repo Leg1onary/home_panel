@@ -21,7 +21,7 @@ export function EnergyWidgetContent({data,entities,now=Date.now(),onReload}){
   const u=data.reading?.updatedAt;
   const ents={reading:r!==null?{entity_id:data.reading?.entityId||'synthetic',state:String(r),last_updated:u}:null,
    consumption:c!==null?{entity_id:'synthetic',state:String(c),last_updated:u}:null};
-  const extra={readingsDate:data.readingsDate??null,deltas:data.deltas?{day:data.deltas.day,week:data.deltas.week}:null};
+  const extra={readingsDate:data.readingsDate??null,deltas:data.deltas?{day:data.deltas.day}:null,month:data.month?{prevValue:data.month.prevValue,prevDate:data.month.prevDate,delta:data.month.delta,cost:data.month.cost}:null};
   if(data.stale)extra.stale=true,extra.staleSince=data.staleSince;
   markup=energyCard(ents,now,extra,data.stale);
  }else{

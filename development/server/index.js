@@ -13,7 +13,7 @@ import {LiveFeed} from './live-stream.js';
 import {YardMotion} from './yard-motion.js';
 import {onvifWatch} from './yard-onvif.js';
 import {YardClips} from './yard-clips.js';
-import {meterValue} from '../src/energy.js';
+import {meterValue,monthDelta,monthCost} from '../src/energy.js';
 import {energyDeltas} from './ha.js';
 
 import {deviceTypes,samePhysicalDevice} from '../src/catalog.js';
@@ -217,6 +217,8 @@ const server=http.createServer(async(req,res)=>{
     db.prepare('UPDATE profiles SET preferences=? WHERE id=?').run(JSON.stringify(next),id);
     // Тумблер ONVIF-датчика применяется сразу: сервер перезапускает/останавливает watcher.
     yardOnvifEnsure(next);
+    // Показания/тариф меняют месячный расчёт: кеш энергии сбрасываем немедленно.
+    energyCache=null;energyLastKnown=null;
     return json(res,200,{saved:true,preferences:clientPreferences(next),rejected,offline});
    }
    if(route==='photo'){
@@ -295,11 +297,16 @@ const server=http.createServer(async(req,res)=>{
      const by=tag=>list.find(e=>e.entity_id.endsWith('_'+tag))||null;
      const reading=by('reading'),consumption=by('consumption'),meterNumber=by('meter_number'),readingsDate=by('readings_date');
      const readingValue=meterValue(reading);
+     // Месячный расход: от последнего внесённого показания (профиль) до текущей
+     // даты показаний — ТНС снимает показания раз в месяц. Расчёт живёт на
+     // сервере: единый источник истины для карточки.
+     const monthRaw=monthDelta(readingValue,readingsDate?.state,p.preferences.energy_readings);
+     const month={...monthRaw,cost:monthCost(monthRaw.delta,p.preferences.energy_tariff)};
      // Окно 168 ч один раз: сутки — это первые 24 ч того же окна.
      const history=readingValue===null?[]:await ha.energyHistory(reading.entity_id,168);
      const data={reading:{value:readingValue,entityId:reading?.entity_id??null,updatedAt:reading?.last_updated??null},
       consumption:meterValue(consumption),meterNumber:meterNumber?.state??null,readingsDate:readingsDate?.state??null,
-      deltas:energyDeltas(history)};
+      deltas:energyDeltas(history),month};
      // ТНС «мигает» (неудачный опрос помечает сущности unavailable): помним последние
      // валидные значения и отдаём их с пометкой stale, чтобы виджет не мигал.
      if(readingValue!==null||meterValue(consumption)!==null){energyLastKnown={at:Date.now(),data};data.stale=false}
@@ -309,7 +316,8 @@ const server=http.createServer(async(req,res)=>{
        const hist=await ha.energyHistory((reading||readingsDate||{entity_id:''}).entity_id,168);
        const last=[...hist].reverse().find(p=>Number.isFinite(p.value));
        if(last)energyLastKnown={at:last.at,data:{reading:{value:last.value,entityId:reading?.entity_id??null,updatedAt:new Date(last.at).toISOString()},
-        consumption:meterValue(consumption),meterNumber:meterNumber?.state??null,readingsDate:readingsDate?.state??null,deltas:energyDeltas(hist)}};
+        consumption:meterValue(consumption),meterNumber:meterNumber?.state??null,readingsDate:readingsDate?.state??null,deltas:energyDeltas(hist),
+        month:{...monthRaw,delta:null,cost:null}}};
       }
       if(energyLastKnown)return json(res,200,{...energyLastKnown.data,stale:true,staleSince:energyLastKnown.at});
      }

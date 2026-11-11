@@ -11,7 +11,10 @@ export const defaultPreferences=()=>({
  userScenarios:[],
  // ONVIF-события движения двора: creds хранятся серверно (в профиле SQLite),
  // пароль не отдаётся клиенту — index.js вырезает его из ответов API.
- yard_onvif_user:'',yard_onvif_pass:'',yard_onvif_host:'192.168.8.204',yard_onvif_enabled:true
+ yard_onvif_user:'',yard_onvif_pass:'',yard_onvif_host:'192.168.8.204',yard_onvif_enabled:true,
+ // Показания счётчика ТНС (снимаются раз в месяц) и тариф. Отсутствие ключей
+ // в старых профилях = пусто (обратная совместимость).
+ energy_readings:[],energy_tariff:null
 });
 // Пользовательские сценарии: строгие лимиты, неизвестные поля отбрасываем,
 // целиком невалидные сценарии молча не сохраняем — остальной профиль не страдает.
@@ -43,6 +46,32 @@ export function sanitizeUserScenarios(raw,devices){
  }
  return out;
 }
+// Показания счётчика: {date:'YYYY-MM-DD', value:int>0}. Повторная дата заменяет
+// предыдущее (дедуп), результат сортируется по дате. Максимум 36 записей.
+export const MAX_ENERGY_READINGS=36;
+const READING_DATE=/^\d{4}-\d{2}-\d{2}$/;
+export function sanitizeEnergyReadings(raw){
+ if(raw===undefined||raw===null)return [];
+ if(!Array.isArray(raw))throw new Error('Показания счётчика: нужен массив.');
+ const byDate=new Map();
+ for(const r of raw){
+  if(!r||typeof r!=='object'||Array.isArray(r))throw new Error('Показание счётчика: нужен объект с датой и значением.');
+  const md=/^(\d{4})-(\d{2})-(\d{2})$/.exec(r.date);
+  const dt=md?new Date(Date.UTC(Number(md[1]),Number(md[2])-1,Number(md[3]))):null;
+  if(!dt||dt.getUTCFullYear()!==Number(md[1])||dt.getUTCMonth()!==Number(md[2])-1||dt.getUTCDate()!==Number(md[3]))throw new Error('Показание счётчика: дата в формате ГГГГ-ММ-ДД.');
+  if(!Number.isInteger(r.value)||r.value<=0)throw new Error('Показание счётчика: значение — целое число больше нуля.');
+  byDate.set(r.date,r.value);
+ }
+ const out=[...byDate].map(([date,value])=>({date,value})).sort((a,b)=>a.date<b.date?-1:1);
+ if(out.length>MAX_ENERGY_READINGS)throw new Error(`Показаний не больше ${MAX_ENERGY_READINGS}.`);
+ return out;
+}
+// Тариф, ₽/кВт·ч: null — не задан (стоимость не считается).
+export function sanitizeEnergyTariff(raw){
+ if(raw===undefined||raw===null)return null;
+ if(typeof raw!=='number'||!Number.isFinite(raw)||raw<0.01||raw>99)throw new Error('Тариф: число от 0,01 до 99 ₽/кВт·ч.');
+ return raw;
+}
 export function validatePreferences(input,{importing=false}={}){
  if(!input||typeof input!=='object'||Array.isArray(input))throw new Error('Нужен объект настроек.');
  if(input.version!==3)throw new Error('Версия настроек не поддерживается. Нужна копия v3.');
@@ -68,6 +97,9 @@ export function validatePreferences(input,{importing=false}={}){
  p.yard_onvif_host=typeof raw.yard_onvif_host==='string'&&raw.yard_onvif_host.trim()?raw.yard_onvif_host.trim().slice(0,120):'192.168.8.204';
  // Тумблер ONVIF-датчика: отсутствие ключа = включено (обратная совместимость со старыми профилями).
  p.yard_onvif_enabled=raw.yard_onvif_enabled!==false;
+ // Показания счётчика и тариф: отсутствие ключей = пусто (старые профили без изменений).
+ p.energy_readings=sanitizeEnergyReadings(raw.energy_readings);
+ p.energy_tariff=sanitizeEnergyTariff(raw.energy_tariff);
 
  const used=new Set();p.bindings={};
  for(const definition of bindingDefinitions(p.devices)){

@@ -52,13 +52,18 @@ assert.equal(readingsDateOf('некорректно'),null);
 html=energyCard(m,now,{readingsDate:'2026-10-26'});
 assert.match(html,/Дата показаний: 26\.10/);
 assert.ok(!energyCard(m,now,{deltas:{day:12.3,week:85.4}}).includes('Дата показаний'));
-// Расход: строки «Сутки»/«Неделя» с числами; кВт·ч формат с одной дробной.
+// Расход: строки «Сутки»/«Месяц» с числами; кВт·ч формат с одной дробной.
+// «Неделя» из истории ТНС больше не рендерится вовсе.
+html=energyCard(m,now,{deltas:{day:12.3,week:85.4},month:{prevValue:29428,prevDate:'2026-09-25',delta:130,cost:608}});
+assert.match(html,/Сутки/);assert.match(html,/12,3 кВт·ч/);assert.ok(!html.includes('Неделя'));
+assert.match(html,/Месяц/);assert.match(html,/130,0 кВт·ч/);assert.match(html,/≈\s*608\s*₽/);
+// Старые данные без month (демо) → строка «Месяц» с прежней заглушкой.
 html=energyCard(m,now,{deltas:{day:12.3,week:85.4}});
-assert.match(html,/Сутки/);assert.match(html,/12,3 кВт·ч/);assert.match(html,/Неделя/);assert.match(html,/85,4 кВт·ч/);
+assert.match(html,/Расход появится после следующей передачи показаний/);
 // Показания крупно с нулем дробной части: 29 558,0.
 assert.match(energyCard({'reading':e('sensor.r','29558')},now),/29\u00a0558,0 кВт·ч/);
 // Дельты null (данных ещё нет) → одна muted-строка-заглушка, без спама.
-html=energyCard(m,now,{deltas:null});
+html=energyCard(m,now,{deltas:null,month:{prevValue:null,prevDate:null,delta:null,cost:null}});
 assert.match(html,/Расход появится после следующей передачи показаний/);
 assert.ok(html.split('Расход появится').length-1===1);
 assert.ok(!energyCard(m,now).includes('Расход появится'));

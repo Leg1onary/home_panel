@@ -11,13 +11,36 @@ export const meterValue=e=>e&&!BAD.includes(e.state)&&Number.isFinite(Number(e.s
 const fmt=n=>new Intl.NumberFormat('ru-RU',{minimumFractionDigits:1,maximumFractionDigits:1}).format(n);
 // readings_date из HA ('2026-10-26') → '26.10'; некорректное значение → null.
 export const readingsDateOf=value=>{const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(value??''));return m?`${m[3]}.${m[2]}`:null};
-const deltaRow=(label,value)=>`<p class="energy-delta"><span>${label}</span><strong>${fmt(value)} кВт·ч</strong></p>`;
+const intFmt=n=>new Intl.NumberFormat('ru-RU').format(Math.round(n));
+export const formatMeterInt=intFmt;
+const READING_DATE=/^\d{4}-\d{2}-\d{2}$/;
+// Месячный расход (ТНС снимает показания раз в месяц): предыдущее показание —
+// максимальное по дате строго раньше текущей даты показаний. current<prev → null
+// (счётчик откатился — ждём новый месяц). Чистая функция: единая логика для
+// сервера (ha/energy) и расчётов в карточке.
+export const monthDelta=(currentValue,currentDate,readings)=>{
+ const date=READING_DATE.exec(String(currentDate??''))&&String(currentDate);
+ const current=Number(currentValue);
+ if(!date||!Number.isFinite(current))return {prevValue:null,prevDate:null,delta:null};
+ const prev=(Array.isArray(readings)?readings:[])
+  .filter(r=>r&&READING_DATE.test(String(r?.date))&&Number.isFinite(Number(r?.value))&&String(r.date)<date)
+  .sort((a,b)=>a.date<b.date?-1:1).at(-1);
+ if(!prev)return {prevValue:null,prevDate:null,delta:null};
+ const prevValue=Number(prev.value);
+ return {prevValue,prevDate:String(prev.date),delta:current<prevValue?null:Math.round((current-prevValue)*10)/10};
+};
+// Стоимость по тарифу: null без тарифа; округление до рубля.
+export const monthCost=(delta,tariff)=>Number.isFinite(delta)&&Number.isFinite(tariff)&&tariff>0?Math.round(delta*tariff):null;
+const deltaRow=(label,value,cost)=>`<p class="energy-delta"><span>${label}</span><strong>${fmt(value)} кВт·ч${cost!=null?` <small class="energy-cost">≈ ${esc(intFmt(cost))} ₽</small>`:''}</strong></p>`;
 const FALLBACK='Расход появится после следующей передачи показаний';
 const deltaMarkup=extra=>{
- if(!extra||extra.deltas===undefined)return '';
- if(extra.deltas===null)return `<p class="energy-deltas is-faint">${FALLBACK}</p>`;
- const rows=[Number.isFinite(extra.deltas.day)?deltaRow('Сутки',extra.deltas.day):null,Number.isFinite(extra.deltas.week)?deltaRow('Неделя',extra.deltas.week):null].filter(Boolean);
- return rows.length?rows.join(''):`<p class="energy-deltas is-faint">${FALLBACK}</p>`;
+ if(!extra||(extra.deltas===undefined&&extra.month===undefined))return '';
+ const rows=[];
+ if(Number.isFinite(extra.deltas?.day))rows.push(deltaRow('Сутки',extra.deltas.day));
+ const m=extra.month;
+ if(m&&Number.isFinite(m.delta))rows.push(deltaRow('Месяц',m.delta,m.cost));
+ else rows.push(`<p class="energy-deltas is-faint">${FALLBACK}</p>`);
+ return rows.join('');
 };
 export function energyCard(entities,now=Date.now(),extra,staleFlag=false){
  const {reading,consumption}=entities||{},r=meterValue(reading),c=meterValue(consumption);

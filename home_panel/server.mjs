@@ -2517,7 +2517,11 @@ var defaultPreferences = () => ({
   yard_onvif_user: "",
   yard_onvif_pass: "",
   yard_onvif_host: "192.168.8.204",
-  yard_onvif_enabled: true
+  yard_onvif_enabled: true,
+  // Показания счётчика ТНС (снимаются раз в месяц) и тариф. Отсутствие ключей
+  // в старых профилях = пусто (обратная совместимость).
+  energy_readings: [],
+  energy_tariff: null
 });
 var USER_SCENARIO_LIMITS = { max: 8, maxSteps: 12, minBrightness: 30, maxBrightness: 100 };
 var scenarioIdOk = (id) => typeof id === "string" && /^[a-z0-9-]{1,40}$/.test(id);
@@ -2553,6 +2557,27 @@ function sanitizeUserScenarios(raw, devices) {
   }
   return out;
 }
+var MAX_ENERGY_READINGS = 36;
+var READING_DATE = /^\d{4}-\d{2}-\d{2}$/;
+function sanitizeEnergyReadings(raw) {
+  if (raw === void 0 || raw === null) return [];
+  if (!Array.isArray(raw)) throw new Error("\u041F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u044F \u0441\u0447\u0451\u0442\u0447\u0438\u043A\u0430: \u043D\u0443\u0436\u0435\u043D \u043C\u0430\u0441\u0441\u0438\u0432.");
+  const byDate = /* @__PURE__ */ new Map();
+  for (const r of raw) {
+    if (!r || typeof r !== "object" || Array.isArray(r)) throw new Error("\u041F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u0435 \u0441\u0447\u0451\u0442\u0447\u0438\u043A\u0430: \u043D\u0443\u0436\u0435\u043D \u043E\u0431\u044A\u0435\u043A\u0442 \u0441 \u0434\u0430\u0442\u043E\u0439 \u0438 \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u0435\u043C.");
+    if (!READING_DATE.test(r.date) || Number.isNaN(Date.parse(r.date + "T00:00:00Z"))) throw new Error("\u041F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u0435 \u0441\u0447\u0451\u0442\u0447\u0438\u043A\u0430: \u0434\u0430\u0442\u0430 \u0432 \u0444\u043E\u0440\u043C\u0430\u0442\u0435 \u0413\u0413\u0413\u0413-\u041C\u041C-\u0414\u0414.");
+    if (!Number.isInteger(r.value) || r.value <= 0) throw new Error("\u041F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u0435 \u0441\u0447\u0451\u0442\u0447\u0438\u043A\u0430: \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u0435 \u2014 \u0446\u0435\u043B\u043E\u0435 \u0447\u0438\u0441\u043B\u043E \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0443\u043B\u044F.");
+    byDate.set(r.date, r.value);
+  }
+  const out = [...byDate].map(([date, value]) => ({ date, value })).sort((a, b) => a.date < b.date ? -1 : 1);
+  if (out.length > MAX_ENERGY_READINGS) throw new Error(`\u041F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u0439 \u043D\u0435 \u0431\u043E\u043B\u044C\u0448\u0435 ${MAX_ENERGY_READINGS}.`);
+  return out;
+}
+function sanitizeEnergyTariff(raw) {
+  if (raw === void 0 || raw === null) return null;
+  if (typeof raw !== "number" || !Number.isFinite(raw) || raw < 0.01 || raw > 99) throw new Error("\u0422\u0430\u0440\u0438\u0444: \u0447\u0438\u0441\u043B\u043E \u043E\u0442 0,01 \u0434\u043E 99 \u20BD/\u043A\u0412\u0442\xB7\u0447.");
+  return raw;
+}
 function validatePreferences(input, { importing = false } = {}) {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("\u041D\u0443\u0436\u0435\u043D \u043E\u0431\u044A\u0435\u043A\u0442 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043A.");
   if (input.version !== 3) throw new Error("\u0412\u0435\u0440\u0441\u0438\u044F \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043A \u043D\u0435 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u0441\u044F. \u041D\u0443\u0436\u043D\u0430 \u043A\u043E\u043F\u0438\u044F v3.");
@@ -2576,6 +2601,8 @@ function validatePreferences(input, { importing = false } = {}) {
   p.yard_onvif_pass = typeof raw.yard_onvif_pass === "string" ? raw.yard_onvif_pass.slice(0, 120) : "";
   p.yard_onvif_host = typeof raw.yard_onvif_host === "string" && raw.yard_onvif_host.trim() ? raw.yard_onvif_host.trim().slice(0, 120) : "192.168.8.204";
   p.yard_onvif_enabled = raw.yard_onvif_enabled !== false;
+  p.energy_readings = sanitizeEnergyReadings(raw.energy_readings);
+  p.energy_tariff = sanitizeEnergyTariff(raw.energy_tariff);
   const used = /* @__PURE__ */ new Set();
   p.bindings = {};
   for (const definition of bindingDefinitions(p.devices)) {
@@ -3797,6 +3824,17 @@ var PANEL_TIMEZONE = "Europe/Moscow";
 // src/energy.js
 var BAD = ["unavailable", "unknown", ""];
 var meterValue = (e) => e && !BAD.includes(e.state) && Number.isFinite(Number(e.state)) ? Number(e.state) : null;
+var READING_DATE2 = /^\d{4}-\d{2}-\d{2}$/;
+var monthDelta = (currentValue, currentDate, readings) => {
+  const date = READING_DATE2.exec(String(currentDate ?? "")) && String(currentDate);
+  const current = Number(currentValue);
+  if (!date || !Number.isFinite(current)) return { prevValue: null, prevDate: null, delta: null };
+  const prev = (Array.isArray(readings) ? readings : []).filter((r) => r && READING_DATE2.test(String(r?.date)) && Number.isFinite(Number(r?.value)) && String(r.date) < date).sort((a, b) => a.date < b.date ? -1 : 1).at(-1);
+  if (!prev) return { prevValue: null, prevDate: null, delta: null };
+  const prevValue = Number(prev.value);
+  return { prevValue, prevDate: String(prev.date), delta: current < prevValue ? null : current - prevValue };
+};
+var monthCost = (delta, tariff) => Number.isFinite(delta) && Number.isFinite(tariff) && tariff > 0 ? Math.round(delta * tariff) : null;
 
 // src/sensor-state.js
 function binaryValue(type, value) {
@@ -4758,6 +4796,8 @@ var server = http.createServer(async (req, res) => {
         }
         db.prepare("UPDATE profiles SET preferences=? WHERE id=?").run(JSON.stringify(next), id);
         yardOnvifEnsure(next);
+        energyCache = null;
+        energyLastKnown = null;
         return json(res, 200, { saved: true, preferences: clientPreferences(next), rejected, offline });
       }
       if (route === "photo") {
@@ -4857,13 +4897,16 @@ var server = http.createServer(async (req, res) => {
         const by = (tag) => list.find((e) => e.entity_id.endsWith("_" + tag)) || null;
         const reading = by("reading"), consumption = by("consumption"), meterNumber = by("meter_number"), readingsDate = by("readings_date");
         const readingValue = meterValue(reading);
+        const monthRaw = monthDelta(readingValue, readingsDate?.state, p.preferences.energy_readings);
+        const month = { ...monthRaw, cost: monthCost(monthRaw.delta, p.preferences.energy_tariff) };
         const history = readingValue === null ? [] : await ha.energyHistory(reading.entity_id, 168);
         const data2 = {
           reading: { value: readingValue, entityId: reading?.entity_id ?? null, updatedAt: reading?.last_updated ?? null },
           consumption: meterValue(consumption),
           meterNumber: meterNumber?.state ?? null,
           readingsDate: readingsDate?.state ?? null,
-          deltas: energyDeltas(history)
+          deltas: energyDeltas(history),
+          month
         };
         if (readingValue !== null || meterValue(consumption) !== null) {
           energyLastKnown = { at: Date.now(), data: data2 };
@@ -4877,7 +4920,8 @@ var server = http.createServer(async (req, res) => {
               consumption: meterValue(consumption),
               meterNumber: meterNumber?.state ?? null,
               readingsDate: readingsDate?.state ?? null,
-              deltas: energyDeltas(hist)
+              deltas: energyDeltas(hist),
+              month: { ...monthRaw, delta: null, cost: null }
             } };
           }
           if (energyLastKnown) return json(res, 200, { ...energyLastKnown.data, stale: true, staleSince: energyLastKnown.at });

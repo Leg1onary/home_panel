@@ -8,7 +8,8 @@ import {
 import {rooms,state,getRoom,countLights,channelsFor,sensors} from './schema.js';
 import {sendCommand,commandFor,hasPending} from './commands.js';
 import {preferences,loadStorage,saveStorage,flushStorage,savePhoto,removePhoto,applyPreferences} from './storage.js';
-import {bindingDefinitions,validatePreferences} from './preferences.js';
+import {bindingDefinitions,validatePreferences,sanitizeEnergyReadings,sanitizeEnergyTariff} from './preferences.js';
+import {readingsDateOf,formatMeterInt} from './energy.js';
 import {isLive,canControl,observed,startLive,discover,readiness,setYardClipHandler} from './live.js';
 import {areas,areaName,deviceTypes,sensorTypes,samePhysicalDevice} from './catalog.js';
 import {api} from './api.js';
@@ -1104,6 +1105,27 @@ function openHealth(){
  simpleSheet(`<h2>Здоровье системы</h2><p class="description">Живые данные локального сервера: подключение, датчик двора, клиенты, данные.</p><div data-health-sheet>${healthMarkup(null,'Загружаем…')}</div>`);
  loadHealth();
 }
+// Блок «Показания счётчика» (тех.раздел, вкладка «Связь»): тариф и справочник
+// месячных показаний ТНС. Сохранение — общий preferences-путь (PUT с proof).
+function energyMeterBlock(){
+ const readings=(state.energy_readings||[]).slice().sort((a,b)=>a.date<b.date?-1:1);
+ const last=readings.at(-1),prior=readings.at(-2),tariff=state.energy_tariff;
+ let summary='Внеси минимум два показания — здесь появится расход за месяц.';
+ if(last&&prior){
+  const delta=last.value-prior.value;
+  if(delta<0)summary='Значение ниже предыдущего — счётчик откатился, ждём новый месяц.';
+  else{
+   const cost=tariff!=null?Math.round(delta*tariff):null;
+   summary=`Предыдущее: ${readingsDateOf(prior.date)} · ${formatMeterInt(prior.value)} → месяц: ${formatMeterInt(delta)} кВт·ч${cost!==null?` ≈ ${formatMeterInt(cost)} ₽`:' · тариф не задан'}`;
+  }
+ }
+ return `
+  <label class="setting-field">Тариф, ₽/кВт·ч<input id="energy-tariff" type="number" min="0.01" max="99" step="0.01" value="${tariff==null?'':tariff}" placeholder="не задан"/></label>
+  <div class="energy-reading-list">${readings.map(r=>`<div class="energy-reading-row"><span>${esc(readingsDateOf(r.date)||r.date)}</span><strong>${esc(formatMeterInt(r.value))}</strong><button class="energy-reading-del" data-energy-reading-del="${esc(r.date)}" title="Удалить показание" aria-label="Удалить показание ${esc(readingsDateOf(r.date)||r.date)}">✕</button></div>`).join('')||'<p class="setting-help">Показаний пока нет.</p>'}</div>
+  <div class="energy-reading-add"><input id="energy-reading-date" type="date" aria-label="Дата показания"/><input id="energy-reading-value" type="number" min="1" step="1" placeholder="кВт·ч" aria-label="Значение показания"/><button class="secondary" data-action="energy-reading-add" ${disabled(hasPending())}>Добавить</button></div>
+  <p class="setting-help">${esc(summary)}</p>
+  <p class="setting-help">ТНС снимает показания раз в месяц: расход «Месяц» считается от последнего внесённого показания, недельная история не используется.</p>`;
+}
 function technical(){
  const ready=readiness();
  const tabs=[['connection','Связь'],['structure','Устройства'],['catalog','Каталог'],['bindings','Привязки'],['diagnostics','Проверка'],['backup','Копия'],['checklist','На месте']];
@@ -1121,6 +1143,10 @@ function technical(){
     <p class="setting-help">При выключении движение двора определяется по кадрам камеры (jpeg-диффер) — резерв без событий железа.</p>
    </div>
    <button class="secondary full-width" data-action="health-sheet">${I('activity')}Здоровье системы</button>
+   <div class="setting-block onvif-block" id="energy-meter-block">
+    <h3>Показания счётчика</h3>
+    ${energyMeterBlock()}
+   </div>
   ${state.addon?'<ol class="setup-list"><li>Home Panel работает на системнике Home Assistant OS.</li><li>Доступ к HA настроен автоматически через Supervisor. .env и личный токен не нужны.</li><li>Во вкладке «Привязки» загрузи сущности и проверь соответствие каждой линии.</li></ol><p class="setting-help">Настройки сохраняются в /data/homepanel. Панель доступна в доверенной домашней сети; порт 8090 не выставляй в интернет.</p>':'<ol class="setup-list"><li>Локальный запуск через <code>Запустить.cmd</code>.</li><li>На месте создай <code>.env</code> по примеру. Адрес и токен вводятся только в локальный файл, не в браузер и не в чат.</li><li>Перезапусти сервер, загрузи список сущностей и проверь каждую привязку.</li></ol><p class="setting-help">Токен не включается в сборку и резервную копию. Локальный сервер слушает только этот компьютер; сетевой доступ для отдельного планшета настроим позже безопасным способом.</p>'}`;
  if(techTab==='catalog')content=catalogSettings();
  if(techTab==='structure')content=deviceStructure(preferences(),{editing:equipmentEdit,esc,areaName,areas,blocked:hasPending()});
@@ -1429,6 +1455,18 @@ async function dispatchAction(e){
  if(a==='model-retry'){state.modelError='';render(false);return}
  if(b.hasAttribute('data-forecast-reload'))return loadForecast(true);
   if(b.hasAttribute('data-energy-reload'))return; // кнопку обновления обрабатывает Preact-виджет
+  if(b.dataset.energyReadingDel){
+   state.energy_readings=state.energy_readings.filter(r=>r.date!==b.dataset.energyReadingDel);
+   techMessage='Показание удалено.';persist();updateTechnical({keepForm:false});return;
+  }
+  if(a==='energy-reading-add'){
+   const date=$('#energy-reading-date')?.value||'',value=Number($('#energy-reading-value')?.value);
+   try{
+    state.energy_readings=sanitizeEnergyReadings([...state.energy_readings,{date,value}]);
+    techMessage='Показание сохранено.';persist();
+   }catch(error){techMessage=error.message}
+   updateTechnical({keepForm:false});return;
+  }
 
  if(a==='history-reload')return loadStatistics(true);
  if(a==='history-focus-clear'){historyState.focus=null;paintStatistics();return}
@@ -1530,6 +1568,11 @@ document.addEventListener('change',async e=>{
  if(id==='ambient-setting'){state.ambientMode=e.target.checked;if(state.idle&&!state.ambientMode)exitAmbient();persist()}
  if(id==='auto-theme-setting'){state.autoTheme=e.target.checked;autoThemeZone=null;persist();applyAutoTheme();updateThemeButton();updateTechnical();return}
   if(id==='yard-onvif-setting'){state.yard_onvif_enabled=e.target.checked;persist();updateTechnical();return}
+  if(id==='energy-tariff'){
+   try{state.energy_tariff=sanitizeEnergyTariff(e.target.value===''?null:Number(e.target.value));persist()}
+   catch(error){e.target.value=state.energy_tariff==null?'':state.energy_tariff;toast(error.message)}
+   return;
+  }
  if(id==='night-setting'){state.nightMode=e.target.value;applyNight();persist()}
  if(id==='night-start'||id==='night-end'){
   const v=e.target.value;
