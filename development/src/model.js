@@ -7,7 +7,20 @@ import {scenePins,pinMarkup} from './scene-pins.js';
 import {motionObservation} from './motion.js';
 import {binaryValue} from './sensor-state.js';
 import {tempTint} from './thermal.js';
+import {state} from './schema.js';
 import {PANEL_TIMEZONE} from './dom.js';
+// Температура комнаты для теплового тинта: живой сенсор (привязка+состояние HA)
+// или демо-значение устройства. null — нет данных (тинт не применяется).
+function roomTemperature(id){
+ const dev=(state.devices||[]).find(d=>d.type==='temperature'&&d.room===id&&d.status==='installed');
+ if(!dev)return null;
+ const b=(state.bindings||{})[dev.id];
+ const e=state.liveOnline&&b?.verified&&b.entityId?state.entityStates[b.entityId]:null;
+ const live=Number(e?.state);
+ if(Number.isFinite(live))return live;
+ const demo=Number(dev.demoValue);
+ return Number.isFinite(demo)?demo:null;
+}
 let current;
 const floorPoints={
  living:[[220,27],[744,27],[744,291],[220,291]],
