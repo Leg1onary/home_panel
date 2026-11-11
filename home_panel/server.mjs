@@ -2758,7 +2758,7 @@ var HomeAssistant = class {
     return { type, bytes: Buffer.concat(parts) };
   }
   sanitize(e) {
-    const keys = ["friendly_name", "device_class", "state_class", "unit_of_measurement", "temperature_unit", "brightness", "rgb_color", "supported_color_modes", "current_position", "battery_level", "current_temperature", "temperature", "hvac_action", "supported_features", "volume_level", "media_title", "media_artist", "alice_state", "assumed_state", "humidity", "wind_speed", "wind_bearing", "pressure", "carbon_intensity", "fossil_fuel_percentage", "fossil_percentage", "code_format", "changed_by"];
+    const keys = ["friendly_name", "device_class", "state_class", "unit_of_measurement", "temperature_unit", "brightness", "rgb_color", "supported_color_modes", "current_position", "battery_level", "current_temperature", "temperature", "hvac_action", "supported_features", "volume_level", "media_title", "media_artist", "alice_state", "assumed_state", "humidity", "wind_speed", "wind_bearing", "pressure", "carbon_intensity", "fossil_fuel_percentage", "fossil_percentage", "code_format", "changed_by", "next_dawn", "next_dusk", "next_rising", "next_setting"];
     return {
       entity_id: e.entity_id,
       state: e.state,
@@ -2771,7 +2771,7 @@ var HomeAssistant = class {
   async states() {
     const all = await this.request("/api/states");
     if (!Array.isArray(all)) throw new Error("\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u0441\u043F\u0438\u0441\u043E\u043A \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u0435\u0439.");
-    return all.filter((e) => /^(light|switch|sensor|binary_sensor|camera|cover|climate|media_player|vacuum|weather|todo|alarm_control_panel|update)\.[a-z0-9_]+$/.test(e.entity_id)).map((e) => this.sanitize(e));
+    return all.filter((e) => /^(light|switch|sensor|binary_sensor|camera|cover|climate|media_player|vacuum|weather|todo|alarm_control_panel|update|sun)\.[a-z0-9_]+$/.test(e.entity_id)).map((e) => this.sanitize(e));
   }
   async weatherForecast(entityId) {
     if (!/^weather\.[a-z0-9_]+$/.test(entityId)) throw new Error("\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u0430\u044F \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u044C \u043F\u043E\u0433\u043E\u0434\u044B.");

@@ -1,0 +1,73 @@
+PASS: clean catalog v3, older formats rejected, stable IDs, import reset, capabilities, duplicates, planned locks, extensible sensors and climate summary follows real zones.
+PASS: yard-card — чип только по факту движения панельного детектора ≤5 мин; демо и отсутствие данных никогда не показывают карточку; сдвинутое/неизвестное время события не считается движением.
+PASS: additive device model v1, logical groups, components, stable bindings, capabilities, imports, validation, read-only new families, no command escalation.
+PASS: real SQLite migration, original backup, idempotent restart, preserved theme/photo/live mappings, grouping CRUD, new device without a plan, unknown versions rejected without mutation.
+PASS: 39 inventory bindings, enum safety/alerts, v5 migration/idempotency, theme/photo/custom mappings preserved, partial activation, numeric units/classes, CSRF, zero service calls, read-only events/batteries, persistence.
+PASS: media discovery/secret filtering, pause/play/volume readback, unchanged target no-op, features/offline/unverified locks, strict action/value allowlist, demo isolation.
+PASS: station hub action allowlist, TTS/cloud/local gating, durable idempotency/crash safety, truthful acknowledgements, background wet/dry/unknown/restart dedupe, Moscow quiet hours, shopping readback, scoped leave, no secret/HTML leakage.
+shopping: ok
+voice: ok (converse: process вызов, speech, пустая строка, валидация, proof, выключенный и упавший HA)
+PASS: floor states, no texture/living overlay, independent selection; transformed house/terrace foundation vertices are safely below every room floor.
+PASS: unavailable light observations stay unknown; detailed schematic interior is batched and room-tagged.
+PASS: one installed corridor line, immutable/idempotent migration, verified/custom/grouped mappings preserved, no guessed entity, persistent spatial view contracts.
+PASS: motion expiry/event timestamps, no polling renewal, native binary semantics, HA-only scoped history, unavailable gaps, line-hours/coverage, cache and binding changes, honest scene pins.
+PASS: stable and untimestamped HA values remain visible, provenance is not polling, zero/units/offline/unknown validation and verified scene pins.
+PASS: дайджест показывает только реальные сигналы — батарейки/агрегат, протечка danger, offline, недоступные датчики только с проверенным биндингом, забытый свет, мороз, сортировка; действия (датчики/комната/системы) и гистерезис авто-темы.
+digest-brief ok
+PASS: энергия v2 — поиск счётчика, карточка рельсы (показания/дата показаний/потребление/сутки/неделя/заглушка), история расхода (energyHistory: /api/history/period, фильтр unavailable, кеш 60 с) и energyDeltas (окна 24/168 ч, <2 точек → null).
+PASS: месяц по показаниям ТНС — monthDelta (prev строго раньше readings_date, current<prev → null), cost по тарифу, карточка «Месяц» вместо «Неделя», валидация prefs (дата/значение/лимит 36/дедуп/тариф) и обратная совместимость.
+energy-chart: ок
+preact-energy ok
+preact-digest ok
+preact-weather ok
+preact-quick ok
+preact-facts ok
+preact-room ok
+light-wave ok
+PASS: buffered LL-HLS at 1x, narrow start-hint removal, loader callback/binary safety, part delivery, ordinary HLS fallback, rate/latency/frame diagnostics, bounded recovery and cleanup.
+PASS: WebRTC-only startup, recvonly tracks, ICE ordering/default mid, diagnostics, no parallel HLS, session cleanup/stop-during-start, explicit HLS and unsupported-browser fallback.
+PASS: HA WebRTC auth/capabilities/config, bounded owned sessions, offer/subscription/trickle ICE/events, fixed camera scope, secret filtering, unsupported/auth rejection, binding changes, expiry and close.
+PASS: stale proof refresh, concurrent single-flight, exactly one safe retry, no retries on transport/HA/origin errors, no infinite retries.
+PASS: SW api-exclusion and strategies, registration, allowlist, build pipeline, profile export endpoint and UI.
+ambient: ok
+night-mode: ok
+PASS: yard-motion — сетка-диф (0/порог), детектор на requestRaw, endpoint ha/yard-motion, троттлинг 3с, недоступность без паники.
+yard-onvif: ok
+PASS: yard-clips — таблица/пустой список, testCapture → клип + JPEG-кадр, ретеншен ≤30, дедуп <15с.
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: 24 → warm
++ actual - expected
+
+  {
+    color: '#c98a3e',
++   intensity: 0.2,
+-   intensity: 0.15,
+    kind: 'warm'
+  }
+
+    at file:///C:/Users/ssholokhov/home_panel/development/.qa/main-context.mjs:79:8
+    at ModuleJob.run (node:internal/modules/esm/module_job:561:25)
+    at async node:internal/modules/esm/loader:647:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: { kind: 'warm', color: '#c98a3e', intensity: 0.2 },
+  expected: { kind: 'warm', color: '#c98a3e', intensity: 0.15 },
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}
+
+Node.js v24.21.0
+file:///C:/Users/ssholokhov/home_panel/development/tests/run.mjs:13
+ if(result.status!==0)throw new Error(`${command} ${args.join(' ')} failed: ${result.status}`);
+                            ^
+
+Error: C:\Program Files\nodejs\node.exe .qa/main-context.mjs failed: 1
+    at run (file:///C:/Users/ssholokhov/home_panel/development/tests/run.mjs:13:29)
+    at file:///C:/Users/ssholokhov/home_panel/development/tests/run.mjs:17:2
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+
+Node.js v24.21.0

@@ -6,6 +6,7 @@ import {modelLevels} from './model-geometry.js';
 import {scenePins,pinMarkup} from './scene-pins.js';
 import {motionObservation} from './motion.js';
 import {binaryValue} from './sensor-state.js';
+import {tempTint} from './thermal.js';
 import {PANEL_TIMEZONE} from './dom.js';
 let current;
 const floorPoints={
@@ -291,11 +292,15 @@ export function mountModel(canvas,rooms,state,onSelect){
    pinData=scenePins(state);const signature=JSON.stringify(pinData);
    if(signature!==pinSignature){pinLayer.innerHTML=pinData.map(pinMarkup).join('');pinSignature=signature}
   },
-  paintFloor:(m,visual)=>{
-   if(m.userData.paintTarget===visual.color)return;
-   const first=!m.userData.paintTarget;m.userData.paintTarget=visual.color;
-   const emissiveTo=visual.status==='on'?.22:visual.status==='partial'?.1:0;
-   m.material.emissive.set('#f3b569');
+  paintFloor:(m,visual,tint)=>{
+   // tint (3.3.2): тепловизор — лёгкий emissive-оттенок по температуре комнаты.
+   // Базовое золото свечения не трогаем: emissive-цвет лерпится к тёплому/холодному
+   // тинту, интенсивность берётся как max(свет, тинт) — 0.15 виден и на выключенном.
+   const key=visual.color+'|'+(tint?.color||'');
+   if(m.userData.paintTarget===key)return;
+   const first=!m.userData.paintTarget;m.userData.paintTarget=key;
+   const emissiveTo=Math.max(visual.status==='on'?.22:visual.status==='partial'?.1:0,tint?.intensity||0);
+   m.material.emissive.set(tint?.color||'#f3b569');
    if(first||reduceMotion){m.material.color.set(visual.color);m.material.emissiveIntensity=emissiveTo;return}
    tweens.set(m,{from:m.material.color.clone(),to:new THREE.Color(visual.color),at:performance.now(),emissiveFrom:m.material.emissiveIntensity,emissiveTo});
   },
@@ -323,11 +328,11 @@ export function updateModel(rooms,state){
  current.setPins(state);
  for(const [id,m]of Object.entries(floors)){
    const visual=floorVisual(rooms.find(x=>x.id===id)?.channels,state);
-   current.paintFloor(m,visual);
+   current.paintFloor(m,visual,tempTint(roomTemperature(id)));
  }
  zoneFloors.forEach((m,i)=>{
   const c=rooms.find(x=>x.id==='living')?.channels.find(c=>c.id===`living:${i}`);
-  current.paintFloor(m,floorVisual(c?[c]:[],state));
+  current.paintFloor(m,floorVisual(c?[c]:[],state),tempTint(roomTemperature('living')));
  });
  current.applyRoomLights(rooms,state);
  current.motionPulse(terraceMotion(state));

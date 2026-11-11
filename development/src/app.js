@@ -28,6 +28,7 @@ import {duoUI,assistantView} from './assistant-ui.js';
 import {scenarioChipsRow,handleScenarioClick,bindScenarioPainter,bindScenarioHost} from './scenarios-ui.js';
 import {shouldAmbient,AMBIENT_AFTER_IDLE} from './ambient.js';
 import {isNight,isTime,nightLabel} from './night.js';
+import {dayArcMarkup} from './day-arc.js';
 import {luxValue,autoTheme,AUTO_THEME_UP,AUTO_THEME_DOWN} from './auto-theme.js';
 import {render as preactRender,h as ph} from './preact/kit.js';
 import {EnergyWidget} from './preact/energy-widget.js';
@@ -204,7 +205,9 @@ function dayProgress(){
  const now=Date.now(),a=Date.parse(dawn),b=Date.parse(dusk);
  if(![a,b].every(Number.isFinite)||now<a||now>b)return '';
  const p=Math.round(Math.min(1,Math.max(0,(now-a)/(b-a)))*100);
- return `<div class="day-progress" role="img" aria-label="Пройдено ${p} % светового дня от рассвета до заката"><span style="width:${p}%"></span></div>`;
+ // 3.3.2: тонкая SVG-дуга над hero-часами (градиент тёмный → золотой Aurora),
+ // заполнение = % светового дня. Чистая геометрия — src/day-arc.js (arcParams).
+ return `<div class="day-arc-wrap" role="img" aria-label="Светового дня пройдено ${p} % от рассвета до заката">${dayArcMarkup(p)}</div>`;
 }
 // Чип двора: только реальное движение по панельному детектору (ha/yard-motion).
 // Детектор панельный — сравнение кадров камеры на сервере, биндинг yard-motion не нужен.
@@ -486,8 +489,19 @@ function digestArgs(){
 }
 const digestSummary=()=>{const items=digestItems(digestArgs());return items.length?items.slice(0,2).map(i=>i.text).join(' · '):''};
 const dayPhase=hour=>hour>=6&&hour<11?'morning':hour>=11&&hour<17?'day':hour>=17&&hour<22?'evening':'night';
+ // 3.3.2: дуга светового дня обновляется на лету (home() рисует её один раз,
+ // live-состояния прилетают позже) — создаём/заменяем узел по проценту.
+ function paintDayArc(){
+  const node=document.querySelector('.day-arc-wrap');
+  const next=dayProgress();
+  if(!next){node?.remove();return}
+  const label=next.match(/aria-label="([^"]+)"/)?.[1];
+  if(node){if(label&&node.getAttribute('aria-label')!==label)node.outerHTML=next;return}
+  document.querySelector('.hero-clock')?.insertAdjacentHTML('beforeend',next);
+ }
 function updateHeroTime(){
  if(state.view!=='home')return;
+ paintDayArc();
  const hour=+new Intl.DateTimeFormat('en-GB',{hour:'numeric',hourCycle:'h23',timeZone:PANEL_TIMEZONE}).format(Date.now());
  const greeting=$('#hero-greeting'),dateNode=$('#hero-date');
  if(!greeting||!dateNode)return;
