@@ -1,0 +1,46 @@
+{
+ "rail": {
+  "count": 2,
+  "items": [
+   {
+    "cls": "quick-device light-shortcut",
+    "w": 52,
+    "h": 52
+   },
+   {
+    "cls": "quick-device camera-shortcut",
+    "w": 52,
+    "h": 52
+   }
+  ],
+  "noMedia": true,
+  "railWidth": 116
+ },
+ "station": {
+  "present": true,
+  "inRail": true,
+  "title": "Тестовая станция",
+  "head": "Станция · Коридор",
+  "play": true,
+  "prev": true,
+  "next": true,
+  "playDisabled": false,
+  "box": {
+   "x": 936,
+   "y": 431,
+   "w": 300,
+   "h": 131
+  }
+ }
+}
+AFTER PLAY: {"aria":"Продолжить на станции","eq":false}
+ERRORS: []
+DEMO: {
+ "present": true,
+ "head": "Станция · Коридор",
+ "title": "Голос и музыка",
+ "playDisabled": true,
+ "noMedia": true,
+ "railCount": 2
+}
+DEMO ERRORS: []

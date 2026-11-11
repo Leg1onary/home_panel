@@ -1452,13 +1452,17 @@ input[type=range]:disabled::-moz-range-thumb{background:var(--faint);border-colo
 .home-quick-rail .quick-devices{align-items:flex-end}
 .home-quick-rail .quick-device{width:52px;height:52px;min-height:52px;max-height:52px;padding:0;justify-content:center;border-radius:var(--radius-md);transition:padding .2s ease,margin .2s ease,background .2s ease}
 .home-quick-rail .quick-device:hover{padding:0 3px;margin:0 -3px}
-.home-quick-rail .quick-device>span:not(.quick-device-icon),.home-quick-rail .station-skip{display:none}
-/* «Станция» остаётся видимой плиткой в компакт-рельсе: иначе некуда тапнуть, чтобы открыть плеер. */
-.home-quick-rail .media-shortcut{display:flex;align-items:flex-end;gap:var(--space-1);height:52px;min-height:52px;max-height:52px}
-.home-quick-rail .media-details{position:relative;display:flex;flex-direction:column;align-items:center;width:52px;height:52px;min-height:52px;max-height:52px;padding:0;text-align:center;justify-content:center;border-radius:9999px;overflow:visible}
-.home-quick-rail .media-details .media-title-line{display:none}
-.home-quick-rail .media-details small{display:none}
-.home-quick-rail .media-details::after{content:'Станция';position:absolute;top:calc(100% + 2px);left:0;right:0;text-align:center;white-space:nowrap;font-size:.62rem;color:var(--muted)}
+.home-quick-rail .quick-device>span:not(.quick-device-icon){display:none}
+/* 3.3.14: плеер ушёл из рельсы в компактную карточку станции в правой колонке. */
+.station-compact{width:min(300px,44vw);padding:var(--space-3) var(--space-4);display:flex;flex-direction:column;gap:var(--space-2);min-height:0;background:linear-gradient(155deg,rgba(255,255,255,.07),rgba(255,255,255,.02)),var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg)}
+[data-theme=light] .station-compact{background:linear-gradient(155deg,rgba(255,255,255,.9),rgba(255,255,255,.55)),var(--surface)}
+.station-compact .station-top{display:flex;align-items:center;justify-content:space-between;color:var(--muted)}
+.station-compact .station-top .eyebrow{color:var(--muted);font-size:var(--text-xs);letter-spacing:.1em}
+.station-compact-title{display:block;width:100%;text-align:left;padding:0;margin:0;background:none;border:0;color:inherit;font:inherit;font-size:var(--text-sm);cursor:pointer}
+.station-compact-title strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.station-compact-title:hover strong,.station-compact-title:focus-visible strong{text-decoration:underline}
+.station-compact-controls{display:flex;align-items:center;gap:var(--space-2)}
+.station-compact-play{color:var(--accent,inherit)}
 .home-quick-rail .quick-device .quick-device-icon{margin:0}
 /* Карточка комнаты — центр рабочей области: свободна от quick-рельсы (слева-снизу), rail (справа-сверху) и hero-facts (низ). */
 .home-room-card{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:6;width:min(330px,72vw);pointer-events:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:0 18px 48px rgba(0,0,0,.35);padding:var(--space-4);animation:room-card-in 180ms ease}

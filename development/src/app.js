@@ -35,6 +35,7 @@ import {EnergyWidget} from './preact/energy-widget.js';
 import {DigestWidget,digestBus} from './preact/digest-widget.js';
 import {WeatherChip,weatherBus} from './preact/weather-widget.js';
 import {QuickWidget,quickBus} from './preact/quick-widget.js';
+import {StationWidget,stationBus} from './preact/station-widget.js';
 import {FactsWidget,factsBus} from './preact/facts-widget.js';
 import {ICONS} from './preact/icons.js';
 import {RoomCardWidget,RoomSheetWidget,roomBus} from './preact/room-widget.js';
@@ -291,6 +292,17 @@ function updateQuickRegion(){
   rail.dataset.preact='1';
  }
 }
+// Компактная карточка станции (3.3.14): Preact-компонента (src/preact/station-widget.js)
+// в #home-station, deps рассылаются по stationBus в refresh(). Показывается и в демо.
+function updateStationRegion(){
+ const slot=$('#home-station');
+ if(!slot)return;
+ if(!slot.dataset.preact){
+  preactRender(ph(StationWidget,{}),slot);
+  slot.dataset.preact='1';
+ }
+ slot.hidden=false;
+}
 // Лента клипов двора: Preact-виджет (src/preact/yard-clips-widget.js) в слоте
 // вкладки «Двор». Слот пересоздаётся при перерисовке #room-equipment — монтаж
 // повторяется, как у погодного слота. Демо: live=false → виджет не рендерится.
@@ -305,13 +317,19 @@ function updateYardClipsRegion(){
 setYardClipHandler(info=>yardClipsBus.notify({kind:'new',clip:info}));
 function quickArgs(){
  const camera=state.devices.find(d=>d.type==='camera'&&d.room==='yard'&&d.status==='installed');
- const media=state.devices.find(d=>d.id==='station'&&d.status==='installed');
+ return {masterBlocked:masterBlocked(),cameraId:camera?.id||null};
+}
+// Компактная карточка станции в правой колонке главной (3.3.14): deps для
+// station-widget.js. В демо — заголовок «Демо», live — media_title из HA.
+function stationArgs(){
+ const demo=!isLive()&&state.stationMode==='demo';
  const e=isLive()?observed('station'):null;
- return {masterBlocked:masterBlocked(),cameraId:camera?.id||null,media:!!media,
-  stationPlaying:state.stationPlaying,playDisabled:!canControl('station:playing')||hasPending(),
+ return {demo,playing:state.stationPlaying,
+  title:isLive()?(e?.attributes?.media_title||'Музыка и голос · через Home Assistant'):demo?'Демо':'Голос и музыка',
+  room:stationRoom(),
+  playDisabled:!canControl('station:playing')||hasPending(),
   prevDisabled:!isLive()||!stationSupports(e,'previous',true)||hasPending(),
-  nextDisabled:!isLive()||!stationSupports(e,'next',true)||hasPending(),
-  stationRoom:stationRoom(),stationTitle:observed('station')?.attributes?.media_title||stationRoom()};
+  nextDisabled:!isLive()||!stationSupports(e,'next',true)||hasPending()};
 }
 
 // Кадр двора: не чаще раза в 2 минуты (YARD_REFRESH_MS), ревизии против гонок,
@@ -349,6 +367,7 @@ function home(){
  <div id="home-digest" hidden></div>
  <div id="home-energy" hidden></div>
  <div id="home-alarm" hidden></div>
+ <div id="home-station" hidden></div>
  <div id="home-light-overview">${lightOverviewBadge()}</div>
  <button class="text-button rail-allrooms" data-action="allrooms">Все комнаты ${I('arrow-up-right')}</button>
  ${!state.preview&&!state.houseProfileConfirmed&&state.devices.some(d=>houseBindings[d.id]===state.bindings[d.id]?.entityId)?'<div class="profile-invite"><div><strong>Профиль ждёт проверки</strong><p>Подтверди привязки перед управлением домом.</p></div><button class="secondary" data-action="house-review">Проверить профиль</button></div>':''}
@@ -798,7 +817,7 @@ function refresh(){
   const weatherEntity=Object.values(state.entityStates||{}).find(e=>e.entity_id?.startsWith('weather.')),weatherTemp=weatherEntity?.attributes?.temperature;
   modelAPI?.setModelWeather(weatherTemp<0&&weatherEntity?.state==='snowy'?'snow':weatherTemp<0&&weatherEntity?.state==='rainy'?'rain':null);
   if(state.view==='home'){
-   updateFactsRegion();factsNotify();pollYardMotion();updateQuickRegion();quickBus.notify(quickArgs());updateRegion('#home-light-overview',lightOverviewBadge());updateRegion('#hero-status',heroStatusChip());paintRoomCard();
+   updateFactsRegion();factsNotify();pollYardMotion();updateQuickRegion();quickBus.notify(quickArgs());updateStationRegion();stationBus.notify(stationArgs());updateRegion('#home-light-overview',lightOverviewBadge());updateRegion('#hero-status',heroStatusChip());paintRoomCard();
     updateWeatherRegion();
     // Погодный чип на Preact: notify только в live-режиме (в демо чипа нет — deps null).
     if(isLive())weatherBus.notify({entityStates:state.entityStates||{},now:Date.now()});

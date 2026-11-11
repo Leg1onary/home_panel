@@ -1,0 +1,13 @@
+{
+ "quick": "MISSING",
+ "hasQuick": true,
+ "rail": "\n <div id=\"home-digest\" hidden=\"\"></div>\n <div id=\"home-energy\" hidden=\"\"></div>\n <div id=\"home-alarm\" hidden=\"\"></div>\n <div id=\"home-station\" hidden=\"\"></div>\n <div id=\"home-light-overview\"><button class=\"light-overview-badge has-light\" data-action=\"active-lights\" aria-label=\"Где горит свет: включ",
+ "mainCls": "",
+ "main0": "<div class=\"view dashboard-view view-enter\">\n <h1 class=\"visually-hidden\">Мой дом</h1>\n <div class=\"home-stage-wrap\"><section class=\"model-stage spatial-stage hero-stage\"><canvas id=\"canvas\" aria-label=\"Интерактивная объёмная модель дома\" data-engine=\"three.js r186\" width=\"1140\" height=\"600\" data-interior-batches=\"46\" style=\"cursor: auto; touch-action: none;\" data-fit-zoom=\"1.077\" data-render-fram"
+}
+ERRS: []
+{
+ "view": "",
+ "home": true,
+ "body": "К управлению домом\nГлавная\nСвет\nДатчики\nСистемы\nСтатистика\nНастройки\nМой дом\n20.4°\nдемо\n00:42\nчетверг, 12 ноября\nДемо · без Home Assistant\nСвет · 3/15\nВсе комнаты"
+}
