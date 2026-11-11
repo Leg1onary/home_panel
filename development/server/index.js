@@ -11,7 +11,7 @@ import {CameraStreams} from './stream.js';
 import {CameraRTC} from './rtc.js';
 import {LiveFeed} from './live-stream.js';
 import {YardMotion} from './yard-motion.js';
-import {onvifWatch} from './yard-onvif.js';
+import {onvifWatch,onvifSnapshots} from './yard-onvif.js';
 import {YardClips} from './yard-clips.js';
 import {journal,journalList} from './journal.js';
 import {meterValue,monthDelta,monthCost} from '../src/energy.js';
@@ -51,23 +51,25 @@ const yardCameraEntity=p=>{const b=p?.bindings['camera-yard'];return p?.mode==='
 const yardMotion=new YardMotion({ha});
 // ONVIF-события движения двора (события железа вместо jpeg-диффа). Creds — из
 // preferences-профиля (серверно), ошибки → jpeg-диффер остаётся fallback-ом.
-let yardOnvifWatch=null,yardOnvifConfigKey='';
+let yardOnvifWatch=null,yardOnvifConfigKey='',yardOnvifSnapshots=null;
 const clientPreferences=prefs=>{const c={...prefs};delete c.yard_onvif_pass;return c};
 const yardOnvifStatus=()=>yardOnvifWatch?.status?.()||null;
 const yardOnvifEnsure=prefs=>{
  // Тумблер ONVIF-датчика (preferences.yard_onvif_enabled, по умолчанию включено):
  // выключен → watcher останавливается, движение двора ловит jpeg-диффер (резерв).
- if(prefs.yard_onvif_enabled===false){if(yardOnvifWatch){yardOnvifWatch.stop();yardOnvifWatch=null;yardOnvifConfigKey=''}return false}
+ if(prefs.yard_onvif_enabled===false){if(yardOnvifWatch){yardOnvifWatch.stop();yardOnvifWatch=null;yardOnvifConfigKey='';yardOnvifSnapshots=null}return false}
  let host=String(prefs.yard_onvif_host||'').trim()||'192.168.8.204',port;
  // host может быть 'ip:port' (как в статусе живой камеры): разделяем, иначе порт 2020.
  const colon=host.match(/^([\w.\[\]:-]+):(\d+)$/);
  if(colon){host=colon[1].replace(/^\[|\]$/g,'');port=Number(colon[2])}
  const user=String(prefs.yard_onvif_user||'').trim(),pass=String(prefs.yard_onvif_pass||'');
- if(!user){if(yardOnvifWatch){yardOnvifWatch.stop();yardOnvifWatch=null;yardOnvifConfigKey=''}return false}
+ if(!user){if(yardOnvifWatch){yardOnvifWatch.stop();yardOnvifWatch=null;yardOnvifConfigKey='';yardOnvifSnapshots=null}return false}
  const key=host+'|'+port+'|'+user+'|'+pass;
  if(yardOnvifWatch&&key===yardOnvifConfigKey)return true;
  if(yardOnvifWatch)yardOnvifWatch.stop();
  yardOnvifConfigKey=key;
+ // Живые снимки двора (3.3.9): тот же creds/host, отдельный клиент GetSnapshotUri+GET.
+ yardOnvifSnapshots=onvifSnapshots({host,...(port?{port}:{}),user,pass,log:(...a)=>console.log('Yard ONVIF snapshot:',...a)});
  yardOnvifWatch=onvifWatch({host,...(port?{port}:{}) ,user,pass,
   onMotion:()=>{yardMotion.externalMotion();yardClips.record().catch(error=>journal('Клип двора не записан: '+(error?.message||error),'warn'))},
   onError:error=>{console.log('Yard ONVIF fallback to jpeg diff:',error?.message||error);journal('ONVIF-события недоступны: '+(error?.message||error)+' — работает резерв по кадрам','warn')}});
@@ -83,6 +85,7 @@ let forecastCache=null,forecastKey='',shoppingCache=null,energyCache=null,energy
 // проверенного биндинга camera-yard профиля на каждый вызов ha/yard-motion).
 let yardEntityHint=null;
 const yardClips=new YardClips({ha,db,getEntityId:()=>yardEntityHint,
+ yardOnvif:()=>yardOnvifSnapshots,
  notify:info=>live.broadcast('yard-clip',JSON.stringify(info))});
 yardClips.start();
 const getProfile=id=>{

@@ -806,7 +806,7 @@ function refresh(){
     // Пустой liveOnline (демопревью без HA или обрыв связи) → notify не шлём:
     // hero-статус уже сообщает о потере связи, дайджест остаётся пустым.
     if(state.liveOnline)digestBus.notify(digestArgs()); // пустые items → узел пуст → CSS #home-digest:empty прячет.
-    const alarm=$('#home-alarm');if(alarm){updateRegion('#home-alarm',alarmMarkup());alarm.hidden=!alarm.querySelector('.alarm-card')}
+    paintAlarm(); // #home-alarm скрыт (3.3.6); alarmMarkup не рендерим в обход.
     const energy=$('#home-energy');if(energy)updateEnergyRegion();
     updateHeroTime();
   }else if(state.view==='room'&&$('#room-scenarios'))updateRegion('#room-scenarios',scenarioChipsRow());

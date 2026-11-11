@@ -56,6 +56,44 @@ async function probeDeviceTime(url,creds,timeoutMs){
  return {offset};
 }
 
+// ONVIF-снимок (3.3.9): GetSnapshotUri на media-сервисе → GET живого кадра.
+// URI кешируется на 5 минут (открытый после первого ответа, refresh не чаще раза в 5 мин).
+// GET: сначала без auth, при 401 — Authorization Basic (WS-Security digest для GET не подходит;
+// Tapo обычно принимает basic на /onvif-http/snapshot). Контракт как requestRaw: {type:'image/jpeg',bytes}.
+export function onvifSnapshots({host,port=2020,user,pass,timeoutMs=5000,log=()=>{}}={}){
+ const mediaService=`http://${host}:${port}/onvif/media_service`;
+ let snapUri=null,snapAt=0;
+ const getSnapshot=async()=>{
+  const now=Date.now();
+  if(!snapUri||now-snapAt>5*60*1000){
+   snapUri=null;
+   let last=null;
+   for(const token of ['Profile_1','profile_1','1']){
+    try{
+     const text=await soapPost(mediaService,
+      `<trt:GetSnapshotUri xmlns:trt="http://www.onvif.org/ver10/media/wsdl"><trt:ProfileToken>${token}</trt:ProfileToken></trt:GetSnapshotUri>`,
+      {user,pass},timeoutMs);
+     const uri=text.match(/<[^>]*Uri[^>]*>(https?:\/\/[^<]+)<\/[^>]*Uri>/)?.[1];
+     if(uri){snapUri=uri;snapAt=now;log('snapshot uri',uri);break}
+     last=new Error('Snapshot URI not found in GetSnapshotUri response');
+    }catch(e){last=e}
+   }
+   if(!snapUri)throw last||new Error('GetSnapshotUri failed for all profile tokens');
+  }
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),timeoutMs);
+  try{
+   let res=await fetch(snapUri,{signal:ctrl.signal});
+   if(res.status===401){
+    res=await fetch(snapUri,{signal:ctrl.signal,
+     headers:{Authorization:'Basic '+Buffer.from(user+':'+pass).toString('base64')}});
+   }
+   if(!res.ok)throw new Error('Snapshot HTTP '+res.status+' '+snapUri);
+   return {type:'image/jpeg',bytes:Buffer.from(await res.arrayBuffer())};
+  }finally{clearTimeout(timer)}
+ };
+ return {getSnapshot};
+}
+
 export function onvifWatch({host,port=2020,user,pass,onMotion,onError,onReady,log=()=>{},...timing}={}){
  const t={...DIGEST_DEFAULTS,...timing};
  let stopped=false,restarts=0,pullFailures=0;

@@ -3607,6 +3607,54 @@ async function probeDeviceTime(url, creds, timeoutMs) {
   }
   return { offset };
 }
+function onvifSnapshots({ host, port: port2 = 2020, user, pass, timeoutMs = 5e3, log = () => {
+} } = {}) {
+  const mediaService = `http://${host}:${port2}/onvif/media_service`;
+  let snapUri = null, snapAt = 0;
+  const getSnapshot = async () => {
+    const now = Date.now();
+    if (!snapUri || now - snapAt > 5 * 60 * 1e3) {
+      snapUri = null;
+      let last = null;
+      for (const token of ["Profile_1", "profile_1", "1"]) {
+        try {
+          const text = await soapPost(
+            mediaService,
+            `<trt:GetSnapshotUri xmlns:trt="http://www.onvif.org/ver10/media/wsdl"><trt:ProfileToken>${token}</trt:ProfileToken></trt:GetSnapshotUri>`,
+            { user, pass },
+            timeoutMs
+          );
+          const uri = text.match(/<[^>]*Uri[^>]*>(https?:\/\/[^<]+)<\/[^>]*Uri>/)?.[1];
+          if (uri) {
+            snapUri = uri;
+            snapAt = now;
+            log("snapshot uri", uri);
+            break;
+          }
+          last = new Error("Snapshot URI not found in GetSnapshotUri response");
+        } catch (e) {
+          last = e;
+        }
+      }
+      if (!snapUri) throw last || new Error("GetSnapshotUri failed for all profile tokens");
+    }
+    const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      let res = await fetch(snapUri, { signal: ctrl.signal });
+      if (res.status === 401) {
+        res = await fetch(snapUri, {
+          signal: ctrl.signal,
+          headers: { Authorization: "Basic " + Buffer.from(user + ":" + pass).toString("base64") }
+        });
+      }
+      if (!res.ok) throw new Error("Snapshot HTTP " + res.status + " " + snapUri);
+      return { type: "image/jpeg", bytes: Buffer.from(await res.arrayBuffer()) };
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  return { getSnapshot };
+}
 function onvifWatch({ host, port: port2 = 2020, user, pass, onMotion, onError, onReady, log = () => {
 }, ...timing } = {}) {
   const t = { ...DIGEST_DEFAULTS, ...timing };
@@ -3734,10 +3782,11 @@ var POST_DELAYS = [3e3, 9e3];
 var KEEP = 30;
 var BLANK = import_jpeg_js2.default.encode({ data: Buffer.alloc(4, 255), width: 1, height: 1 }, 80).data.toString("base64");
 var YardClips = class {
-  constructor({ ha: ha2, db: db2, notify = null, getEntityId = () => null } = {}) {
+  constructor({ ha: ha2, db: db2, notify = null, getEntityId = () => null, yardOnvif = null } = {}) {
     this.ha = ha2;
     this.notify = notify;
     this.getEntityId = getEntityId;
+    this.yardOnvif = yardOnvif;
     this.ring = [];
     this.timer = null;
     this.busy = false;
@@ -3771,16 +3820,26 @@ var YardClips = class {
   }
   // Один кадр камеры тем же путём, что yard-motion: base64 jpeg или null.
   async capture() {
-    const entityId = this.getEntityId();
-    if (!entityId || !this.ha?.enabled) return null;
     let raw = null;
-    try {
-      raw = await this.ha.requestRaw("/api/camera_proxy/" + entityId + "?width=320&height=180");
-    } catch {
-      return null;
+    const onvif = this.yardOnvif?.();
+    if (onvif?.getSnapshot) {
+      try {
+        raw = await onvif.getSnapshot();
+      } catch {
+      }
+    }
+    if (!raw || raw.type !== "image/jpeg" || !raw.bytes?.length) {
+      const entityId = this.getEntityId();
+      if (!entityId || !this.ha?.enabled) return null;
+      try {
+        raw = await this.ha.requestRaw("/api/camera_proxy/" + entityId + "?width=320&height=180");
+      } catch {
+        return null;
+      }
     }
     if (!raw || raw.type !== "image/jpeg" || !raw.bytes?.length) return null;
     const b64 = Buffer.from(raw.bytes).toString("base64");
+    if (this.ring.length && this.ring[this.ring.length - 1] === b64) return b64;
     this.ring.push(b64);
     if (this.ring.length > RING) this.ring = this.ring.slice(-RING);
     return b64;
@@ -3812,9 +3871,11 @@ var YardClips = class {
       }
       await new Promise((r) => setTimeout(r, Math.max(...POST_DELAYS) + 500));
     }
-    const info = this.insert.run(at, source, Buffer.from(JSON.stringify(frames)));
+    const unique = [];
+    for (const f of frames) if (!unique.length || unique[unique.length - 1] !== f) unique.push(f);
+    const info = this.insert.run(at, source, Buffer.from(JSON.stringify(unique)));
     this.prune.run(KEEP);
-    const result = { id: Number(info.lastInsertRowid), at, source, frameCount: frames.length };
+    const result = { id: Number(info.lastInsertRowid), at, source, frameCount: unique.length };
     this.notify?.(result);
     return result;
   }
@@ -4601,6 +4662,7 @@ var yardCameraEntity = (p) => {
 var yardMotion = new YardMotion({ ha });
 var yardOnvifWatch = null;
 var yardOnvifConfigKey = "";
+var yardOnvifSnapshots = null;
 var clientPreferences = (prefs) => {
   const c = { ...prefs };
   delete c.yard_onvif_pass;
@@ -4613,6 +4675,7 @@ var yardOnvifEnsure = (prefs) => {
       yardOnvifWatch.stop();
       yardOnvifWatch = null;
       yardOnvifConfigKey = "";
+      yardOnvifSnapshots = null;
     }
     return false;
   }
@@ -4628,6 +4691,7 @@ var yardOnvifEnsure = (prefs) => {
       yardOnvifWatch.stop();
       yardOnvifWatch = null;
       yardOnvifConfigKey = "";
+      yardOnvifSnapshots = null;
     }
     return false;
   }
@@ -4635,6 +4699,7 @@ var yardOnvifEnsure = (prefs) => {
   if (yardOnvifWatch && key === yardOnvifConfigKey) return true;
   if (yardOnvifWatch) yardOnvifWatch.stop();
   yardOnvifConfigKey = key;
+  yardOnvifSnapshots = onvifSnapshots({ host, ...port2 ? { port: port2 } : {}, user, pass, log: (...a) => console.log("Yard ONVIF snapshot:", ...a) });
   yardOnvifWatch = onvifWatch({
     host,
     ...port2 ? { port: port2 } : {},
@@ -4666,6 +4731,7 @@ var yardClips = new YardClips({
   ha,
   db,
   getEntityId: () => yardEntityHint,
+  yardOnvif: () => yardOnvifSnapshots,
   notify: (info) => live.broadcast("yard-clip", JSON.stringify(info))
 });
 yardClips.start();

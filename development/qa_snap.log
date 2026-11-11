@@ -1,0 +1,14 @@
+PASS: preferences PUT — 200 {"saved":true,"preferences":{"version":3,"theme":"dark","favorites":["living","hall","terrace","bedroom","office","bath"],"nightMode":"auto","nightStart":"23:00","nightEnd":"07:00","idleSeconds":90,"k
+cap1: {"id":1,"at":1794427042405,"source":"onvif","frameCount":1} proxyCalls=0
+PASS: клип создан через ONVIF — frameCount=1
+PASS: camera_proxy не дёргался (ONVIF-первоисточник) — proxyCalls=0
+PASS: ONVIF-снимок отдавался — snapServed=1
+PASS: клип из двух разных кадров — frameCount=3
+cap2: {"id":3,"at":1794427052410,"source":"onvif","frameCount":3}
+PASS: кадры — jpeg
+PASS: кадры разные — len=2221/2222
+probe: {"slot":true,"rows":3,"sections":1,"ids":["3","1","2"],"body":""}
+PASS: sheet показывает кадры по frameCount — count=3 / frameCount=3
+PASS: миниатюры разные — uniq=3
+PASS: нет pageerror
+HEADLESS QA PASS
