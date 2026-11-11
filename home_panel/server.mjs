@@ -4572,6 +4572,10 @@ try {
   PANEL_VERSION = JSON.parse(await readFile(resolve("addon/home-panel/manifest.json"), "utf8")).version || PANEL_VERSION;
 } catch {
 }
+try {
+  PANEL_VERSION = JSON.parse(await readFile(resolve("config.json"), "utf8")).version || PANEL_VERSION;
+} catch {
+}
 var addon = process.env.PANEL_ADDON === "1";
 if (addon && preview) throw new Error("Home Panel: add-on must not run in preview mode.");
 var root = resolve(process.env.PANEL_ROOT || "dist");

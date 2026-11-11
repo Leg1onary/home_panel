@@ -28,6 +28,8 @@ const port=Number(process.env.PORT||8080),preview=process.env.PANEL_PREVIEW==='1
 const startedAt=Date.now();
 let PANEL_VERSION='3.2.0';
 try{PANEL_VERSION=JSON.parse(await readFile(resolve('addon/home-panel/manifest.json'),'utf8')).version||PANEL_VERSION}catch{}
+// В контейнере аддона манифест лежит рядом с server.mjs как config.json.
+try{PANEL_VERSION=JSON.parse(await readFile(resolve('config.json'),'utf8')).version||PANEL_VERSION}catch{}
 const addon=process.env.PANEL_ADDON==='1';
 if(addon&&preview)throw new Error('Home Panel: add-on must not run in preview mode.');
 const root=resolve(process.env.PANEL_ROOT||'dist'),data=resolve(process.env.PANEL_DATA||'data');
