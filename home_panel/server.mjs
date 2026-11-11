@@ -4573,11 +4573,11 @@ try {
 } catch {
 }
 try {
-  PANEL_VERSION = JSON.parse(await readFile(resolve("config.json"), "utf8")).version || PANEL_VERSION;
+  PANEL_VERSION = JSON.parse(await readFile(resolve("package.json"), "utf8")).version || PANEL_VERSION;
 } catch {
 }
 try {
-  PANEL_VERSION = JSON.parse(await readFile(resolve("package.json"), "utf8")).version || PANEL_VERSION;
+  PANEL_VERSION = JSON.parse(await readFile(resolve("config.json"), "utf8")).version || PANEL_VERSION;
 } catch {
 }
 var addon = process.env.PANEL_ADDON === "1";

@@ -27,10 +27,10 @@ import {runScenario,runUserScenario} from './scenarios.js';
 const port=Number(process.env.PORT||8080),preview=process.env.PANEL_PREVIEW==='1';
 const startedAt=Date.now();
 let PANEL_VERSION='3.2.0';
+// Порядок чтения: поздний источник побеждает. config.json аддона — авторитетный (пишется build.mjs).
 try{PANEL_VERSION=JSON.parse(await readFile(resolve('addon/home-panel/manifest.json'),'utf8')).version||PANEL_VERSION}catch{}
-// Контейнер аддона: WORKDIR /app, где package.json (версию пишет build.mjs) и config.json.
-try{PANEL_VERSION=JSON.parse(await readFile(resolve('config.json'),'utf8')).version||PANEL_VERSION}catch{}
 try{PANEL_VERSION=JSON.parse(await readFile(resolve('package.json'),'utf8')).version||PANEL_VERSION}catch{}
+try{PANEL_VERSION=JSON.parse(await readFile(resolve('config.json'),'utf8')).version||PANEL_VERSION}catch{}
 const addon=process.env.PANEL_ADDON==='1';
 if(addon&&preview)throw new Error('Home Panel: add-on must not run in preview mode.');
 const root=resolve(process.env.PANEL_ROOT||'dist'),data=resolve(process.env.PANEL_DATA||'data');
