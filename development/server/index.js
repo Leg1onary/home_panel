@@ -5,7 +5,7 @@ import {spawn} from 'node:child_process';
 import {isIP} from 'node:net';
 import {randomBytes,createHash,timingSafeEqual} from 'node:crypto';
 import Database from 'better-sqlite3';
-import {defaultPreferences,validatePreferences,bindingDefinitions} from '../src/preferences.js';
+import {defaultPreferences,validatePreferences,bindingDefinitions,sanitizeEnergyReadings} from '../src/preferences.js';
 import {HomeAssistant} from './ha.js';
 import {CameraStreams} from './stream.js';
 import {CameraRTC} from './rtc.js';
@@ -289,7 +289,6 @@ const server=http.createServer(async(req,res)=>{
    }
     // Электроэнергия: показания/потребление/дата показаний из состояний + расход за сутки и неделю из истории.
     if(route==='ha/energy'&&req.method==='GET'){
-     if(energyCache&&Date.now()-energyCache.at<60000)return json(res,200,{...energyCache.data,cached:true});
      if(!ha.enabled)throw new Error('Home Assistant не настроен. Расход электроэнергии недоступен.');
      const all=await ha.states();
      // Счётчик ТНС: sensor.* с schetchik/meter, без signal; суффиксы как в src/energy.js.
@@ -297,6 +296,33 @@ const server=http.createServer(async(req,res)=>{
      const by=tag=>list.find(e=>e.entity_id.endsWith('_'+tag))||null;
      const reading=by('reading'),consumption=by('consumption'),meterNumber=by('meter_number'),readingsDate=by('readings_date');
      const readingValue=meterValue(reading);
+     // Кеш валиден только для той же пары «значение + дата показаний»: ТНС может
+     // отдать новый съём раньше, чем истечёт минута — тогда кеш не мешает.
+     const cacheKey=String(readingValue)+'|'+String(readingsDate?.state??'');
+     if(energyCache&&Date.now()-energyCache.at<60000&&energyCache.key===cacheKey)return json(res,200,{...energyCache.data,cached:true});
+     // Автопополнение истории показаний (3.2.7): свежий съём ТНС сам попадает в
+     // energy_readings профиля. Новая дата позже максимума — добавляется; та же
+     // дата с другим значением — обновляется (уточнение съёма за тот же день);
+     // дата старше максимума (откат счётчика) или невалидное показание — молча
+     // игнорируются. Запись через тот же sanitize-путь, что и PUT preferences.
+     const autoDate=String(readingsDate?.state??'');
+     if(readingValue!==null&&Number.isInteger(readingValue)&&readingValue>0&&/^\d{4}-\d{2}-\d{2}$/.test(autoDate)){
+      const readings=Array.isArray(p.preferences.energy_readings)?p.preferences.energy_readings:[];
+      const existing=readings.find(r=>r?.date===autoDate);
+      const maxDate=readings.reduce((m,r)=>String(r?.date)>m?String(r.date):m,'');
+      const candidate=existing
+       ?(existing.value!==readingValue?readings.map(r=>r?.date===autoDate?{date:autoDate,value:readingValue}:r):null)
+       :(autoDate>maxDate?[...readings,{date:autoDate,value:readingValue}]:null);
+      if(candidate)try{
+       const nextReadings=sanitizeEnergyReadings(candidate);
+       if(JSON.stringify(nextReadings)!==JSON.stringify(readings)){
+        p.preferences.energy_readings=nextReadings;
+        db.prepare('UPDATE profiles SET preferences=? WHERE id=?').run(JSON.stringify(p.preferences),id);
+        energyCache=null;energyLastKnown=null;
+        console.log('Energy: показания ТНС '+autoDate+' = '+readingValue+' автоматически добавлены в историю ('+nextReadings.length+' записей).');
+       }
+      }catch(error){console.log('Energy: автопополнение отклонено: '+(error?.message||error))}
+     }
      // Месячный расход: от последнего внесённого показания (профиль) до текущей
      // даты показаний — ТНС снимает показания раз в месяц. Расчёт живёт на
      // сервере: единый источник истины для карточки.
@@ -321,7 +347,7 @@ const server=http.createServer(async(req,res)=>{
       }
       if(energyLastKnown)return json(res,200,{...energyLastKnown.data,stale:true,staleSince:energyLastKnown.at});
      }
-     energyCache={at:Date.now(),data};
+     energyCache={at:Date.now(),data,key:cacheKey};
      return json(res,200,data);
     }
 

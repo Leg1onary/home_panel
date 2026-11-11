@@ -16,6 +16,6 @@ for(const name of ['catalog','yard-card','device-model','device-model-integratio
  await bundle(`tests/${name}.mjs`,`.qa/${name}.mjs`);
  run(process.execPath,[`.qa/${name}.mjs`]);
 }
-for(const name of ['integration','addon','stream','live-stream','scenarios','scenarios-user','health'])run(process.execPath,[`tests/${name}.mjs`]);
-console.log('All forty-one test suites passed.');
+for(const name of ['integration','addon','stream','live-stream','scenarios','scenarios-user','health','energy-auto'])run(process.execPath,[`tests/${name}.mjs`]);
+console.log('All forty-two test suites passed.');
 

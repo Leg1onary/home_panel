@@ -2558,14 +2558,15 @@ function sanitizeUserScenarios(raw, devices) {
   return out;
 }
 var MAX_ENERGY_READINGS = 36;
-var READING_DATE = /^\d{4}-\d{2}-\d{2}$/;
 function sanitizeEnergyReadings(raw) {
   if (raw === void 0 || raw === null) return [];
   if (!Array.isArray(raw)) throw new Error("\u041F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u044F \u0441\u0447\u0451\u0442\u0447\u0438\u043A\u0430: \u043D\u0443\u0436\u0435\u043D \u043C\u0430\u0441\u0441\u0438\u0432.");
   const byDate = /* @__PURE__ */ new Map();
   for (const r of raw) {
     if (!r || typeof r !== "object" || Array.isArray(r)) throw new Error("\u041F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u0435 \u0441\u0447\u0451\u0442\u0447\u0438\u043A\u0430: \u043D\u0443\u0436\u0435\u043D \u043E\u0431\u044A\u0435\u043A\u0442 \u0441 \u0434\u0430\u0442\u043E\u0439 \u0438 \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u0435\u043C.");
-    if (!READING_DATE.test(r.date) || Number.isNaN(Date.parse(r.date + "T00:00:00Z"))) throw new Error("\u041F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u0435 \u0441\u0447\u0451\u0442\u0447\u0438\u043A\u0430: \u0434\u0430\u0442\u0430 \u0432 \u0444\u043E\u0440\u043C\u0430\u0442\u0435 \u0413\u0413\u0413\u0413-\u041C\u041C-\u0414\u0414.");
+    const md = /^(\d{4})-(\d{2})-(\d{2})$/.exec(r.date);
+    const dt = md ? new Date(Date.UTC(Number(md[1]), Number(md[2]) - 1, Number(md[3]))) : null;
+    if (!dt || dt.getUTCFullYear() !== Number(md[1]) || dt.getUTCMonth() !== Number(md[2]) - 1 || dt.getUTCDate() !== Number(md[3])) throw new Error("\u041F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u0435 \u0441\u0447\u0451\u0442\u0447\u0438\u043A\u0430: \u0434\u0430\u0442\u0430 \u0432 \u0444\u043E\u0440\u043C\u0430\u0442\u0435 \u0413\u0413\u0413\u0413-\u041C\u041C-\u0414\u0414.");
     if (!Number.isInteger(r.value) || r.value <= 0) throw new Error("\u041F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u0435 \u0441\u0447\u0451\u0442\u0447\u0438\u043A\u0430: \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u0435 \u2014 \u0446\u0435\u043B\u043E\u0435 \u0447\u0438\u0441\u043B\u043E \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0443\u043B\u044F.");
     byDate.set(r.date, r.value);
   }
@@ -3824,15 +3825,15 @@ var PANEL_TIMEZONE = "Europe/Moscow";
 // src/energy.js
 var BAD = ["unavailable", "unknown", ""];
 var meterValue = (e) => e && !BAD.includes(e.state) && Number.isFinite(Number(e.state)) ? Number(e.state) : null;
-var READING_DATE2 = /^\d{4}-\d{2}-\d{2}$/;
+var READING_DATE = /^\d{4}-\d{2}-\d{2}$/;
 var monthDelta = (currentValue, currentDate, readings) => {
-  const date = READING_DATE2.exec(String(currentDate ?? "")) && String(currentDate);
+  const date = READING_DATE.exec(String(currentDate ?? "")) && String(currentDate);
   const current = Number(currentValue);
   if (!date || !Number.isFinite(current)) return { prevValue: null, prevDate: null, delta: null };
-  const prev = (Array.isArray(readings) ? readings : []).filter((r) => r && READING_DATE2.test(String(r?.date)) && Number.isFinite(Number(r?.value)) && String(r.date) < date).sort((a, b) => a.date < b.date ? -1 : 1).at(-1);
+  const prev = (Array.isArray(readings) ? readings : []).filter((r) => r && READING_DATE.test(String(r?.date)) && Number.isFinite(Number(r?.value)) && String(r.date) < date).sort((a, b) => a.date < b.date ? -1 : 1).at(-1);
   if (!prev) return { prevValue: null, prevDate: null, delta: null };
   const prevValue = Number(prev.value);
-  return { prevValue, prevDate: String(prev.date), delta: current < prevValue ? null : current - prevValue };
+  return { prevValue, prevDate: String(prev.date), delta: current < prevValue ? null : Math.round((current - prevValue) * 10) / 10 };
 };
 var monthCost = (delta, tariff) => Number.isFinite(delta) && Number.isFinite(tariff) && tariff > 0 ? Math.round(delta * tariff) : null;
 
@@ -4890,13 +4891,33 @@ var server = http.createServer(async (req, res) => {
         return json(res, 200, data2);
       }
       if (route === "ha/energy" && req.method === "GET") {
-        if (energyCache && Date.now() - energyCache.at < 6e4) return json(res, 200, { ...energyCache.data, cached: true });
         if (!ha.enabled) throw new Error("Home Assistant \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D. \u0420\u0430\u0441\u0445\u043E\u0434 \u044D\u043B\u0435\u043A\u0442\u0440\u043E\u044D\u043D\u0435\u0440\u0433\u0438\u0438 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D.");
         const all = await ha.states();
         const list = all.filter((e) => typeof e?.entity_id === "string" && e.entity_id.startsWith("sensor.") && /schetchik|meter/.test(e.entity_id) && !/signal/.test(e.entity_id));
         const by = (tag) => list.find((e) => e.entity_id.endsWith("_" + tag)) || null;
         const reading = by("reading"), consumption = by("consumption"), meterNumber = by("meter_number"), readingsDate = by("readings_date");
         const readingValue = meterValue(reading);
+        const cacheKey = String(readingValue) + "|" + String(readingsDate?.state ?? "");
+        if (energyCache && Date.now() - energyCache.at < 6e4 && energyCache.key === cacheKey) return json(res, 200, { ...energyCache.data, cached: true });
+        const autoDate = String(readingsDate?.state ?? "");
+        if (readingValue !== null && Number.isInteger(readingValue) && readingValue > 0 && /^\d{4}-\d{2}-\d{2}$/.test(autoDate)) {
+          const readings = Array.isArray(p.preferences.energy_readings) ? p.preferences.energy_readings : [];
+          const existing = readings.find((r) => r?.date === autoDate);
+          const maxDate = readings.reduce((m, r) => String(r?.date) > m ? String(r.date) : m, "");
+          const candidate2 = existing ? existing.value !== readingValue ? readings.map((r) => r?.date === autoDate ? { date: autoDate, value: readingValue } : r) : null : autoDate > maxDate ? [...readings, { date: autoDate, value: readingValue }] : null;
+          if (candidate2) try {
+            const nextReadings = sanitizeEnergyReadings(candidate2);
+            if (JSON.stringify(nextReadings) !== JSON.stringify(readings)) {
+              p.preferences.energy_readings = nextReadings;
+              db.prepare("UPDATE profiles SET preferences=? WHERE id=?").run(JSON.stringify(p.preferences), id);
+              energyCache = null;
+              energyLastKnown = null;
+              console.log("Energy: \u043F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u044F \u0422\u041D\u0421 " + autoDate + " = " + readingValue + " \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438 \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u044B \u0432 \u0438\u0441\u0442\u043E\u0440\u0438\u044E (" + nextReadings.length + " \u0437\u0430\u043F\u0438\u0441\u0435\u0439).");
+            }
+          } catch (error) {
+            console.log("Energy: \u0430\u0432\u0442\u043E\u043F\u043E\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u0435 \u043E\u0442\u043A\u043B\u043E\u043D\u0435\u043D\u043E: " + (error?.message || error));
+          }
+        }
         const monthRaw = monthDelta(readingValue, readingsDate?.state, p.preferences.energy_readings);
         const month = { ...monthRaw, cost: monthCost(monthRaw.delta, p.preferences.energy_tariff) };
         const history = readingValue === null ? [] : await ha.energyHistory(reading.entity_id, 168);
@@ -4926,7 +4947,7 @@ var server = http.createServer(async (req, res) => {
           }
           if (energyLastKnown) return json(res, 200, { ...energyLastKnown.data, stale: true, staleSince: energyLastKnown.at });
         }
-        energyCache = { at: Date.now(), data: data2 };
+        energyCache = { at: Date.now(), data: data2, key: cacheKey };
         return json(res, 200, data2);
       }
       if (route === "ha/stream" && req.method === "GET") {
