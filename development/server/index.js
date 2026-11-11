@@ -194,6 +194,8 @@ const server=http.createServer(async(req,res)=>{
     // отсутствие ключа = храним старые значения, иначе каждое сохранение настроек
     // событийно стирало учётку детектора (configured:false после обновлений).
     if(input&&typeof input==='object'&&Array.isArray(input.devices)){
+     // Пустой user из любого клиента — «не трогать» (учётка камере нужна; сброс не юз-кейс).
+     if(!input.yard_onvif_user&&p.preferences.yard_onvif_user)input.yard_onvif_user=p.preferences.yard_onvif_user;
      if(input.yard_onvif_user===undefined)input.yard_onvif_user=p.preferences.yard_onvif_user;
      if(input.yard_onvif_host===undefined)input.yard_onvif_host=p.preferences.yard_onvif_host;
      if(input.yard_onvif_enabled===undefined)input.yard_onvif_enabled=p.preferences.yard_onvif_enabled;

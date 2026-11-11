@@ -4862,6 +4862,7 @@ var server = http.createServer(async (req, res) => {
         if (input && typeof input === "object" && Array.isArray(input.devices) && input.yard_onvif_pass === void 0)
           input.yard_onvif_pass = p.preferences.yard_onvif_pass;
         if (input && typeof input === "object" && Array.isArray(input.devices)) {
+          if (!input.yard_onvif_user && p.preferences.yard_onvif_user) input.yard_onvif_user = p.preferences.yard_onvif_user;
           if (input.yard_onvif_user === void 0) input.yard_onvif_user = p.preferences.yard_onvif_user;
           if (input.yard_onvif_host === void 0) input.yard_onvif_host = p.preferences.yard_onvif_host;
           if (input.yard_onvif_enabled === void 0) input.yard_onvif_enabled = p.preferences.yard_onvif_enabled;
