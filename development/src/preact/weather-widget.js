@@ -5,7 +5,7 @@
 // weatherBus.notify({entityStates,now}); в демо notify не вызывается → чипа нет.
 import {h,html,useEffect,useState} from './kit.js';
 import {esc} from '../dom.js';
-import {createIcons,Sun,Cloudy,CloudSun,CloudRain,CloudSnow,CloudFog,Wind,CloudLightning,CloudDrizzle,CloudHail} from 'lucide';
+import {paintAll} from './icons.js';
 export const weatherBus={fns:[],last:undefined,sub(fn){this.fns.push(fn);if(this.last!==undefined)fn(this.last)},notify(deps){this.last=deps;this.fns.forEach(f=>f(deps))}};
 // Константы погодных состояний HA: единый источник — src/weather-const.js.
 import {WEATHER_LABEL,WEATHER_ICON,WEATHER_DATA} from '../weather-const.js';
@@ -27,10 +27,7 @@ export function weatherMarkup(entityStates){
  const temp=t.toFixed(1).replace('.',','),aria=`Погода: ${label}, температура ${temp} °C${Number.isFinite(h)?', влажность '+Math.round(h)+' %':''}`;
  return `<button class="home-fact weather-chip" data-weather="${WEATHER_DATA[e.state]||'cloudy'}" data-action="weather-forecast" role="img" aria-label="${esc(aria)}. Открыть прогноз" title="Открыть прогноз погоды"><span>${I(icon)}Погода</span><strong>${esc(label)} · ${temp} °C${Number.isFinite(h)?' · '+Math.round(h)+' %':''}</strong></button>`;
 }
-const paintIcons=()=>{
- createIcons({icons:{Sun,Cloudy,CloudSun,CloudRain,CloudSnow,CloudFog,Wind,CloudLightning,CloudDrizzle,CloudHail},attrs:{'stroke-width':1.6}});
- document.querySelectorAll('svg[data-lucide]').forEach(s=>s.removeAttribute('data-lucide'));
-};
+const paintIcons=paintAll;
 // Контекстный чип прогноза (3.3.2): чистая разметка chip + мелкая строка-уточнение
 // .weather-hint под чипом (не отдельная карточка). forecast — пункты прогноза,
 // now — метка времени для weatherHint.

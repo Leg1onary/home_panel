@@ -9,8 +9,7 @@ import {esc} from '../dom.js';
 import {api} from '../api.js';
 import {WEATHER_LABEL} from '../weather-const.js';
 import {yardClipsBus} from './yard-clips-widget.js';
-import {createIcons,Info,Radio,Droplets,WifiOff,Lightbulb,Thermometer,Zap,TriangleAlert,Download,
- Sun,Moon,Cloudy,CloudSun,CloudRain,CloudSnow,CloudFog,Wind,CloudLightning,CloudDrizzle,CloudHail,Video,Shield} from 'lucide';
+import {paintAll} from './icons.js';
 export const digestBus={fns:[],last:undefined,sub(fn){this.fns.push(fn);if(this.last!==undefined)fn(this.last)},notify(deps){this.last=deps;this.fns.forEach(f=>f(deps))}};
 const I=name=>`<i data-lucide="${name}"></i>`;
 // Чистая разметка (тестируется через preact-render-to-string).
@@ -33,12 +32,7 @@ export function digestMarkup(deps){
   ?`<li class="digest-item digest-${it.level}"><button class="digest-action" ${it.action.open?`data-digest-open="${it.action.open}"`:`data-room="${esc(it.action.room)}"`} aria-label="${esc(it.text)} · ${esc(it.action.label)}">${I(it.icon)}<span>${esc(it.text)}</span><small>${esc(it.action.label)}</small></button></li>`
   :`<li class="digest-item digest-${it.level}">${I(it.icon)}<span>${esc(it.text)}</span></li>`).join('')}</ul></div>`;
 }
-const paintIcons=()=>{
- createIcons({icons:{Info,Radio,Droplets,WifiOff,Lightbulb,Thermometer,Zap,TriangleAlert,Download,
-  Sun,Moon,Cloudy,CloudSun,CloudRain,CloudSnow,CloudFog,Wind,CloudLightning,CloudDrizzle,CloudHail,Video,Shield},attrs:{'stroke-width':1.6}});
- // lucide оставляет data-lucide на созданных svg: без снятия повторный вызов пересоздаёт svg.
- document.querySelectorAll('svg[data-lucide]').forEach(s=>s.removeAttribute('data-lucide'));
-};
+const paintIcons=paintAll;
 export function DigestContent({deps}){
  const markup=digestMarkup(deps);
  return markup?html`<span class="digest-widget-root" dangerouslySetInnerHTML=${{__html:markup}}></span>`:null;

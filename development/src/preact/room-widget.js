@@ -11,8 +11,7 @@
 // SSE-патчи Home Assistant (live.js applySnapshot → onChange=refresh) идут тем же путём.
 import {h,html,useEffect,useState} from './kit.js';
 import {esc,disabled,timeOf} from '../dom.js';
-import {createIcons,Sofa,DoorOpen,Armchair,BedDouble,Blocks,Bath,Heater,Archive,MoveUpRight,Trees,Droplets,
- X,ArrowUpRight,ArrowRight,ChevronRight,LoaderCircle,CircleCheck,TriangleAlert} from 'lucide';
+import {paintAll} from './icons.js';
 export const roomBus={fns:[],last:undefined,sub(fn){this.fns.push(fn);if(this.last!==undefined)fn(this.last)},notify(deps){this.last=deps;this.fns.forEach(f=>f(deps))}};
 const I=name=>`<i data-lucide="${name}"></i>`;
 // phaseLine(): статус команды линии (pending/success/error + повтор).
@@ -73,11 +72,7 @@ export function sheetMarkup(deps){
  if(!deps||!deps.room)return '';
  return `<div class="eyebrow">${esc(deps.room.short)}</div><h2 style="margin-top:12px">${esc(deps.room.name)}</h2><p class="description">${esc(deps.room.description||'Каждая линия управляется отдельно.')}</p>${controlsMarkup(deps)}`;
 }
-const ROOM_ICONS={Sofa,DoorOpen,Armchair,BedDouble,Blocks,Bath,Heater,Archive,MoveUpRight,Trees,Droplets};
-const paintIcons=()=>{
- createIcons({icons:{...ROOM_ICONS,X,ArrowUpRight,ArrowRight,ChevronRight,LoaderCircle,CircleCheck,TriangleAlert},attrs:{'stroke-width':1.6}});
- document.querySelectorAll('svg[data-lucide]').forEach(s=>s.removeAttribute('data-lucide'));
-};
+const paintIcons=paintAll;
 // deps = {card: cardDeps|null, sheet: sheetDeps|null}; до первого notify — null → пусто.
 export function RoomCardContent({deps}){
  const markup=deps&&roomCardMarkup(deps);

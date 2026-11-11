@@ -8,7 +8,7 @@
 import {h,html,useEffect,useState,useRef} from './kit.js';
 import {esc} from '../dom.js';
 import {showYardCard} from '../yard-card.js';
-import {createIcons,Camera} from 'lucide';
+import {paintAll} from './icons.js';
 export const factsBus={fns:[],last:undefined,sub(fn){this.fns.push(fn);if(this.last!==undefined)fn(this.last)},notify(deps){this.last=deps;this.fns.forEach(f=>f(deps))}};
 const I=name=>`<i data-lucide="${name}"></i>`;
 // Двор-чип: deps.yard = {data, when, mode, now, frameUrl, leaving?}.
@@ -16,7 +16,7 @@ export function yardMarkup(yard){
  if(!yard||!yard.data||yard.data.available===false)return '';
  if(!showYardCard({motion:yard.data.motion,lastMotionAt:yard.data.lastMotionAt,now:yard.now,mode:yard.mode}))return '';
  const when=esc(yard.when);
- const thumb=yard.frameUrl?`<img src="${esc(yard.frameUrl)}" alt=""/>`:I('camera');
+ const thumb=yard.frameUrl?`<img src="${esc(yard.frameUrl)}" alt=""/>`:I('video');
  return `<button class="home-fact yard-chip${yard.leaving?' is-leaving':''}" data-camera="camera-yard" title="Панельное распознавание движения по кадру камеры" aria-label="Двор: движение в ${when}. Открыть камеру двора"><span class="yard-thumb" aria-hidden="true">${thumb}</span><strong>Движение · ${when}</strong></button>`;
 }
 // Факты: deps = {devices, door, terrace, well, attic}. door/terrace/well/attic —
@@ -24,9 +24,9 @@ export function yardMarkup(yard){
 // установленной двери на террасу.
 export function factsMarkup(deps){
  const terraceDoor=deps.devices?.some?.(d=>d.id==='terrace-door'&&d.status==='installed')??deps.terraceDoor;
- const fact=(label,value,attrs,attention=false)=>`<button class="home-fact ${attention?'needs-attention':''} ${/Нет |—/.test(value)?'is-faint':''}" ${attrs}><span>${label}</span><strong>${esc(value)}</strong></button>`;
- return factsYard(deps)+fact('Входная',deps.door,`data-action="door" aria-label="Входная дверь: ${esc(deps.door)}"`,deps.door==='Открыта')+
- (terraceDoor?fact('Терраса',deps.terrace,'data-action="terrace-door"',deps.terrace==='Открыта'):'')+
+ const fact=(label,value,attrs)=>`<button class="home-fact ${/Открыта/.test(value)?'needs-attention':''} ${/Нет |—/.test(value)?'is-faint':''}" ${attrs}><span>${label}</span><strong>${esc(value)}</strong></button>`;
+ return factsYard(deps)+fact('Входная',deps.door,`data-action="door" aria-label="Входная дверь: ${esc(deps.door)}"`)+
+ (terraceDoor?fact('Терраса',deps.terrace,'data-action="terrace-door"'):'')+
  fact('Скважина',deps.well,'data-sensor="well"')+
  fact('Чердак',deps.attic,'data-sensor="attic"');
 }
@@ -34,10 +34,7 @@ function factsYard(deps){
  if(!deps.live)return '';
  return yardMarkup(deps.yard);
 }
-const paintIcons=()=>{
- createIcons({icons:{Camera},attrs:{'stroke-width':1.6}});
- document.querySelectorAll('svg[data-lucide]').forEach(s=>s.removeAttribute('data-lucide'));
-};
+const paintIcons=paintAll;
 export function FactsContent({deps}){
  const markup=factsMarkup(deps);
  return markup?html`<span class="facts-widget-root" dangerouslySetInnerHTML=${{__html:markup}}></span>`:null;

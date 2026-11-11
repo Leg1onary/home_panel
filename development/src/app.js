@@ -3,7 +3,7 @@ import {
  createIcons,House,Box,Lightbulb,Power,ScanEye,SlidersHorizontal,Sun,Moon,X,ArrowRight,ArrowUpRight,Zap,Activity,
  AudioLines,Camera,ChevronRight,CircleCheck,DoorClosed,Droplets,Heater,Leaf,Radio,RotateCcw,Thermometer,Shield,
  Trees,Archive,Armchair,Bath,BedDouble,Blocks,DoorOpen,MoveUpRight,Sofa,MoonStar,Star,ChevronUp,
- ChevronDown,Check,LoaderCircle,TriangleAlert,WifiOff,Play,Pause,SkipBack,SkipForward,ChartNoAxesCombined,Volume2,ImagePlus,Settings2,Info,Maximize,Minimize,Download,Upload,Cloud,Cloudy,CloudSun,CloudRain,CloudSnow,CloudFog,CloudLightning,CloudDrizzle,CloudHail,Wind,LogOut,Film,Sparkles
+ ChevronDown,Check,LoaderCircle,TriangleAlert,WifiOff,Play,Pause,SkipBack,SkipForward,ChartNoAxesCombined,Volume2,ImagePlus,Settings2,Info,Maximize,Minimize,Download,Upload,Cloud,Cloudy,CloudSun,CloudRain,CloudSnow,CloudFog,CloudLightning,CloudDrizzle,CloudHail,Wind,LogOut,Film,Sparkles,Video
 } from 'lucide';
 import {rooms,state,getRoom,countLights,channelsFor,sensors} from './schema.js';
 import {sendCommand,commandFor,hasPending} from './commands.js';
@@ -36,6 +36,7 @@ import {DigestWidget,digestBus} from './preact/digest-widget.js';
 import {WeatherChip,weatherBus} from './preact/weather-widget.js';
 import {QuickWidget,quickBus} from './preact/quick-widget.js';
 import {FactsWidget,factsBus} from './preact/facts-widget.js';
+import {ICONS} from './preact/icons.js';
 import {RoomCardWidget,RoomSheetWidget,roomBus} from './preact/room-widget.js';
 import {YardClipsWidget,yardClipsBus} from './preact/yard-clips-widget.js';
 import {YARD_REFRESH_MS} from './yard-card.js';
@@ -45,7 +46,6 @@ import {paintAlarm,alarmMarkup,alarmEntity,alarmAction} from './alarm.js';
 import {forecastSheet,loadForecast} from './weather-sheet.js';
 
 import {esc,disabled,timeOf,clock,date,scheduleMinute,PANEL_TIMEZONE} from './dom.js';
-import {voiceButton,voiceSync,bindVoice} from './voice.js';
 const $=s=>document.querySelector(s);
 const I=name=>`<i data-lucide="${name}"></i>`;
 const iconSet={House,Box,Lightbulb,Power,ScanEye,SlidersHorizontal,Sun,Moon,X,ArrowRight,ArrowUpRight,Zap,Activity,
@@ -53,7 +53,7 @@ const iconSet={House,Box,Lightbulb,Power,ScanEye,SlidersHorizontal,Sun,Moon,X,Ar
  Trees,Archive,Armchair,Bath,BedDouble,Blocks,DoorOpen,MoveUpRight,Sofa,MoonStar,Star,ChevronUp,
  ChevronDown,Check,LoaderCircle,TriangleAlert,WifiOff,Play,Pause,SkipBack,SkipForward,ChartNoAxesCombined,Volume2,ImagePlus,Settings2,Info,Maximize,Minimize,Download,Upload,Cloud,Cloudy,CloudSun,CloudRain,CloudSnow,CloudFog,CloudLightning,CloudDrizzle,CloudHail,Wind,LogOut,Film,Sparkles};
 const icons=()=>{
- createIcons({icons:iconSet,attrs:{'stroke-width':1.6}});
+ createIcons({icons:{...iconSet,...ICONS},attrs:{'stroke-width':1.6}});
  // lucide хранит data-lucide на созданных svg и пересоздаёт их при каждом вызове: кнопка заменялась между mousedown и mouseup и браузер не генерировал click. Конвертация — одноразовая.
  document.querySelectorAll('svg[data-lucide]').forEach(s=>s.removeAttribute('data-lucide'));
  const title=$('.sheet h2');if(title)title.id='sheet-title';
@@ -339,7 +339,7 @@ async function loadYardFrame(force=false){
 function home(){
  const hero=`<div class="hero-overlay">
  <div class="hero-top"><div class="hero-clock" aria-label="Местное время дома"><div id="hero-clock">${clock()}</div><span id="hero-date">${date()}</span><span id="hero-greeting" class="hero-greeting" hidden></span>${dayProgress()}</div>
- <div class="hero-top-right">${isLive()?voiceButton():''}<span id="hero-status">${heroStatusChip()}</span><button id="reset-model" title="Вернуть исходный ракурс" aria-label="Сбросить ракурс">${I('rotate-ccw')}</button></div></div>
+ <div class="hero-top-right"><span id="hero-status">${heroStatusChip()}</span><button id="reset-model" title="Вернуть исходный ракурс" aria-label="Сбросить ракурс">${I('rotate-ccw')}</button></div></div>
  <div class="hero-facts" id="home-status">${WEATHER_SLOT}${FACTS_SLOT}</div></div>`;
  return `<div class="view dashboard-view view-enter">
  <h1 class="visually-hidden">Мой дом</h1>
@@ -798,7 +798,7 @@ function refresh(){
   const weatherEntity=Object.values(state.entityStates||{}).find(e=>e.entity_id?.startsWith('weather.')),weatherTemp=weatherEntity?.attributes?.temperature;
   modelAPI?.setModelWeather(weatherTemp<0&&weatherEntity?.state==='snowy'?'snow':weatherTemp<0&&weatherEntity?.state==='rainy'?'rain':null);
   if(state.view==='home'){
-   updateFactsRegion();factsNotify();pollYardMotion();updateQuickRegion();quickBus.notify(quickArgs());updateRegion('#home-light-overview',lightOverviewBadge());updateRegion('#hero-status',heroStatusChip());voiceSync();paintRoomCard();
+   updateFactsRegion();factsNotify();pollYardMotion();updateQuickRegion();quickBus.notify(quickArgs());updateRegion('#home-light-overview',lightOverviewBadge());updateRegion('#hero-status',heroStatusChip());paintRoomCard();
     updateWeatherRegion();
     // Погодный чип на Preact: notify только в live-режиме (в демо чипа нет — deps null).
     if(isLive())weatherBus.notify({entityStates:state.entityStates||{},now:Date.now()});
@@ -1074,11 +1074,14 @@ function commandLabel(id){
  const [r,i]=id.split(':');return (getRoom(r)?.short||r)+' · '+(getRoom(r)?.channels[Number(i)]?.name||'');
 }
 function updateHeader(){
- const node=$('#connection-badge'),summary=homeLightSummary(),warning=isLive()&&summary.warning;
- const label=warning?summary.label:isLive()?'Home Assistant':'Демонстрационный режим';
- node.innerHTML=`<span></span>${esc(label)}`;node.dataset.warning=String(warning);
- node.title=isLive()?[state.liveError||'Home Assistant',summary.detail].join(' · '):'Реальные устройства не подключены';
- node.setAttribute('aria-label',`${label}. Открыть настройки подключения`);
+ const node=$('#connection-badge');
+ if(node){
+  const summary=homeLightSummary(),warning=isLive()&&summary.warning;
+  const label=warning?summary.label:isLive()?'Home Assistant':'Демонстрационный режим';
+  node.innerHTML=`<span></span>${esc(label)}`;node.dataset.warning=String(warning);
+  node.title=isLive()?[state.liveError||'Home Assistant',summary.detail].join(' · '):'Реальные устройства не подключены';
+  node.setAttribute('aria-label',`${label}. Открыть настройки подключения`);
+ }
  document.documentElement.dataset.mode=state.mode;
 }
 function catalogSettings(){
@@ -1804,7 +1807,6 @@ document.addEventListener('mousemove',()=>{if(state.idle&&document.body.classLis
 document.addEventListener('visibilitychange',()=>{if(document.hidden){clearTimeout(idleTimer);if(cameraPlayer)cameraStop()}else armIdle()});
 window.addEventListener('pagehide',clearCamera);
 bindScenarioPainter(refresh);
-bindVoice();
 // Редактор пользовательских сценариев: тот же sheet, сохранение через preferences.
 bindScenarioHost({
  openSheet:simpleSheet,closeSheet:closeModal,icons,

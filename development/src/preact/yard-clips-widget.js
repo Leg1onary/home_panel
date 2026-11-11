@@ -18,7 +18,7 @@ const ClipThumb=({id})=>{
   }).catch(()=>{/* нет кадра — остаётся иконка */});
   return()=>{alive=false;if(objectUrl)URL.revokeObjectURL(objectUrl)};
  },[id]);
- return html`<span class="yard-clip-thumb" aria-hidden="true">${url?html`<img src=${url} alt=""/>`:html`<i data-lucide="camera"></i>`}</span>`;
+ return html`<span class="yard-clip-thumb" aria-hidden="true">${url?html`<img src=${url} alt=""/>`:html`<i data-lucide="video"></i>`}</span>`;
 };
 export function YardClipsWidget({live}){
  const [clips,setClips]=useState(listCache.clips);

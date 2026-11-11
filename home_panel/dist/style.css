@@ -499,8 +499,9 @@ main{min-height:0}
 .climate-pill{display:inline-flex;align-items:center;gap:var(--space-1);font-size:var(--text-xs);padding:var(--space-2) var(--space-3);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);min-width:0}
 .climate-pill svg{width:15px;height:15px}
 .quick-devices{display:flex;flex-direction:column;gap:var(--space-2)}
-.quick-device{display:flex;align-items:center;gap:var(--space-3);width:100%;padding:var(--space-3);min-height:68px;text-align:left;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md)}
-.quick-device:hover{background:var(--surface-2)}
+.quick-device{display:flex;align-items:center;gap:var(--space-3);width:100%;padding:var(--space-3);min-height:68px;text-align:left;background:transparent;border:0;border-radius:var(--radius-md)}
+.quick-device:hover{background:rgba(255,255,255,.06)}
+[data-theme=light] .quick-device:hover{background:rgba(20,24,48,.06)}
 .quick-device-icon{color:var(--muted);display:flex}
 .camera-shortcut .quick-device-icon{color:var(--lit)}
 .media-shortcut .quick-device-icon{color:#c4b6e4}
@@ -859,7 +860,7 @@ html[data-view=home] .shell>footer[data-storage=saved]{display:none}
 .home-fact{min-width:0;min-height:62px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:var(--space-1);padding:var(--space-2);border:1px solid transparent;border-radius:var(--radius-md);background:var(--surface);color:var(--text)}
 .home-fact>span{font-size:var(--text-xs);color:var(--muted);line-height:1.3}
 .home-fact>strong{font-size:var(--text-sm);font-weight:500;line-height:1.4}
-.home-fact.needs-attention{border-color:var(--accent)}.home-fact.needs-attention strong{color:var(--accent)}
+.home-fact.needs-attention{border-color:var(--warning)}.home-fact.needs-attention strong{color:var(--warning)}
 #home-weather{margin-top:var(--space-2)}
 .weather-card{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:var(--space-1);min-height:62px;padding:var(--space-2);border:1px solid transparent;border-radius:var(--radius-md);background:var(--surface);color:var(--text);grid-column:1/-1}
 .weather-card>span{font-size:var(--text-xs);color:var(--muted);line-height:1.3}
@@ -1059,7 +1060,7 @@ html[data-view=home] .header-clock{display:block}
 
 /* Unified glass surface for existing cards (selector set unchanged). */
 .room-card:not(.lit),.quiet-card,.climate,.station-card,.selected-room,
-.home-fact,.weather-card,.quick-device,.sheet{
+.home-fact,.weather-card,.sheet{
  background:linear-gradient(155deg,rgba(255,255,255,.06),rgba(255,255,255,.015) 48%,rgba(255,255,255,0)),var(--surface);
  border:1px solid var(--border);
  box-shadow:var(--panel-shadow),inset 0 1px 0 rgba(255,255,255,.08);
@@ -1067,22 +1068,22 @@ html[data-view=home] .header-clock{display:block}
 }
 [data-theme=light] .room-card:not(.lit),[data-theme=light] .quiet-card,[data-theme=light] .climate,
 [data-theme=light] .station-card,[data-theme=light] .selected-room,[data-theme=light] .home-fact,
-[data-theme=light] .weather-card,[data-theme=light] .quick-device,[data-theme=light] .sheet{
+[data-theme=light] .weather-card,[data-theme=light] .sheet{
  background:linear-gradient(155deg,rgba(255,255,255,.9),rgba(255,255,255,.55) 55%,rgba(255,255,255,.35)),var(--surface);
  box-shadow:var(--panel-shadow),inset 0 1px 0 rgba(255,255,255,.85);
 }
 /* Hover states must stay on the same glass recipe (they precede this layer). */
-.room-card:not(.lit):hover,.quick-device:hover{
+.room-card:not(.lit):hover{
  background:linear-gradient(155deg,rgba(255,255,255,.09),rgba(255,255,255,.02) 48%,rgba(255,255,255,0)),var(--surface-2);
 }
-[data-theme=light] .room-card:not(.lit):hover,[data-theme=light] .quick-device:hover{
+[data-theme=light] .room-card:not(.lit):hover{
  background:linear-gradient(155deg,rgba(255,255,255,.95),rgba(255,255,255,.6) 55%,rgba(255,255,255,.4)),var(--surface-2);
 }
 /* Opaque fallback when backdrop-filter is unsupported. */
 @supports not (backdrop-filter:blur(1px)){
  .room-card:not(.lit),.quiet-card,.climate,.station-card,.selected-room,
- .home-fact,.weather-card,.quick-device,.sheet{background:var(--surface-solid)}
- .room-card:not(.lit):hover,.quick-device:hover{background:var(--surface-2)}
+ .home-fact,.weather-card,.sheet{background:var(--surface-solid)}
+ .room-card:not(.lit):hover{background:var(--surface-2)}
 }
 
 /* Scrollbars */
@@ -1150,7 +1151,7 @@ html[data-view=home] .header-clock{display:block}
 .hero-facts .home-fact>span{display:inline-flex;align-items:center;gap:6px;font-size:var(--text-xs);color:var(--muted);line-height:1.3}
 .hero-facts .home-fact>span svg{width:15px;height:15px}
 .hero-facts .home-fact>strong{font-size:var(--text-sm);font-weight:500;line-height:1.4;white-space:nowrap}
-.home-fact.needs-attention{border-color:var(--accent)}.home-fact.needs-attention strong{color:var(--accent)}
+.home-fact.needs-attention{border-color:var(--warning)}.home-fact.needs-attention strong{color:var(--warning)}
 .home-fact.is-faint{opacity:.55}.home-fact.is-faint strong{color:var(--muted);font-weight:400}
 .weather-chip{cursor:default}
 .weather-chip>span svg{color:var(--accent-teal)}
@@ -1203,7 +1204,7 @@ button:not(:disabled):active{filter:brightness(1.12)}
 
 /* Hover-lift for cards (touch devices: hover not involved, harmless) */
 .quick-device,.favorite-room,.room-card{transition:background .25s,transform 180ms ease,box-shadow 180ms ease}
-.quick-device:not(:disabled):hover,.favorite-room:not(:disabled):hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.14)}
+.quick-device:not(:disabled):hover,.favorite-room:not(:disabled):hover{transform:translateY(-2px)}
 .room-card:not(:disabled):hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.14)}
 .hero-facts .home-fact{transition:transform 180ms ease,box-shadow 180ms ease,border-color .2s ease}
 .hero-facts .home-fact:not(:disabled):hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,0,0,.18)}

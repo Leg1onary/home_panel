@@ -5,7 +5,7 @@
 // quickBus.notify(quickArgs()); диспетчер и updateRegion не тронуты.
 import {h,html,useEffect,useState} from './kit.js';
 import {esc,disabled} from '../dom.js';
-import {createIcons,Power,Camera,Play,Pause,SkipBack,SkipForward} from 'lucide';
+import {paintAll} from './icons.js';
 export const quickBus={fns:[],last:undefined,sub(fn){this.fns.push(fn);if(this.last!==undefined)fn(this.last)},notify(deps){this.last=deps;this.fns.forEach(f=>f(deps))}};
 const I=name=>`<i data-lucide="${name}"></i>`;
 // Чистая разметка (тестируется через preact-render-to-string). deps — вычисленные
@@ -14,7 +14,7 @@ const I=name=>`<i data-lucide="${name}"></i>`;
 export function quickMarkup(deps){
  return `<div class="quick-devices">
  <button class="quick-device light-shortcut" data-action="master" ${disabled(deps.masterBlocked)}><span class="quick-device-icon">${I('power')}</span><span><strong>Весь свет</strong><small>Выключить</small></span></button>
- ${deps.cameraId?`<button class="quick-device camera-shortcut" data-camera="${deps.cameraId}" aria-label="Двор: открыть прямой эфир"><span class="quick-device-icon">${I('camera')}</span><span><strong>Двор</strong><small>Камера</small></span></button>`:''}
+ ${deps.cameraId?`<button class="quick-device camera-shortcut" data-camera="${deps.cameraId}" aria-label="Двор: открыть прямой эфир"><span class="quick-device-icon">${I('video')}</span><span><strong>Двор</strong><small>Камера</small></span></button>`:''}
  ${deps.media?`<div class="quick-device media-shortcut">
  <button class="quick-device-icon" data-action="station-play" aria-label="${deps.stationPlaying?'Пауза на станции':'Продолжить на станции'}" ${disabled(deps.playDisabled)}>${I(deps.stationPlaying?'pause':'play')}</button>
  <button class="media-details" data-action="station" aria-label="Станция · ${esc(deps.stationRoom)}: открыть управление"><span class="media-title-line"><strong>Станция</strong>${deps.stationPlaying?'<span class="eq-bars" aria-hidden="true"><i></i><i></i><i></i></span>':''}</span><small title="${esc(deps.stationTitle)}">${esc(deps.stationTitle)}</small></button>
@@ -22,10 +22,7 @@ export function quickMarkup(deps){
  <button class="icon-button" data-action="station-next" aria-label="Следующий трек" ${disabled(deps.nextDisabled)}>${I('skip-forward')}</button></div></div>`:''}
  </div>`;
 }
-const paintIcons=()=>{
- createIcons({icons:{Power,Camera,Play,Pause,SkipBack,SkipForward},attrs:{'stroke-width':1.6}});
- document.querySelectorAll('svg[data-lucide]').forEach(s=>s.removeAttribute('data-lucide'));
-};
+const paintIcons=paintAll;
 export function QuickContent({deps}){
  const markup=quickMarkup(deps);
  return markup?html`<span class="quick-widget-root" dangerouslySetInnerHTML=${{__html:markup}}></span>`:null;

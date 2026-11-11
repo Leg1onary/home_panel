@@ -96,7 +96,7 @@ export function mountModel(canvas,rooms,state,onSelect){
   return;
  }
  const modest=(navigator.hardwareConcurrency||4)<=4;
- renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,modest?1:1.5));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.02;
+ renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,modest?1:1.5));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.02;
  const scene=new THREE.Scene();
  const pinLayer=document.createElement('div');pinLayer.className='scene-pins';canvas.insertAdjacentElement('afterend',pinLayer);
  const tweens=new Map(),reduceMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;

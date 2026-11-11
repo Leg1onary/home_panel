@@ -8,7 +8,7 @@ import {api} from '../api.js';
 import {isLive} from '../live.js';
 import {state} from '../schema.js';
 import {energyCard,findMeterEntities} from '../energy.js';
-import {createIcons,Zap,RotateCcw} from 'lucide';
+import {paintAll} from './icons.js';
 const POLL_MS=60000;
 // Чистая разметка без хуков: тестируется через preact-render-to-string.
 // data null → откат на entities (живые сущности); нет ни того, ни другого → null.
@@ -32,12 +32,7 @@ export function EnergyWidgetContent({data,entities,now=Date.now(),onReload}){
  // Клик по кнопке обновления: делегирование на обёртке (data-energy-reload остаётся в разметке).
  return html`<span class="energy-widget-root" dangerouslySetInnerHTML=${{__html:markup}} onClick=${e=>{if(e.target.closest?.('[data-energy-reload]'))onReload?.()}}></span>`;
 }
-const paintIcons=()=>{
- createIcons({icons:{Zap,RotateCcw},attrs:{'stroke-width':1.6}});
- // lucide оставляет data-lucide на созданных svg: без снятия атрибута повторный вызов пересоздаёт svg
- // и кнопка «уезжает» между mousedown и click (тот же приём, что в app.js).
- document.querySelectorAll('svg[data-lucide]').forEach(s=>s.removeAttribute('data-lucide'));
-};
+const paintIcons=paintAll;
 export function EnergyWidget({onMeterKnown}){
  const [data,setData]=useState(null);
  const [tick,setTick]=useState(0);
