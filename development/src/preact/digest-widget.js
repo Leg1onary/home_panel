@@ -48,7 +48,9 @@ const todayForecast=list=>{
 const buildBrief=(deps,cache)=>digestBriefing({
  entityStates:deps.entityStates,devices:deps.devices||[],bindings:deps.bindings||{},
  yardClips:cache.clips||[],forecast:cache.forecast||null,now:deps.now,
- isNightNow:!!deps.isNightNow,alarmState:deps.alarmState});
+ isNightNow:!!deps.isNightNow,alarmState:deps.alarmState,
+ nightStart:deps.nightStart||'23:00',nightEnd:deps.nightEnd||'07:00',
+ guardNight:deps.guardNight||'auto',guardDoorMinutes:deps.guardDoorMinutes||15});
 export function DigestWidget(){
  const [deps,setDeps]=useState(null);
  const [extra,setExtra]=useState({});

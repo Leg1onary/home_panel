@@ -887,6 +887,10 @@ html[data-view=home] .shell>footer[data-storage=saved]{display:none}
 .yard-clip-meta{display:flex;flex-direction:column;gap:2px;min-width:0}
 .yard-clip-meta strong{font-size:var(--text-base)}
 .yard-clip-meta small{color:var(--muted);font-size:var(--text-xs)}
+/* 3.4.0 ночные события двора: лёгкий тёплый оттенок строки + луна перед временем. */
+.yard-clip-row.is-night{background:rgba(217,164,65,.08)}
+.yard-clip-row.is-night:hover{background:rgba(217,164,65,.14)}
+.yard-clip-row .yard-clip-moon{color:#d9a441;flex-shrink:0;width:14px;height:14px;margin-right:4px}
 .yard-clip-frames{display:flex;flex-direction:column;gap:var(--space-3)}
 .yard-clip-frame{aspect-ratio:16/9;border-radius:var(--radius-md);overflow:hidden;background:var(--surface-2);display:flex;align-items:center;justify-content:center;color:var(--muted)}
 .yard-clip-frame img{width:100%;height:100%;object-fit:cover;display:block}

@@ -4,6 +4,7 @@ import {binaryValue} from './sensor-state.js';
 import {WEATHER_LABEL,WEATHER_ICON} from './weather-const.js';
 import {numericReading,stateTimes} from './readings.js';
 import {findMeterEntities,meterValue} from './energy.js';
+import {guardActive,doorOpenTooLong,nightYardEvents,yardAnomaly} from './guard.js';
 const plural=(n,one,few,many)=>n%10===1&&n%100!==11?one:n%10>=2&&n%10<=4&&(n%100<12||n%100>14)?few:many;
 const read=(deps,id)=>{const b=deps.bindings[id],d=deps.devices.find(x=>x.id===id);return d&&d.status==='installed'&&b?.verified&&b.entityId?deps.entityStates?.[b.entityId]:null};
 export function digestItems({mode,liveOnline=true,devices=[],bindings={},entityStates={},now=Date.now(),alarmState,meterKnown=false}){
@@ -44,25 +45,46 @@ const openSensors={label:'Открыть датчики',open:'sensors'};
 }
 // Волна D 3.2.3: утренний брифинг — сводка дня сверху дайджеста. Максимум 4 пункта
 // по приоритету; ничего нет → «Всё спокойно». Ночью прогноз не показываем.
+// 3.4.0 «Ночная охрана»: приоритет безопасность > погода —
+// дверь-ночь > дверь-долго > двор-ночь > аномалия двора > прогноз > свет > двор > дверь > охрана.
 export const BRIEF_ICONS=new Set(['sun','moon','zap','video','thermometer','alert-triangle','door','shield',
  'cloud-sun','cloudy','cloud-rain','cloud-snow','cloud-fog','wind','cloud-lightning','cloud-hail','cloud-drizzle']);
-export function digestBriefing({entityStates={},devices=[],bindings={},yardClips=[],forecast,now=Date.now(),isNightNow=false,alarmState}={}){
+export function digestBriefing({entityStates={},devices=[],bindings={},yardClips=[],forecast,now=Date.now(),
+ isNightNow=false,alarmState,nightStart='23:00',nightEnd='07:00',guardNight='auto',guardDoorMinutes=15}={}){
  const deps={devices,bindings,entityStates,now},items=[];
- // 1. Прогноз на сегодня (днём): «Сегодня: Облачно, +7°».
+ const curMin=(d=>d.getHours()*60+d.getMinutes())(new Date(now));
+ const guardOn=guardActive(curMin,nightStart,nightEnd,guardNight);
+ // Дверь: открыта сейчас? Долго открыта (guardDoorMinutes)? Открыта ночью?
+ const door=devices.find(d=>d.type==='door'&&d.status==='installed'&&binaryValue('door',read(deps,d.id)?.state)===true);
+ const doorOpen=!!door;
+ let doorLongMin=null;
+ if(doorOpen){
+  const changedAt=stateTimes(read(deps,door.id),now).changedAt;
+  if(doorOpenTooLong(changedAt,now,guardDoorMinutes))doorLongMin=Math.round((now-changedAt)/60000);
+ }
+ // 1. Дверь открыта ночью (охрана активна): самый высокий приоритет.
+ if(doorOpen&&guardOn)items.push({icon:'door',text:'Дверь открыта ночью'});
+ // 2. Дверь открыта дольше guardDoorMinutes минут (уровень 3, независимо от ночи).
+ else if(doorLongMin!==null)items.push({icon:'alert-triangle',text:`Дверь открыта (${doorLongMin} мин)`});
+ // 3. Ночные события двора за 12 часов — раньше обычного двора-пункта.
+ const yardNight=nightYardEvents(yardClips,now,nightStart,nightEnd);
+ if(yardNight)items.push({icon:'video',text:`Двор: ${yardNight} событий ночью`,action:{label:'Открыть камеру двора',open:'yard'}});
+ // 4. Аномальная активность двора за сутки (упрощённый порог ≥10 событий/24 ч).
+ if(yardAnomaly(yardClips,now))items.push({icon:'alert-triangle',text:'Двор: аномальная активность'});
+ // 5. Прогноз на сегодня (днём): «Сегодня: Облачно, +7°».
  if(!isNightNow&&forecast&&Number.isFinite(forecast.temperature)&&WEATHER_LABEL[forecast.condition]){
   const t=Math.round(forecast.temperature),sign=t>0?'+':'';
   items.push({icon:WEATHER_ICON[forecast.condition]||'sun',text:`Сегодня: ${WEATHER_LABEL[forecast.condition]}, ${sign}${t}°`});
  }
- // 2. Забытый свет: включённые линии света по биндингам.
+ // 6. Забытый свет: включённые линии света по биндингам.
  const lightsOn=devices.filter(d=>['light','rgb'].includes(d.type)&&d.status==='installed'&&read(deps,d.id)?.state==='on');
  if(lightsOn.length)items.push({icon:'zap',text:lightsOn.length===1?`Свет горит: 1 (${areaName(lightsOn[0].room)})`:`Свет горит: ${lightsOn.length}`});
- // 3. Двор за последние 12 часов; кликабельный пункт (камера двора).
+ // 7. Двор за последние 12 часов; кликабельный пункт (камера двора).
  const yard=(Array.isArray(yardClips)?yardClips:[]).filter(c=>now-Number(c.at)>=0&&now-Number(c.at)<=12*3600000).length;
  if(yard)items.push({icon:'video',text:`Двор: ${yard} событий за 12 ч`,action:{label:'Открыть камеру двора',open:'yard'}});
- // 4. Дверь приоткрыта (дверные биндинги, binary on = открыто).
- const doorOpen=devices.some(d=>d.type==='door'&&d.status==='installed'&&binaryValue('door',read(deps,d.id)?.state)===true);
- if(doorOpen)items.push({icon:'alert-triangle',text:'Дверь приоткрыта'});
- // 5. Охрана активна (armed_*; тревога уже есть в digestItems).
+ // 8. Дверь приоткрыта (без ночных/долгих условий — базовый факт).
+ if(doorOpen&&doorLongMin===null&&!guardOn)items.push({icon:'alert-triangle',text:'Дверь приоткрыта'});
+ // 9. Охрана активна (armed_*; тревога уже есть в digestItems).
  if(alarmState==='armed_away'||alarmState==='armed_home')items.push({icon:'shield',text:'Охрана активна'});
  // Валидация иконок (неизвестное имя отбрасывается вместе с пунктом) и максимум 4.
  const valid=items.filter(it=>BRIEF_ICONS.has(it.icon)).slice(0,4);

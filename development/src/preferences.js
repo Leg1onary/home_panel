@@ -14,7 +14,10 @@ export const defaultPreferences=()=>({
  yard_onvif_user:'',yard_onvif_pass:'',yard_onvif_host:'192.168.8.204',yard_onvif_enabled:true,
  // Показания счётчика ТНС (снимаются раз в месяц) и тариф. Отсутствие ключей
  // в старых профилях = пусто (обратная совместимость).
- energy_readings:[],energy_tariff:null
+ energy_readings:[],energy_tariff:null,
+ // Ночная охрана (3.4.0): auto = активна по расписанию ночи; дверь открыта дольше
+ // N минут → алерт в сводке. Отсутствие ключей в старых профилях = дефолты.
+ guardNight:'auto',guardDoorMinutes:15
 });
 // Пользовательские сценарии: строгие лимиты, неизвестные поля отбрасываем,
 // целиком невалидные сценарии молча не сохраняем — остальной профиль не страдает.
@@ -100,6 +103,11 @@ export function validatePreferences(input,{importing=false}={}){
  // Показания счётчика и тариф: отсутствие ключей = пусто (старые профили без изменений).
  p.energy_readings=sanitizeEnergyReadings(raw.energy_readings);
  p.energy_tariff=sanitizeEnergyTariff(raw.energy_tariff);
+ // Ночная охрана (3.4.0): отсутствие ключей = дефолты (обратная совместимость).
+ if(raw.guardNight!==undefined&&!['auto','on','off'].includes(raw.guardNight))throw new Error('Неизвестный режим охраны.');
+ p.guardNight=raw.guardNight===undefined?'auto':raw.guardNight;
+ if(raw.guardDoorMinutes!==undefined&&(!Number.isInteger(raw.guardDoorMinutes)||raw.guardDoorMinutes<5||raw.guardDoorMinutes>120))throw new Error('Минуты открытия двери: целое число от 5 до 120.');
+ p.guardDoorMinutes=raw.guardDoorMinutes===undefined?15:raw.guardDoorMinutes;
 
  const used=new Set();p.bindings={};
  for(const definition of bindingDefinitions(p.devices)){

@@ -9,7 +9,7 @@ export const rooms=[...cloneSettings(house.rooms),
 export const state={
  view:'home',selected:'living',theme:'dark',rgbOn:true,rgbColor:'#d1a1e8',brightness:75,lightBrightness:{},pumpPower:true,
  favorites:['living','hall','terrace','bedroom','office','bath'],
- nightMode:'auto',idleSeconds:90,idle:false,heroURL:null,
+ nightMode:'auto',guardNight:'auto',guardDoorMinutes:15,idleSeconds:90,idle:false,heroURL:null,
  demoOffline:false,failNext:false,commandSequence:0,commands:new Map(),commandHistory:[],batchPending:false,
  stationMode:'unconfigured',stationVolume:35,stationPlaying:false,settingsTab:'panel',
  ...defaultPreferences(),storage:'loading',storageMessage:'Подключаем хранилище…',preview:false,

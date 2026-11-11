@@ -5,10 +5,15 @@
 import {h,html,useEffect,useState} from './kit.js';
 import {api} from '../api.js';
 import {esc,timeOf} from '../dom.js';
+import {isNight} from '../night.js';
 export const yardClipsBus={fns:[],last:undefined,sub(fn){this.fns.push(fn);if(this.last!==undefined)fn(this.last)},notify(v){this.last=v;this.fns.forEach(f=>f(v))}};
 const CACHE_MS=10000,SHOW_LIMIT=10;
 let listCache={at:0,clips:null};
 const sourceLabel=s=>s==='onvif'?'Датчик камеры · ONVIF':s==='frames'?'Кадры камеры':'Движение';
+// Ночь события — по локальному времени панели в момент at (минуты new Date(at)),
+// та же математика, что isNight для «сейчас» (см. guard.js).
+const atMinute=at=>{const d=new Date(at);return d.getHours()*60+d.getMinutes()};
+const clipNight=(at,nightStart,nightEnd)=>Number.isFinite(Number(at))&&isNight(atMinute(Number(at)),nightStart,nightEnd,'auto');
 const ClipThumb=({id})=>{
  const [url,setUrl]=useState(null);
  useEffect(()=>{
@@ -20,7 +25,7 @@ const ClipThumb=({id})=>{
  },[id]);
  return html`<span class="yard-clip-thumb" aria-hidden="true">${url?html`<img src=${url} alt=""/>`:html`<i data-lucide="video"></i>`}</span>`;
 };
-export function YardClipsWidget({live}){
+export function YardClipsWidget({live,nightStart='23:00',nightEnd='07:00'}){
  const [clips,setClips]=useState(listCache.clips);
  const load=async force=>{
   if(!live)return;
@@ -38,14 +43,14 @@ export function YardClipsWidget({live}){
  if(!clips.length)return html`<section class="yard-clips"><p class="yard-clips-empty">Событий пока нет</p></section>`;
  return html`<section class="yard-clips">
   <div class="section-heading"><div><h2>События двора</h2><p>Клипы по движению: до и после срабатывания</p></div></div>
-  <div class="yard-clip-list">${clips.slice(0,SHOW_LIMIT).map(c=>html`
-   <button key=${c.id} class="yard-clip-row" data-action="yard-clip" data-clip-id=${c.id}
+  <div class="yard-clip-list">${clips.slice(0,SHOW_LIMIT).map(c=>{const night=clipNight(c.at,nightStart,nightEnd);return html`
+   <button key=${c.id} class=${'yard-clip-row'+(night?' is-night':'')} data-action="yard-clip" data-clip-id=${c.id}
     data-clip-at=${c.at} data-clip-count=${Math.min(4,c.frameCount||1)} data-clip-source=${esc(c.source||'')}
-    aria-label=${'Клип двора, '+timeOf(c.at)}>
+    aria-label=${'Клип двора, '+(night?'ночь, ':'')+timeOf(c.at)}>
     <${ClipThumb} id=${c.id}/>
-    <span class="yard-clip-meta"><strong>${timeOf(c.at)}</strong><small>${esc(sourceLabel(c.source))}</small></span>
+    <span class="yard-clip-meta"><strong>${night?html`<i data-lucide="moon" class="yard-clip-moon"></i>`:''}${timeOf(c.at)}</strong><small>${esc(sourceLabel(c.source))}</small></span>
     <i data-lucide="chevron-right"></i>
-   </button>`)}
+   </button>`})}
   </div>
  </section>`;
 }

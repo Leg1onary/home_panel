@@ -310,7 +310,7 @@ function updateYardClipsRegion(){
  const slot=$('#yard-clips-slot');
  if(!slot||!isLive())return;
  if(!slot.dataset.preact){
-  preactRender(ph(YardClipsWidget,{live:isLive()}),slot);
+  preactRender(ph(YardClipsWidget,{live:isLive(),nightStart:state.nightStart,nightEnd:state.nightEnd}),slot);
   slot.dataset.preact='1';
  }
 }
@@ -505,7 +505,7 @@ function digestArgs(){
  // Волна D: брифингу нужен флаг ночи (ночью прогноз не показываем).
  const time=new Intl.DateTimeFormat('en-GB',{hour:'numeric',minute:'2-digit',hourCycle:'h23',timeZone:PANEL_TIMEZONE}).format(Date.now());
  const [h,m]=time.split(':').map(Number);
- return {mode:state.mode,liveOnline:state.liveOnline,devices:state.devices,bindings:state.bindings,entityStates:state.entityStates||{},now:Date.now(),alarmState:alarmEntity()?.state,meterKnown:meterKnownFromWidget,isNightNow:isNight(h*60+m,state.nightStart,state.nightEnd,state.nightMode)};
+ return {mode:state.mode,liveOnline:state.liveOnline,devices:state.devices,bindings:state.bindings,entityStates:state.entityStates||{},now:Date.now(),alarmState:alarmEntity()?.state,meterKnown:meterKnownFromWidget,isNightNow:isNight(h*60+m,state.nightStart,state.nightEnd,state.nightMode),nightStart:state.nightStart,nightEnd:state.nightEnd,guardNight:state.guardNight,guardDoorMinutes:state.guardDoorMinutes};
 }
 const digestSummary=()=>{const items=digestItems(digestArgs());return items.length?items.slice(0,2).map(i=>i.text).join(' · '):''};
 const dayPhase=hour=>hour>=6&&hour<11?'morning':hour>=11&&hour<17?'day':hour>=17&&hour<22?'evening':'night';
@@ -1058,6 +1058,8 @@ function panelSettings(){
  <div class="night-times"><label class="setting-field">Ночь с<input id="night-start" type="time" value="${state.nightStart||'23:00'}"/></label><label class="setting-field">Ночь до<input id="night-end" type="time" value="${state.nightEnd||'07:00'}"/></label></div>
  <p class="setting-help" id="night-status">${nightLabel(new Date().getHours()*60+new Date().getMinutes(),state.nightStart||'23:00',state.nightEnd||'07:00',state.nightMode)}</p>
  <p class="setting-help">Приглушается оформление панели, не аппаратная яркость планшета. Свет в доме не переключается.</p>
+ <div class="night-times"><label class="setting-field">Охрана ночью<select id="guard-setting">${[['auto','Автоматически · по расписанию'],['on','Всегда включена'],['off','Выключена']].map(([v,l])=>`<option value="${v}" ${(state.guardNight||'auto')===v?'selected':''}>${l}</option>`).join('')}</select></label><label class="setting-field">Дверь открыта дольше, мин<input id="guard-minutes" type="number" min="5" max="120" step="1" value="${state.guardDoorMinutes||15}"/></label></div>
+ <p class="setting-help">«Авто» — охрана активна в ночное окно из расписания выше. Если дверь открыта дольше указанного времени, в сводке появляется алерт; ночью открытая дверь и события двора помечаются как ночные.</p>
  </section><section class="settings-section"><h3>Оформление и обслуживание</h3><label class="setting-field">Постоянный экран<select id="kiosk-setting"><option value="off" ${!state.kiosk?'selected':''}>Обычная панель</option><option value="on" ${state.kiosk?'selected':''}>Компактный режим для экрана</option></select></label>
  <button class="secondary full-width" data-action="fullscreen">${I('maximize')}Полный экран</button>
  <p class="setting-help">Полный экран включается по нажатию; Esc возвращает обычный режим. Настройки не скрываются и не блокируются паролем.</p>
@@ -1689,6 +1691,12 @@ document.addEventListener('change',async e=>{
    return;
   }
  if(id==='night-setting'){state.nightMode=e.target.value;applyNight();persist()}
+ if(id==='guard-setting'){state.guardNight=e.target.value;persist();refresh()}
+ if(id==='guard-minutes'){
+  const v=Math.round(Number(e.target.value));
+  if(!Number.isInteger(v)||v<5||v>120){toast('Минуты открытия двери: от 5 до 120.');e.target.value=state.guardDoorMinutes||15;return}
+  state.guardDoorMinutes=v;persist();refresh();
+ }
  if(id==='night-start'||id==='night-end'){
   const v=e.target.value;
   if(!isTime(v))return;

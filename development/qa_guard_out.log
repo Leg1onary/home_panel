@@ -1,0 +1,38 @@
+{
+ "putRes": true,
+ "brief": [
+  "Дверь открыта ночью",
+  "Двор: 2 событий ночью",
+  "Двор: аномальная активность",
+  "Двор: 10 событий за 12 ч"
+ ],
+ "chip": "home-fact needs-attention ",
+ "tape": {
+  "night": 2,
+  "moon": 2,
+  "rows": 10,
+  "section": true
+ },
+ "tech": {
+  "visible": true,
+  "guardNight": "on",
+  "minutes": "30",
+  "savedNight": "on",
+  "savedMinutes": 30
+ },
+ "errors": [],
+ "cons": [
+  "<i data-lucide=\"audio-lines\"></i> icon name was not found in the provided icons object.",
+  "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+  "<i data-lucide=\"audio-lines\"></i> icon name was not found in the provided icons object.",
+  "<i data-lucide=\"audio-lines\"></i> icon name was not found in the provided icons object.",
+  "<i data-lucide=\"audio-lines\"></i> icon name was not found in the provided icons object.",
+  "<i data-lucide=\"audio-lines\"></i> icon name was not found in the provided icons object.",
+  "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+  "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+  "<i data-lucide=\"audio-lines\"></i> icon name was not found in the provided icons object.",
+  "<i data-lucide=\"audio-lines\"></i> icon name was not found in the provided icons object."
+ ],
+ "body": "К управлению домом\nГлавная\nСвет\nДатчики\nСистемы\nСтатистика\nНастройки\nНет данных · Протечка в котельной\nДатчик недоступен или его состояние неизвестно\nНет данных · Протечка в ванной\nДатчик недоступен или его состояние неизвестно\nУПРАВЛЕНИЕ\nСвет в доме\n\nВыбери комнату. Все линии доступны независимо.\n\nВключено: 0 · без данных: 15\n— / 2\nГостиная\n\nЕсть непроверенные линии\n\n— / 1\nПрихожая\n\nЕсть непроверенные линии\n\n— / 2\nКабинет\n\nЕсть непроверенные линии\n\n— / 2\nСпальня\n\nЕсть непроверенные линии\n\n— / 2\nДетская\n\nЕсть непроверенные линии\n\n— / 2\nВанная\n\nЕсть непроверенные линии\n\n— / 1\nКотельная\n\nЕсть не"
+}
+GUARD_HEADLESS_OK

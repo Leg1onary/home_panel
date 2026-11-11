@@ -15,6 +15,8 @@ export const ICONS={ArrowRight,ArrowUpRight,Armchair,Archive,Bath,BedDouble,Bloc
 // Легаси-алиас: digest.js честно использует старое имя 'alert-triangle' (контракт-тест),
 // в новой lucide иконка называется TriangleAlert.
 ICONS.AlertTriangle=TriangleAlert;
+// digest.js использует имя 'door' (дверь открыта ночью); в наборе только DoorOpen.
+ICONS.Door=DoorOpen;
 // Единая отрисовка: красит все ожидающие <i data-lucide> и снимает атрибут, чтобы
 // повторный вызов не пересоздавал svg между mousedown и mouseup (см. app.js icons()).
 export function paintAll(){

@@ -2521,7 +2521,11 @@ var defaultPreferences = () => ({
   // Показания счётчика ТНС (снимаются раз в месяц) и тариф. Отсутствие ключей
   // в старых профилях = пусто (обратная совместимость).
   energy_readings: [],
-  energy_tariff: null
+  energy_tariff: null,
+  // Ночная охрана (3.4.0): auto = активна по расписанию ночи; дверь открыта дольше
+  // N минут → алерт в сводке. Отсутствие ключей в старых профилях = дефолты.
+  guardNight: "auto",
+  guardDoorMinutes: 15
 });
 var USER_SCENARIO_LIMITS = { max: 8, maxSteps: 12, minBrightness: 30, maxBrightness: 100 };
 var scenarioIdOk = (id) => typeof id === "string" && /^[a-z0-9-]{1,40}$/.test(id);
@@ -2604,6 +2608,10 @@ function validatePreferences(input, { importing = false } = {}) {
   p.yard_onvif_enabled = raw.yard_onvif_enabled !== false;
   p.energy_readings = sanitizeEnergyReadings(raw.energy_readings);
   p.energy_tariff = sanitizeEnergyTariff(raw.energy_tariff);
+  if (raw.guardNight !== void 0 && !["auto", "on", "off"].includes(raw.guardNight)) throw new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u0440\u0435\u0436\u0438\u043C \u043E\u0445\u0440\u0430\u043D\u044B.");
+  p.guardNight = raw.guardNight === void 0 ? "auto" : raw.guardNight;
+  if (raw.guardDoorMinutes !== void 0 && (!Number.isInteger(raw.guardDoorMinutes) || raw.guardDoorMinutes < 5 || raw.guardDoorMinutes > 120)) throw new Error("\u041C\u0438\u043D\u0443\u0442\u044B \u043E\u0442\u043A\u0440\u044B\u0442\u0438\u044F \u0434\u0432\u0435\u0440\u0438: \u0446\u0435\u043B\u043E\u0435 \u0447\u0438\u0441\u043B\u043E \u043E\u0442 5 \u0434\u043E 120.");
+  p.guardDoorMinutes = raw.guardDoorMinutes === void 0 ? 15 : raw.guardDoorMinutes;
   const used = /* @__PURE__ */ new Set();
   p.bindings = {};
   for (const definition of bindingDefinitions(p.devices)) {

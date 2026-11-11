@@ -3,7 +3,7 @@ import {state,hydrateRooms} from './schema.js';
 import {validatePreferences} from './preferences.js';
 
 export function preferences(){
- return validatePreferences({version:3,...Object.fromEntries(['deviceModel','housePresetVersion','houseProfileConfirmed','theme','favorites','nightMode','nightStart','nightEnd','idleSeconds','kiosk','mode','ambientMode','bindings','devices','userScenarios','yard_onvif_enabled','energy_readings','energy_tariff'].map(k=>[k,state[k]]))});
+ return validatePreferences({version:3,...Object.fromEntries(['deviceModel','housePresetVersion','houseProfileConfirmed','theme','favorites','nightMode','nightStart','nightEnd','idleSeconds','kiosk','mode','ambientMode','bindings','devices','userScenarios','yard_onvif_enabled','energy_readings','energy_tariff','guardNight','guardDoorMinutes'].map(k=>[k,state[k]]))});
 }
 export function applyPreferences(p){
  Object.assign(state,validatePreferences(p));
