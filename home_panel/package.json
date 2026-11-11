@@ -1,7 +1,7 @@
 {
   "name": "home-panel-runtime",
   "private": true,
-  "version": "3.3.14",
+  "version": "3.3.15",
   "scripts": {
     "start": "node server.mjs"
   },

@@ -1165,7 +1165,7 @@ function healthMarkup(h,error){
  const haDetail=ha.latencyMs!=null?`задержка ${ha.latencyMs} мс`:'—';
  const onTone=on.configured&&on.alive?'ok':'warn';
  const onStatus=!on.enabled?'Выключено · резерв по кадрам':on.configured&&on.alive?'События ONVIF активны':on.configured?'События недоступны · резерв по кадрам':'Не настроен · резерв по кадрам';
- const onDetail=on.lastError?on.lastError.slice(0,120):on.subscription?on.subscription.slice(0,60):'—';
+ const onDetail=on.configured&&on.alive?(on.subscription?on.subscription.slice(0,60):'—'):(on.lastError?on.lastError.slice(0,120):on.subscription?on.subscription.slice(0,60):'—');
  const sse=(h.sse&&h.sse.clients)||0,disk=h.disk||{},up=(h.uptime&&h.uptime.seconds)||0;
  return `<div class="health-list">
   ${healthRow('Home Assistant',haStatus,haDetail,haTone)}
