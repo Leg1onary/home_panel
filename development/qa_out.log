@@ -40,7 +40,7 @@ main-context ok
 PASS: clean v3 initialization, no migration schema, old formats rejected, persistence, CSRF, verified mappings, stable reorder, move resets verification, HA command/readback, locked engineering, camera images, secret filtering, unknown format leaves database unchanged, preview isolation.
 PASS: local manifest, Supervisor token, correct /core/api routes, LAN Host/Origin/CSRF, shared SQLite profile, saved theme/favorites/mode/bindings after restart, light command/readback, camera frame, secret filtering, HA auth error, health.
 PASS: WS auth/stream command, verified camera only, CSRF, HLS rewrites incl init/parts, progressive first bytes before upstream completion, secret filtering, query/file allowlists, SSRF rejection, stop invalidates session, mode change blocks existing stream.
-(node:7016) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/ssholokhov/home_panel/development/server/live-stream.js is not specified and it doesn't parse as CommonJS.
+(node:17028) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/ssholokhov/home_panel/development/server/live-stream.js is not specified and it doesn't parse as CommonJS.
 Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
 To eliminate this warning, add "type": "module" to \\?\C:\Users\ssholokhov\home_panel\development\package.json.
 (Use `node --trace-warnings ...` to show where the warning was created)

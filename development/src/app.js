@@ -324,8 +324,9 @@ function quickArgs(){
 function stationArgs(){
  const demo=!isLive()&&state.stationMode==='demo';
  const e=isLive()?observed('station'):null;
+ const idle=!state.stationPlaying&&!(e?.attributes?.media_title);
  return {demo,playing:state.stationPlaying,
-  title:isLive()?(e?.attributes?.media_title||'Музыка и голос · через Home Assistant'):demo?'Демо':'Голос и музыка',
+  title:isLive()?(e?.attributes?.media_title||(idle?'Тишина · запусти с пульта или Алисой':'Музыка и голос · через Home Assistant')):demo?'Демо':'Голос и музыка',
   room:stationRoom(),
   playDisabled:!canControl('station:playing')||hasPending(),
   prevDisabled:!isLive()||!stationSupports(e,'previous',true)||hasPending(),
