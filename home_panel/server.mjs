@@ -4920,6 +4920,9 @@ var server = http.createServer(async (req, res) => {
         }
         const monthRaw = monthDelta(readingValue, readingsDate?.state, p.preferences.energy_readings);
         const month = { ...monthRaw, cost: monthCost(monthRaw.delta, p.preferences.energy_tariff) };
+        const profileReadings = (Array.isArray(p.preferences.energy_readings) ? p.preferences.energy_readings : []).slice(-36).map((r) => ({ date: String(r?.date ?? ""), value: Number(r?.value) }));
+        const profileTariff = Number(p.preferences.energy_tariff);
+        const tariff = Number.isFinite(profileTariff) && profileTariff > 0 ? profileTariff : null;
         const history = readingValue === null ? [] : await ha.energyHistory(reading.entity_id, 168);
         const data2 = {
           reading: { value: readingValue, entityId: reading?.entity_id ?? null, updatedAt: reading?.last_updated ?? null },
@@ -4927,7 +4930,9 @@ var server = http.createServer(async (req, res) => {
           meterNumber: meterNumber?.state ?? null,
           readingsDate: readingsDate?.state ?? null,
           deltas: energyDeltas(history),
-          month
+          month,
+          readings: profileReadings,
+          tariff
         };
         if (readingValue !== null || meterValue(consumption) !== null) {
           energyLastKnown = { at: Date.now(), data: data2 };
@@ -4942,7 +4947,9 @@ var server = http.createServer(async (req, res) => {
               meterNumber: meterNumber?.state ?? null,
               readingsDate: readingsDate?.state ?? null,
               deltas: energyDeltas(hist),
-              month: { ...monthRaw, delta: null, cost: null }
+              month: { ...monthRaw, delta: null, cost: null },
+              readings: profileReadings,
+              tariff
             } };
           }
           if (energyLastKnown) return json(res, 200, { ...energyLastKnown.data, stale: true, staleSince: energyLastKnown.at });

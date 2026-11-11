@@ -1,0 +1,5 @@
+
+> home-panel@3.2.8 build
+> node build.mjs
+
+Ready: dist (preview), release (local server, launcher, SQLite), home_panel (add-on).

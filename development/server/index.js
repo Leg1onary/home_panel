@@ -328,11 +328,17 @@ const server=http.createServer(async(req,res)=>{
      // сервере: единый источник истины для карточки.
      const monthRaw=monthDelta(readingValue,readingsDate?.state,p.preferences.energy_readings);
      const month={...monthRaw,cost:monthCost(monthRaw.delta,p.preferences.energy_tariff)};
+     // История показаний и тариф одним ответом: вкладка «Статистика» строит
+     // месячный график без второго запроса. Компактный формат {date,value}, ≤36.
+     const profileReadings=(Array.isArray(p.preferences.energy_readings)?p.preferences.energy_readings:[])
+      .slice(-36).map(r=>({date:String(r?.date??''),value:Number(r?.value)}));
+     const profileTariff=Number(p.preferences.energy_tariff);
+     const tariff=Number.isFinite(profileTariff)&&profileTariff>0?profileTariff:null;
      // Окно 168 ч один раз: сутки — это первые 24 ч того же окна.
      const history=readingValue===null?[]:await ha.energyHistory(reading.entity_id,168);
      const data={reading:{value:readingValue,entityId:reading?.entity_id??null,updatedAt:reading?.last_updated??null},
       consumption:meterValue(consumption),meterNumber:meterNumber?.state??null,readingsDate:readingsDate?.state??null,
-      deltas:energyDeltas(history),month};
+      deltas:energyDeltas(history),month,readings:profileReadings,tariff};
      // ТНС «мигает» (неудачный опрос помечает сущности unavailable): помним последние
      // валидные значения и отдаём их с пометкой stale, чтобы виджет не мигал.
      if(readingValue!==null||meterValue(consumption)!==null){energyLastKnown={at:Date.now(),data};data.stale=false}
@@ -343,7 +349,7 @@ const server=http.createServer(async(req,res)=>{
        const last=[...hist].reverse().find(p=>Number.isFinite(p.value));
        if(last)energyLastKnown={at:last.at,data:{reading:{value:last.value,entityId:reading?.entity_id??null,updatedAt:new Date(last.at).toISOString()},
         consumption:meterValue(consumption),meterNumber:meterNumber?.state??null,readingsDate:readingsDate?.state??null,deltas:energyDeltas(hist),
-        month:{...monthRaw,delta:null,cost:null}}};
+        month:{...monthRaw,delta:null,cost:null},readings:profileReadings,tariff}};
       }
       if(energyLastKnown)return json(res,200,{...energyLastKnown.data,stale:true,staleSince:energyLastKnown.at});
      }

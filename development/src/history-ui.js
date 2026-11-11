@@ -2,6 +2,31 @@
 import {binaryValue} from './sensor-state.js';
 export const historyState={hours:24,metric:'temperature',room:'all',eventType:'all',data:null,loading:false,error:'',request:0,focus:null};
 import {esc,timeOf,PANEL_TIMEZONE} from './dom.js';
+import {energyBars,formatMeterInt} from './energy.js';
+// 3.2.8: график расхода электроэнергии по месяцам. Данные — тот же ha/energy,
+// ленивая загрузка с кешом 10 минут; блок рендерится только при наличии истории.
+export const energyChartState={data:null,at:0,request:0};
+const energyBarTip=b=>`${b.label}: ${formatMeterInt(b.delta)} кВт·ч${b.cost!=null?` · ≈ ${formatMeterInt(b.cost)} ₽`:''}${b.open?' · месяц открыт':''}`;
+function energyChartBlock(){
+ // демо: app.js не заполняет energyChartState без живого HA — блок скрыт сам.
+ const d=energyChartState.data;
+ if(!d)return '';
+ const bars=energyBars(d.readings,d.tariff,d.reading&&d.readingsDate?{date:d.readingsDate,value:d.reading.value}:null);
+ if(!bars.length)return '';
+ const width=typeof window==='undefined'?900:Math.max(280,window.innerWidth-(window.innerWidth>600?188:64));
+ const height=150,top=30,labels=26,plotH=height-top-labels;
+ const max=Math.max(...bars.map(b=>b.delta),1),slot=width/bars.length,bw=Math.min(44,Math.max(14,slot*.6));
+ const chart=bars.map((b,i)=>{
+  const bh=Math.max(3,b.delta/max*plotH),x=+(slot*i+(slot-bw)/2).toFixed(1),y=+(top+plotH-bh).toFixed(1),c=+(x+bw/2).toFixed(1);
+  return `<g class="energy-chart-bar${b.open?' is-open':''}" tabindex="0" role="img" aria-label="${esc(energyBarTip(b))}"><title>${esc(energyBarTip(b))}</title>`+
+   `${b.cost!=null?`<text class="energy-chart-cost" x="${c}" y="${y-16}">≈ ${formatMeterInt(b.cost)} ₽</text>`:''}`+
+   `<text class="energy-chart-value" x="${c}" y="${y-4}">${formatMeterInt(b.delta)}</text>`+
+   `<rect x="${x}" y="${y}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="4"/></g>`;
+ }).join('');
+ const labelsSvg=bars.map((b,i)=>{const c=+(slot*i+slot/2).toFixed(1);return `<text class="energy-chart-label" x="${c}" y="${height-6}">${esc(b.label)}</text>`}).join('');
+ return `<section class="history-chart-card energy-chart-card"><h2>Электроэнергия · месяцы</h2><p>Расход между показаниями ТНС. Открытый месяц — текущий период.</p>
+ <svg class="energy-chart" viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="group" aria-label="Расход электроэнергии по месяцам">${chart}${labelsSvg}</svg></section>`;
+}
 const palette=()=>typeof document!=='undefined'&&document.documentElement.dataset.theme==='light'?['#92611f','#16727e','#7545a7','#aa3552','#42733b']:['#e6ba72','#7acbd7','#c5a4ee','#f5a5b3','#9acd9b'];
 const colorFor=(g,i,colors)=>colors[({living:0,well:1,attic:2})[g.room]??i%colors.length];
 const number=v=>Number.isFinite(v)?v.toLocaleString('ru-RU',{maximumFractionDigits:1}):'—';
@@ -72,6 +97,7 @@ export function statisticsView(s=historyState){
  const lights=(d?.lights||[]).filter(e=>s.room==='all'||e.room===s.room);
  const lineHours=lights.reduce((sum,e)=>sum+e.onMs/3600000,0),coverage=lights.length?lights.reduce((sum,e)=>sum+e.coverage,0)/lights.length:0;
  return `<div class="statistics-view"><div class="statistics-heading"><div><p class="eyebrow">ИСТОРИЯ ДОМА</p><h1>Статистика</h1><p>Показания и события из Home Assistant. Без выдуманных данных.</p></div><button class="secondary" data-action="history-reload" ${s.loading?'disabled':''}>${s.loading?'Загружаем…':'Обновить'}</button></div>
+ ${energyChartBlock()}
  <div class="history-toolbar"><div class="history-period" role="group" aria-label="Период">${[[6,'6 часов'],[24,'Сутки'],[168,'Неделя']].map(([v,label])=>`<button data-history-hours="${v}" aria-pressed="${s.hours===v}" ${s.loading?'disabled':''}>${label}</button>`).join('')}</div>
  <label class="history-room-label">Зона<select id="history-room"><option value="all">Весь дом</option>${roomIds.map(id=>`<option value="${esc(id)}" ${s.room===id?'selected':''}>${esc(areaName(id))}</option>`).join('')}</select></label></div>
  ${s.error?`<div class="history-notice" role="alert"><strong>Историю получить не удалось</strong><p>${esc(s.error)}</p><button class="text-button" data-action="history-reload">Повторить</button></div>`:''}

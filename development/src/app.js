@@ -22,7 +22,7 @@ import {homeSummary} from './home-summary.js';
 import {digestItems} from './digest.js';
 import {binaryValue,leakIssues} from './sensor-state.js';
 import {motionObservation,elapsedLabel} from './motion.js';
-import {historyState,statisticsView,inspectHistoryChart} from './history-ui.js';
+import {historyState,statisticsView,inspectHistoryChart,energyChartState} from './history-ui.js';
 import {numericReading,stateTimes} from './readings.js';
 import {duoUI,assistantView} from './assistant-ui.js';
 import {scenarioChipsRow,handleScenarioClick,bindScenarioPainter,bindScenarioHost} from './scenarios-ui.js';
@@ -811,9 +811,23 @@ function refresh(){
  if(motionSheet)motionSheet.innerHTML=motionSheetMarkup(motionSheet.dataset.motionSheet);
  if(focus){const target=[...document.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')===focus&&!b.disabled);target?.focus({preventScroll:true})}
 }
+// 3.2.8: ленивая загрузка данных для графика расхода по месяцам (кеш 10 минут).
+// Демо-режим молча пропускается — блок «Электроэнергия · месяцы» просто скрыт.
+async function loadEnergyStatistics(){
+ if(!isLive()||state.view!=='statistics')return;
+ if(energyChartState.data&&Date.now()-energyChartState.at<10*60*1000)return;
+ const request=++energyChartState.request;
+ try{
+  const data=await api('ha/energy');
+  if(request!==energyChartState.request||state.view!=='statistics')return;
+  energyChartState.data=data;energyChartState.at=Date.now();
+ }catch(error){return}
+ paintStatistics();
+}
 function paintStatistics(){
  if(state.view!=='statistics')return;
  $('#main').innerHTML=statisticsView();icons();
+ loadEnergyStatistics();
 }
 async function loadStatistics(force=false){
  if(historyState.loading)return;

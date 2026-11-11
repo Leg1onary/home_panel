@@ -1,0 +1,8 @@
+LIVE OK {"heading":"Электроэнергия · месяцы","barCount":8,"openCount":1,"labels":["12.25","01.26","02.26","03.26","04.26","05.26","06.26","10.26"],"values":["982","357","378","443","519","455","523","130"],"costs":["≈ 4 596 ₽","≈ 1 671 ₽","≈ 1 769 ₽","≈ 2 073 ₽","≈ 2 429 ₽","≈ 2 129 ₽","≈ 2 448 ₽","≈ 610 ₽"],"rects":8,"rectW":"44.0","tip":"10.26: 130 кВт·ч · ≈ 610 ₽ · месяц открыт"}
+DEMO OK: Р±Р»РѕРє СЃРєСЂС‹С‚
+[Error: EBUSY: resource busy or locked, unlink 'C:\Users\SSHOLO~1\AppData\Local\Temp\home-panel-chart-s5mJtc\panel.sqlite-wal'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'unlink',
+  path: 'C:\\Users\\SSHOLO~1\\AppData\\Local\\Temp\\home-panel-chart-s5mJtc\\panel.sqlite-wal'
+}

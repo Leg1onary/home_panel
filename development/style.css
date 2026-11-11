@@ -958,6 +958,18 @@ html[data-view=home] .shell>footer[data-storage=saved]{display:none}
 .history-grid{stroke:var(--border);stroke-width:1;stroke-dasharray:2 6}
 .history-cursor{stroke:var(--muted);stroke-width:1;stroke-dasharray:4 4;pointer-events:none}
 .history-readout{min-height:40px;font-size:var(--text-xs);line-height:1.6;color:var(--text);padding:var(--space-2) var(--space-3);border-radius:var(--radius-sm);background:var(--glass)}
+/* 3.2.8: график расхода электроэнергии по месяцам (вкладка «Статистика»). */
+.energy-chart-card p{margin:0 0 var(--space-2)}
+.energy-chart{display:block;width:100%;overflow:visible;outline-offset:3px}
+.energy-chart text{font-family:inherit}
+.energy-chart-bar rect{fill:var(--accent);fill-opacity:.55;transition:fill-opacity .15s ease}
+.energy-chart-bar:hover rect,.energy-chart-bar:focus-visible rect{fill-opacity:.9}
+.energy-chart-bar:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.energy-chart-bar.is-open rect{fill-opacity:.22;stroke:var(--accent);stroke-width:1.5;stroke-dasharray:4 3}
+.energy-chart-bar.is-open:hover rect,.energy-chart-bar.is-open:focus-visible rect{fill-opacity:.4}
+.energy-chart-value{fill:var(--text);font-size:11px;text-anchor:middle;font-weight:600}
+.energy-chart-cost{fill:var(--muted);font-size:10px;text-anchor:middle}
+.energy-chart-label{fill:var(--muted);font-size:11px;text-anchor:middle}
 .history-ranges{display:flex;flex-wrap:wrap;gap:var(--space-2) var(--space-5);margin-top:var(--space-4);font-size:var(--text-xs);color:var(--muted);line-height:1.5}
 .history-ranges b{font-weight:500;color:var(--text)}
 .history-footnote{font-size:var(--text-xs);line-height:1.5;color:var(--muted);margin:var(--space-3) 0 0}

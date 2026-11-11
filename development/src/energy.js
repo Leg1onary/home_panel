@@ -31,6 +31,33 @@ export const monthDelta=(currentValue,currentDate,readings)=>{
 };
 // Стоимость по тарифу: null без тарифа; округление до рубля.
 export const monthCost=(delta,tariff)=>Number.isFinite(delta)&&Number.isFinite(tariff)&&tariff>0?Math.round(delta*tariff):null;
+// Месячные дельты для графика вкладки «Статистика» (3.2.8). По соседним парам
+// показаний (сортировка по дате): label «мм.гг» из даты предыдущей записи —
+// конец периода. Текущий открытый месяц — от последнего показания к
+// currentReading {date,value}, если его дата позже. Отсекающий лимит — 12
+// последних; отрицательные и некорректные точки пропускаются.
+const monthLabelOf=date=>{const m=/^(\d{4})-(\d{2})-\d{2}$/.exec(String(date??''));return m?`${m[2]}.${m[1].slice(2)}`:null};
+export function energyBars(readings,tariff,currentReading){
+ const valid=(Array.isArray(readings)?readings:[])
+  .map(r=>({date:String(r?.date??''),value:Number(r?.value)}))
+  .filter(r=>READING_DATE.test(r.date)&&Number.isFinite(r.value)&&r.value>=0)
+  .sort((a,b)=>a.date<b.date?-1:1);
+ const bars=[];
+ for(let i=0;i<valid.length-1;i++){
+  const delta=Math.round((valid[i+1].value-valid[i].value)*10)/10,label=monthLabelOf(valid[i].date);
+  if(!label||delta<0)continue;
+  bars.push({label,delta,cost:monthCost(delta,tariff)});
+ }
+ const cur=currentReading&&typeof currentReading==='object'?currentReading:null;
+ const curDate=cur&&READING_DATE.test(String(cur.date??''))?String(cur.date):null;
+ const curValue=cur&&Number.isFinite(Number(cur.value))?Number(cur.value):null;
+ const last=valid.at(-1);
+ if(curDate&&curValue!==null&&last&&curDate>last.date&&curValue>=last.value){
+  const delta=Math.round((curValue-last.value)*10)/10,label=monthLabelOf(curDate);
+  if(label&&delta>=0)bars.push({label,delta,cost:monthCost(delta,tariff),open:true});
+ }
+ return bars.slice(-12);
+}
 const deltaRow=(label,value,cost)=>`<p class="energy-delta"><span>${label}</span><strong>${fmt(value)} кВт·ч${cost!=null?` <small class="energy-cost">≈ ${esc(intFmt(cost))} ₽</small>`:''}</strong></p>`;
 const FALLBACK='Расход появится после следующей передачи показаний';
 const deltaMarkup=extra=>{
