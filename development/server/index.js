@@ -190,6 +190,16 @@ const server=http.createServer(async(req,res)=>{
     // Клиент никогда не видел yard_onvif_pass — пустое поле в PUT не затирает пароль.
     if(input&&typeof input==='object'&&Array.isArray(input.devices)&&input.yard_onvif_pass===undefined)
      input.yard_onvif_pass=p.preferences.yard_onvif_pass;
+    // Старый клиент (вкладка без Ctrl+F5 после 3.3.x) шлёт профиль без ONVIF/энергия-ключей:
+    // отсутствие ключа = храним старые значения, иначе каждое сохранение настроек
+    // событийно стирало учётку детектора (configured:false после обновлений).
+    if(input&&typeof input==='object'&&Array.isArray(input.devices)){
+     if(input.yard_onvif_user===undefined)input.yard_onvif_user=p.preferences.yard_onvif_user;
+     if(input.yard_onvif_host===undefined)input.yard_onvif_host=p.preferences.yard_onvif_host;
+     if(input.yard_onvif_enabled===undefined)input.yard_onvif_enabled=p.preferences.yard_onvif_enabled;
+     if(input.energy_readings===undefined)input.energy_readings=p.preferences.energy_readings;
+     if(input.energy_tariff===undefined)input.energy_tariff=p.preferences.energy_tariff;
+    }
     // A still-open older client does not know the additive layer. Its theme or
     // binding save must not erase newer groups. Legacy channel deletion detaches
     // that channel explicitly; malformed current-schema requests still reject.

@@ -4853,6 +4853,13 @@ var server = http.createServer(async (req, res) => {
         const input = JSON.parse((await body(req)).toString());
         if (input && typeof input === "object" && Array.isArray(input.devices) && input.yard_onvif_pass === void 0)
           input.yard_onvif_pass = p.preferences.yard_onvif_pass;
+        if (input && typeof input === "object" && Array.isArray(input.devices)) {
+          if (input.yard_onvif_user === void 0) input.yard_onvif_user = p.preferences.yard_onvif_user;
+          if (input.yard_onvif_host === void 0) input.yard_onvif_host = p.preferences.yard_onvif_host;
+          if (input.yard_onvif_enabled === void 0) input.yard_onvif_enabled = p.preferences.yard_onvif_enabled;
+          if (input.energy_readings === void 0) input.energy_readings = p.preferences.energy_readings;
+          if (input.energy_tariff === void 0) input.energy_tariff = p.preferences.energy_tariff;
+        }
         if (input && typeof input === "object" && input.deviceModel === void 0 && Array.isArray(input.devices)) {
           const ids = new Set(input.devices.map((d) => d?.id));
           input.deviceModel = { ...p.preferences.deviceModel, groups: p.preferences.deviceModel.groups.map((g) => ({ ...g, members: g.members.filter((id2) => ids.has(id2)) })).filter((g) => g.members.length) };
