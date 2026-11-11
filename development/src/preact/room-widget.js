@@ -29,13 +29,22 @@ export function toggleMarkup(row,attrs=''){
  return `<button ${unknown?'':`role="switch" aria-checked="${row.on}"`} aria-label="${esc(row.name)}${unknown?' · нет подтверждённого состояния':''}" aria-busy="${row.busy}"
  class="toggle" ${attrs} ${disabled(row.blocked)}><span class="toggle-track"></span></button>`;
 }
+// Мини-слайдер яркости линии (3.3.0): узкая дорожка справа от тоггла в карточке
+// комнаты на главной. Только для линий с bright-данными (rgb в live; демо — все
+// линии). Настройка уходит через change/input-делегирование app.js (data-bright),
+// тоггл и навигация не задеты: input не кнопка, pointerup-диспетчер её игнорирует.
+export function miniBright(row){
+ if(!row.bright)return '';
+ return `<span class="mini-bright"><span class="mini-bright-value" data-bright-label>${row.bright.value} %</span>
+ <input type="range" min="1" max="100" value="${row.bright.value}" data-bright="${esc(row.bright.id)}" aria-label="${esc(row.name)}: яркость" ${disabled(row.blocked)}/></span>`;
+}
 // Мини-карточка комнаты: прежнее тело miniRoomCard() из app.js.
 export function roomCardMarkup(deps){
  if(!deps||!deps.room)return '';
  const r=deps.room;
  return `<div role="dialog" aria-label="Карточка комнаты ${esc(r.name)}">
  <div class="mini-head"><span class="mini-icon">${I(r.icon)}</span><strong>${esc(r.name)}</strong><span class="mini-climate">${deps.climate||''}</span><button class="icon-button" data-action="close-room-card" aria-label="Закрыть карточку комнаты">${I('x')}</button></div>
- ${deps.rows.map(row=>`<div class="control-row mini-row"><div><h3>${esc(row.name)}</h3><p>${esc(row.note)}</p></div>${toggleMarkup(row,`data-device="${esc(row.id)}" data-mini="1"`)}</div>${phaseMarkup(row.phase)}`).join('')}
+ ${deps.rows.map(row=>`<div class="control-row mini-row"><div><h3>${esc(row.name)}</h3><p>${esc(row.note)}</p></div>${toggleMarkup(row,`data-device="${esc(row.id)}" data-mini="1"`)}${miniBright(row)}</div>${phaseMarkup(row.phase)}`).join('')}
  ${deps.rows.length?'':`<p class="mini-empty">Линий света в этой комнате нет.</p>`}
  <button class="secondary mini-open" data-room="${esc(r.id)}">Открыть комнату ${I('arrow-up-right')}</button></div>`;
 }

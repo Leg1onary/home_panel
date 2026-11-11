@@ -1494,3 +1494,9 @@ html[data-night=true] .hero-clock>div{transform:scale(1.12);transform-origin:lef
 .hero-clock>div{transition:transform 2.4s ease}
 html[data-night=true] svg{animation:none !important}
 html[data-night=true] .aurora-blob{animation:none;opacity:.3}
+/* 3.3.0: мини-слайдер яркости линии в карточке комнаты на главной (#home-room-card). */
+.home-room-card .mini-bright{display:flex;align-items:center;gap:var(--space-2,8px);flex-shrink:0}
+.home-room-card .mini-bright-value{font-size:var(--text-xs);color:var(--muted);min-width:34px;text-align:right;font-variant-numeric:tabular-nums}
+.home-room-card .mini-bright input[type=range]{width:88px;height:18px;accent-color:var(--lit);cursor:pointer;margin:0}
+.home-room-card .mini-bright input[type=range]:disabled{opacity:.45;cursor:default}
+.home-room-card .mini-row{flex-wrap:wrap}

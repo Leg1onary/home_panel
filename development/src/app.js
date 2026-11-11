@@ -38,6 +38,7 @@ import {FactsWidget,factsBus} from './preact/facts-widget.js';
 import {RoomCardWidget,RoomSheetWidget,roomBus} from './preact/room-widget.js';
 import {YardClipsWidget,yardClipsBus} from './preact/yard-clips-widget.js';
 import {YARD_REFRESH_MS} from './yard-card.js';
+import {parseBrightness,scheduleWave} from './light-wave.js';
 import {loadShopping,paintShopping,shoppingMutate,shoppingState,shoppingCardMarkup} from './shopping.js';
 import {paintAlarm,alarmMarkup,alarmEntity,alarmAction} from './alarm.js';
 import {forecastSheet,loadForecast} from './weather-sheet.js';
@@ -361,13 +362,23 @@ function phaseArgs(id){
  return c?{id,phase:c.phase,message:c.message,confirmedAt:c.confirmedAt}:null;
 }
 // Строка линии света: снимок состояния для чистой разметки виджета (toggle/phaseLine).
+// bright (3.3.0): данные мини-слайдера яркости — id команды `${id}/brightness`
+// (сервер маппит 1-100 → 0-255). В live яркость доступна только rgb-линиям с
+// supported_color_modes, в демо — всем установленным линиям.
+function brightArgs(c){
+ if(c.planned)return null;
+ const d=state.devices.find(d=>d.id===c.id);
+ if(!d||d.status!=='installed')return null;
+ if(isLive()&&d.type!=='rgb')return null;
+ return {id:`${c.id}/brightness`,value:state.lightBrightness[c.id]??70};
+}
 function rowArgs(c){
  return {id:c.id,name:c.name,on:c.on,planned:c.planned,
  note:c.planned?c.note||'Планируется':noConnection()?'Нет связи':isLive()&&!canControl(c.id)?'Нет данных · канал не проверен или недоступен':c.note||'Отдельная линия света',
  unknown:isLive()&&!canControl(c.id),
  blocked:c.planned||!canControl(c.id)||hasPending(),
  busy:commandFor(c.id)?.phase==='pending',
- phase:phaseArgs(c.id)};
+ phase:phaseArgs(c.id),bright:brightArgs(c)};
 }
 function roomCardArgs(){
  if(!activeRoomCard||state.view!=='home')return null;
@@ -402,6 +413,8 @@ function paintRoomCard(){
  // Пока команда из карточки в полёте (optimistic apply + pending), перерисовка
  // по опросу может заменить кнопку между pointerdown и click — пропускаем.
  if(activeRoomCard&&hasPending())return;
+ // 3.3.0: пока тянут мини-слайдер яркости, перерисовка убила бы drag — ждём change.
+ if(activeRoomCard&&document.activeElement?.matches?.('input[data-bright]'))return;
  node.hidden=!activeRoomCard;
  // Не перекрашиваем тапабельную карточку под пальцем (бывший guard updateRegion):
  // откладываем notify на 450 мс после pointerdown.
@@ -880,6 +893,12 @@ function command(id,value){
  else if(id==='station:volume')apply=v=>state.stationVolume=v;
  else if(id==='station:playing')apply=v=>state.stationPlaying=v;
  else if(['station:next','station:previous'].includes(id)){if(!canControl(id))return Promise.resolve(false);apply=()=>{}}
+ else if(id.endsWith('/brightness')){
+  // Яркость линии света (3.3.0): `${id}/brightness`, 1-100 (сервер маппит в 0-255).
+  const key=id.slice(0,-'/brightness'.length),c=channel(key);
+  if(!c||!canControl(id))return Promise.resolve(false);
+  apply=v=>{state.lightBrightness[key]=v};
+ }
  else{const c=channel(id);if(!c||!canControl(id))return Promise.resolve(false);apply=v=>c.on=v}
  return sendCommand(id,value,apply,refresh);
 }
@@ -889,12 +908,22 @@ function master(){
  <div class="inline-note">Только линии, включённые в мастер-свет в каталоге. Камера, музыка и датчики не затрагиваются.</div>
  <div class="sheet-actions"><button class="primary" data-action="confirm-master">Выключить</button><button class="secondary" data-action="cancel">Отмена</button></div>`);
 }
+const masterWave={active:false}; // 3.3.0: флаг идущей «волны выключения» — повторный тап не дублирует команды.
 async function masterConfirm(){
- if(masterBlocked())return;
- closeModal();state.batchPending=true;
- const jobs=rooms.flatMap(r=>r.channels).filter(c=>c.masterOff&&c.on&&!c.planned&&canControl(c.id));
- const results=await Promise.all(jobs.map(c=>command(c.id,false)));
- state.batchPending=false;refresh();
+ if(masterBlocked()||masterWave.active)return;
+ closeModal();state.batchPending=true;masterWave.active=true;
+ // Каскад (3.3.0): комнаты гаснут последовательно с шагом 300 мс (порядок —
+ // rooms/избранное), линии внутри комнаты — параллельно. Прогресс виден:
+ // c.on снимается по ack каждой линии, refresh() перекрашивает сетку, счётчик
+ // «Свет · N/M» в рейле тикает вниз. scheduleWave из src/light-wave.js.
+ const groups=[];
+ for(const r of rooms){
+  const list=r.channels.filter(c=>c.masterOff&&c.on&&!c.planned&&canControl(c.id));
+  if(list.length)groups.push(list);
+ }
+ const wave=scheduleWave(groups,c=>command(c.id,false));
+ const results=await wave.all();
+ state.batchPending=false;masterWave.active=false;refresh();
  toast(results.every(Boolean)?(isLive()?'Проверенные линии выключены по данным HA.':'Свет выключен и подтверждён в демо.'):'Не все линии подтвердили выключение. Проверь сообщения в комнатах.');
 }
 function stationSheet(){
@@ -1024,6 +1053,10 @@ function testSettings(){
 function commandLabel(id){
  if(id.startsWith('rgb:'))return 'RGB-лампа';
  if(id.startsWith('station:'))return 'Дуо Макс';
+ if(id.endsWith('/brightness')){
+  const [r,i]=id.slice(0,-'/brightness'.length).split(':');
+  return (getRoom(r)?.short||r)+' · '+(getRoom(r)?.channels[Number(i)]?.name||'')+' · яркость';
+ }
  const [r,i]=id.split(':');return (getRoom(r)?.short||r)+' · '+(getRoom(r)?.channels[Number(i)]?.name||'');
 }
 function updateHeader(){
@@ -1577,6 +1610,15 @@ document.addEventListener('change',async e=>{
  if(e.target.id==='history-event-type'){historyState.eventType=e.target.value;paintStatistics();return}
  const id=e.target.id;
  if(id==='brightness')return command('rgb:brightness',+e.target.value);
+ // Мини-слайдер яркости линии (3.3.0): data-bright = `${id}/brightness`.
+ // Если линия выключена — сначала включаем, потом яркость (удобнее, чем блок).
+ if(e.target.dataset.bright){
+  const brightId=e.target.dataset.bright,key=brightId.slice(0,-'/brightness'.length),c=channel(key);
+  if(!c)return;
+  const turn=!c.on?command(c.id,true):null;
+  (turn||Promise.resolve()).then(ok=>{if(ok!==false)return command(brightId,parseBrightness(e.target.value))});
+  return;
+ }
  if(id==='station-volume'){stationAdjusting=false;return command('station:volume',+e.target.value)}
  if(id==='idle-setting'){state.idleSeconds=+e.target.value;armIdle();persist()}
  if(id==='ambient-setting'){state.ambientMode=e.target.checked;if(state.idle&&!state.ambientMode)exitAmbient();persist()}
@@ -1650,6 +1692,11 @@ document.addEventListener('input',e=>{
   $('.sheet').querySelectorAll('[data-equipment-option]').forEach(el=>{el.hidden=!el.dataset.search.includes(query)});
  }
  if(e.target.id==='brightness')$('#brightness-label').textContent=e.target.value+' % · ещё не отправлено';
+ // Оптимистичный показ % мини-слайдера линии (3.3.0) — до подтверждения от HA.
+ if(e.target.dataset.bright){
+  const lab=e.target.closest('.mini-bright')?.querySelector('[data-bright-label]');
+  if(lab)lab.textContent=parseBrightness(e.target.value)+' %';
+ }
  if(e.target.id==='station-volume'){stationAdjusting=true;$('#station-volume-label').textContent=e.target.value+' % · ещё не отправлено'}
  if(e.target.id==='tts-text'){const c=$('#tts-count');if(c)c.textContent=e.target.value.length+'/100'}
 });

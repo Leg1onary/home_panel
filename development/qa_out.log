@@ -23,6 +23,7 @@ preact-weather ok
 preact-quick ok
 preact-facts ok
 preact-room ok
+light-wave ok
 PASS: buffered LL-HLS at 1x, narrow start-hint removal, loader callback/binary safety, part delivery, ordinary HLS fallback, rate/latency/frame diagnostics, bounded recovery and cleanup.
 PASS: WebRTC-only startup, recvonly tracks, ICE ordering/default mid, diagnostics, no parallel HLS, session cleanup/stop-during-start, explicit HLS and unsupported-browser fallback.
 PASS: HA WebRTC auth/capabilities/config, bounded owned sessions, offer/subscription/trickle ICE/events, fixed camera scope, secret filtering, unsupported/auth rejection, binding changes, expiry and close.
@@ -36,7 +37,7 @@ PASS: yard-clips — таблица/пустой список, testCapture → �
 PASS: clean v3 initialization, no migration schema, old formats rejected, persistence, CSRF, verified mappings, stable reorder, move resets verification, HA command/readback, locked engineering, camera images, secret filtering, unknown format leaves database unchanged, preview isolation.
 PASS: local manifest, Supervisor token, correct /core/api routes, LAN Host/Origin/CSRF, shared SQLite profile, saved theme/favorites/mode/bindings after restart, light command/readback, camera frame, secret filtering, HA auth error, health.
 PASS: WS auth/stream command, verified camera only, CSRF, HLS rewrites incl init/parts, progressive first bytes before upstream completion, secret filtering, query/file allowlists, SSRF rejection, stop invalidates session, mode change blocks existing stream.
-(node:18896) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/ssholokhov/home_panel/development/server/live-stream.js is not specified and it doesn't parse as CommonJS.
+(node:11248) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/ssholokhov/home_panel/development/server/live-stream.js is not specified and it doesn't parse as CommonJS.
 Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
 To eliminate this warning, add "type": "module" to \\?\C:\Users\ssholokhov\home_panel\development\package.json.
 (Use `node --trace-warnings ...` to show where the warning was created)
@@ -45,4 +46,4 @@ PASS: panel scenarios (leave/evening/cinema), per-line readback, unavailable lin
 PASS: user scenarios — strict validation drops bad id/name/steps, 8/12 limits enforced, ordered run with readback, unavailable line fails alone, brightness fallback honesty, unknown id 400, CRUD through preferences endpoint.
 PASS: health endpoint fields, ha connected via fake HA, yard_onvif_enabled default on, off stops watcher, on reconfigures.
 PASS: TNS readings auto-append — no duplicate for same date, new later date appended and month recalculated, rollback ignored, same-date refinement updates the value.
-All forty-three test suites passed.
+All forty-four test suites passed.
