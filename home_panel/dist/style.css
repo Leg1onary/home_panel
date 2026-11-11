@@ -1450,12 +1450,12 @@ input[type=range]:disabled::-moz-range-thumb{background:var(--faint);border-colo
 .rail-allrooms{min-height:36px;font-size:var(--text-xs);color:var(--muted)}
 .home-quick-rail{position:absolute;left:var(--space-5);bottom:calc(var(--space-5) + 112px);z-index:4}
 .home-quick-rail .quick-devices{align-items:flex-end}
-.home-quick-rail .quick-device{width:52px;min-height:52px;padding:0;justify-content:center;border-radius:var(--radius-md);transition:padding .2s ease,margin .2s ease,background .2s ease}
+.home-quick-rail .quick-device{width:52px;height:52px;min-height:52px;max-height:52px;padding:0;justify-content:center;border-radius:var(--radius-md);transition:padding .2s ease,margin .2s ease,background .2s ease}
 .home-quick-rail .quick-device:hover{padding:0 3px;margin:0 -3px}
 .home-quick-rail .quick-device>span:not(.quick-device-icon),.home-quick-rail .station-skip{display:none}
 /* «Станция» остаётся видимой плиткой в компакт-рельсе: иначе некуда тапнуть, чтобы открыть плеер. */
-.home-quick-rail .media-shortcut{display:flex;align-items:flex-end;gap:var(--space-1)}
-.home-quick-rail .media-details{position:relative;display:flex;flex-direction:column;align-items:center;width:52px;height:52px;min-height:52px;padding:0;text-align:center;justify-content:center;border-radius:9999px}
+.home-quick-rail .media-shortcut{display:flex;align-items:flex-end;gap:var(--space-1);height:52px;min-height:52px;max-height:52px}
+.home-quick-rail .media-details{position:relative;display:flex;flex-direction:column;align-items:center;width:52px;height:52px;min-height:52px;max-height:52px;padding:0;text-align:center;justify-content:center;border-radius:9999px;overflow:visible}
 .home-quick-rail .media-details .media-title-line{display:none}
 .home-quick-rail .media-details small{display:none}
 .home-quick-rail .media-details::after{content:'Станция';position:absolute;top:calc(100% + 2px);left:0;right:0;text-align:center;white-space:nowrap;font-size:.62rem;color:var(--muted)}
