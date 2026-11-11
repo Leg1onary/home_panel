@@ -1502,13 +1502,17 @@ body.is-ambient .aurora-blob{opacity:.25;filter:blur(90px) saturate(.6)}
 /* ─── Волна C «Ночной режим»: тёплый приглушённый экран, расписание ─── */
 .night-times{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3)}
 html[data-night=true]::after{content:'';position:fixed;inset:0;z-index:99;pointer-events:none;
- background:linear-gradient(180deg,rgba(46,26,6,.28),rgba(24,13,3,.34));opacity:1;transition:opacity 2.4s ease}
+ background:linear-gradient(180deg,rgba(46,26,6,.28),rgba(24,13,3,.34));opacity:var(--night-dim,1);transition:opacity 2.4s ease}
 html[data-night=false]::after{content:'';position:fixed;inset:0;z-index:99;pointer-events:none;
  background:linear-gradient(180deg,rgba(46,26,6,.28),rgba(24,13,3,.34));opacity:0;transition:opacity 2.4s ease}
 html[data-night=true] .hero-clock>div{transform:scale(1.12);transform-origin:left top}
 .hero-clock>div{transition:transform 2.4s ease}
 html[data-night=true] svg{animation:none !important}
 html[data-night=true] .aurora-blob{animation:none;opacity:.3}
+/* 3.3.3: лента «Журнал» в листе «Здоровье системы». */
+.health-journal-block{margin-top:var(--space-4)}
+.health-journal-block h3{font-size:.85rem;margin:0 0 var(--space-2)}
+.health-journal{display:flex;flex-direction:column;gap:var(--space-2);max-height:220px;overflow-y:auto}
 /* 3.3.0: мини-слайдер яркости линии в карточке комнаты на главной (#home-room-card). */
 .home-room-card .mini-bright{display:flex;align-items:center;gap:var(--space-2,8px);flex-shrink:0}
 .home-room-card .mini-bright-value{font-size:var(--text-xs);color:var(--muted);min-width:34px;text-align:right;font-variant-numeric:tabular-nums}

@@ -1,0 +1,36 @@
+{
+ "nightOn": {
+  "put": "ok"
+ },
+ "nightOnState": {
+  "night": "true",
+  "dim": "1",
+  "opacity": "1"
+ },
+ "nightHalf": {
+  "night": "true",
+  "dim": "0.5",
+  "opacity": "0.5"
+ },
+ "health": {
+  "journalOpen": true,
+  "rows": [
+   "14:36:49Профиль сохранён (все привязки подтверждены)info",
+   "14:36:46Профиль сохранён (все привязки подтверждены)info",
+   "14:36:43Профиль сохранён (все привязки подтверждены)info",
+   "14:36:37Панель запущена: порт 8080 · локально · Home Assistant настроенinfo"
+  ],
+  "hasStartEvent": true,
+  "snap1": {
+   "ok": true,
+   "saved": 5
+  },
+  "snap2": {
+   "ok": true,
+   "saved": 6
+  },
+  "snap2Greater": true,
+  "msg": "Снимок сохранён · всего снимков 7"
+ }
+}
+ERRORS: []

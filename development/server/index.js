@@ -13,6 +13,7 @@ import {LiveFeed} from './live-stream.js';
 import {YardMotion} from './yard-motion.js';
 import {onvifWatch} from './yard-onvif.js';
 import {YardClips} from './yard-clips.js';
+import {journal,journalList} from './journal.js';
 import {meterValue,monthDelta,monthCost} from '../src/energy.js';
 import {energyDeltas} from './ha.js';
 
@@ -65,8 +66,9 @@ const yardOnvifEnsure=prefs=>{
  if(yardOnvifWatch)yardOnvifWatch.stop();
  yardOnvifConfigKey=key;
  yardOnvifWatch=onvifWatch({host,...(port?{port}:{}) ,user,pass,
-  onMotion:()=>{yardMotion.externalMotion();yardClips.record().catch(()=>{})},
-  onError:error=>console.log('Yard ONVIF fallback to jpeg diff:',error?.message||error)});
+  onMotion:()=>{yardMotion.externalMotion();yardClips.record().catch(error=>journal('Клип двора не записан: '+(error?.message||error),'warn'))},
+  onError:error=>{console.log('Yard ONVIF fallback to jpeg diff:',error?.message||error);journal('ONVIF-события недоступны: '+(error?.message||error)+' — работает резерв по кадрам','warn')}});
+ journal('ONVIF-детектор двора запущен: '+host+(port?':'+port:''));
  return true;
 };
 
@@ -217,6 +219,7 @@ const server=http.createServer(async(req,res)=>{
     db.prepare('UPDATE profiles SET preferences=? WHERE id=?').run(JSON.stringify(next),id);
     // Тумблер ONVIF-датчика применяется сразу: сервер перезапускает/останавливает watcher.
     yardOnvifEnsure(next);
+    journal('Профиль сохранён ('+(rejected.length?'отклонено: '+rejected.length:'все привязки подтверждены')+')');
     // Показания/тариф меняют месячный расчёт: кеш энергии сбрасываем немедленно.
     energyCache=null;energyLastKnown=null;
     return json(res,200,{saved:true,preferences:clientPreferences(next),rejected,offline});
@@ -238,7 +241,7 @@ const server=http.createServer(async(req,res)=>{
     const entity=yardCameraEntity(p.preferences);if(entity)yardEntityHint=entity;
     const motion=await yardMotion.check(entity);
     // Движение увидел диффер (ONVIF молчит) — клип всё равно пишется; дедуп 15с в record().
-    if(motion.motion)yardClips.record().catch(()=>{});
+    if(motion.motion)yardClips.record().catch(error=>journal('Клип двора не записан: '+(error?.message||error),'warn'));
     return json(res,200,{...motion,checkedAt:Date.now()});
    }
    // Клипы двора: список без байтов и кадр по индексу (0..3).
@@ -279,8 +282,19 @@ const server=http.createServer(async(req,res)=>{
      sse:{clients:live.clients.size},
      disk:{sqliteKB,backups:db.prepare('SELECT COUNT(*) c FROM profile_backups').get().c},
      uptime:{seconds:Math.floor((Date.now()-startedAt)/1000)},
-     version:PANEL_VERSION
+     version:PANEL_VERSION,
+     journal:journalList()
     });
+   }
+   // 3.3.3 «Бэкап профиля в один тап»: серверный снимок текущего профиля в
+   // profile_backups (не путать с profile/export — скачиванием файла).
+   if(route==='profile-snapshot'&&req.method==='POST'){
+    const existing=db.prepare("SELECT COUNT(*) c FROM profile_backups WHERE profile_id=? AND reason LIKE 'manual%'").get(id).c;
+    const reason=existing?'manual-'+(existing+1):'manual';
+    db.prepare('INSERT OR REPLACE INTO profile_backups(profile_id,reason,preferences) VALUES(?,?,?)').run(id,reason,JSON.stringify(p.preferences));
+    const saved=db.prepare('SELECT COUNT(*) c FROM profile_backups').get().c;
+    journal('Профиль: ручной снимок сохранён (всего снимков '+saved+')');
+    return json(res,200,{ok:true,saved});
    }
    if(route==='ha/weather-forecast'&&req.method==='GET'){
     const asked=url.searchParams.get('entity')||'',entityId=/^weather\.[a-z0-9_]+$/.test(asked)?asked:(await ha.states()).find(e=>e.entity_id.startsWith('weather.'))?.entity_id||'';
@@ -323,6 +337,7 @@ const server=http.createServer(async(req,res)=>{
         db.prepare('UPDATE profiles SET preferences=? WHERE id=?').run(JSON.stringify(p.preferences),id);
         energyCache=null;energyLastKnown=null;
         console.log('Energy: показания ТНС '+autoDate+' = '+readingValue+' автоматически добавлены в историю ('+nextReadings.length+' записей).');
+        journal('Счётчик ТНС: показания '+autoDate+' = '+readingValue+' добавлены в историю автоматически');
        }
       }catch(error){console.log('Energy: автопополнение отклонено: '+(error?.message||error))}
      }
@@ -468,6 +483,7 @@ const server=http.createServer(async(req,res)=>{
 server.requestTimeout=25000;
 server.listen(port,preview||addon?'0.0.0.0':'127.0.0.1',()=>{
  console.log(`Panel ready: port ${port} · ${addon?'Home Assistant add-on':preview?'private preview':'local only'} · HA ${ha.enabled?'configured':'not configured'}`);
+  journal('Панель запущена: порт '+port+(addon?' · add-on':preview?' · превью':' · локально')+(ha.enabled?' · Home Assistant настроен':' · деморежим'));
  if(process.platform==='win32'&&process.argv.includes('--open'))spawn('rundll32.exe',['url.dll,FileProtocolHandler',`http://127.0.0.1:${port}`],{stdio:'ignore'}).on('error',()=>{});
 });
 server.on('error',error=>{console.error(error.code==='EADDRINUSE'?`Port ${port} is busy. Close the other panel server or set PORT in .env.`:'Panel server could not start.');process.exitCode=1});

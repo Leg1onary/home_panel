@@ -27,7 +27,7 @@ import {numericReading,stateTimes} from './readings.js';
 import {duoUI,assistantView} from './assistant-ui.js';
 import {scenarioChipsRow,handleScenarioClick,bindScenarioPainter,bindScenarioHost} from './scenarios-ui.js';
 import {shouldAmbient,AMBIENT_AFTER_IDLE} from './ambient.js';
-import {isNight,isTime,nightLabel} from './night.js';
+import {isNight,isTime,nightLabel,nightDim} from './night.js';
 import {dayArcMarkup} from './day-arc.js';
 import {luxValue,autoTheme,AUTO_THEME_UP,AUTO_THEME_DOWN} from './auto-theme.js';
 import {render as preactRender,h as ph} from './preact/kit.js';
@@ -1152,8 +1152,18 @@ function healthMarkup(h,error){
   ${healthRow('Данные',`SQLite: ${disk.sqliteKB||0} КБ`,`резервных копий: ${disk.backups||0}`,'ok')}
   ${healthRow('Время работы','с старта сервера: '+up+' с','процесс панели','ok')}
   ${healthRow('Версия',h.version||'—','панель','ok')}
- </div><button class="secondary full-width" data-health-reload ${disabled(healthBusy)}>${I('rotate-ccw')}Обновить</button>`;
+ </div>${healthJournal(h.journal)}${healthSnapshotMsg?`<p class="setting-help" data-health-snapshot-msg>${esc(healthSnapshotMsg)}</p>`:''}<button class="secondary full-width" data-health-snapshot ${disabled(healthBusy)}>${I('archive')}Снимок профиля</button><button class="secondary full-width" data-health-reload ${disabled(healthBusy)}>${I('rotate-ccw')}Обновить</button>`;
 }
+// 3.3.3: журнал событий сервера (последние 50, новые сверху) + ручной снимок профиля.
+let healthSnapshotMsg='';
+function journalRows(entries){
+ const rows=(Array.isArray(entries)?entries:[]).slice(0,50);
+ if(!rows.length)return `<p class="setting-help" data-health-journal>Журнал пуст: событий пока не было.</p>`;
+ return `<div class="health-journal" data-health-journal>${rows.map(e=>{const d=new Date(e.at||Date.now());
+  const time=d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  return `<div class="health-row journal-row"><span class="health-dot is-${e.level==='warn'?'warn':'ok'}"></span><div class="health-text"><strong>${esc(time)}</strong><span>${esc(e.text||'')}</span></div><small>${esc(e.level||'info')}</small></div>`}).join('')}</div>`;
+}
+const healthJournal=entries=>`<div class="health-journal-block"><h3>Журнал</h3>${journalRows(entries)}</div>`;
 async function loadHealth(){
  healthBusy=true;paintHealth();
  try{healthData=await api('health')}catch(error){healthError=error.message}
@@ -1373,9 +1383,14 @@ function applyNight(){
  const time=new Intl.DateTimeFormat('en-GB',{hour:'numeric',minute:'2-digit',hourCycle:'h23',timeZone:PANEL_TIMEZONE}).format(Date.now());
  const [h,m]=time.split(':').map(Number);
  if(applyNight.hour!==h){applyNight.hour=h;modelAPI?.setModelTime(h)}
- const night=isNight(h*60+m,state.nightStart,state.nightEnd,state.nightMode);
+ const minute=h*60+m;
+ const night=isNight(minute,state.nightStart,state.nightEnd,state.nightMode);
  if(document.documentElement.dataset.night!==String(night))document.documentElement.dataset.night=String(night);
- const status=$('#night-status');if(status)status.textContent=nightLabel(h*60+m,state.nightStart,state.nightEnd,state.nightMode);
+ // 3.3.3 «Плавная автояркость»: интенсивность димма из nightDim (линейный вход
+ // за 60 мин после nightStart и спад за 60 мин до nightEnd), обновляется тиком.
+ const dim=nightDim(minute,state.nightStart,state.nightEnd,state.nightMode);
+ document.documentElement.style.setProperty('--night-dim',String(dim));
+ const status=$('#night-status');if(status)status.textContent=nightLabel(minute,state.nightStart,state.nightEnd,state.nightMode);
 }
 function updateClocks(){
  for(const id of ['clock','idle-clock','hero-clock'])if($('#'+id))$('#'+id).textContent=clock();
@@ -1587,6 +1602,13 @@ async function dispatchAction(e){
  if(a==='reconnect'){startLive(refresh);techMessage=isLive()?'Проверяем связь…':'Выбран деморежим. Подключение к дому не выполняется.';updateTechnical();return}
   if(a==='health-sheet')return openHealth();
   if(b.hasAttribute('data-health-reload'))return loadHealth();
+  if(b.hasAttribute('data-health-snapshot')){
+   healthSnapshotMsg='Сохраняем снимок…';paintHealth();
+   api('profile-snapshot',{method:'POST'})
+    .then(r=>{healthSnapshotMsg='Снимок сохранён · всего снимков '+(r.saved??'?');paintHealth()})
+    .catch(error=>{healthSnapshotMsg='Снимок не сохранён: '+error.message;paintHealth()});
+   return;
+  }
  if(a==='save-photo'){
   if(!photoBlob)return;
   savePhoto(photoBlob).then(()=>{toast('Фото сохранено в локальную базу этого компьютера.');photoBlob=null;refresh()}).catch(error=>toast(error.message));return;

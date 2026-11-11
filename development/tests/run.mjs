@@ -12,10 +12,10 @@ function run(command,args){
  if(result.error)throw result.error;
  if(result.status!==0)throw new Error(`${command} ${args.join(' ')} failed: ${result.status}`);
 }
-for(const name of ['catalog','yard-card','device-model','device-model-integration','house-profile','station','assistant','shopping','voice','model-state','interior','redesign','history','readings','digest','digest-brief','energy','energy-month','energy-chart','preact-energy','preact-digest','preact-weather','preact-quick','preact-facts','preact-room','light-wave','camera-player','rtc-player','rtc','api-session','sw','ambient','night-mode','yard-motion','yard-onvif','yard-clips','main-context']){
+for(const name of ['catalog','yard-card','device-model','device-model-integration','house-profile','station','assistant','shopping','voice','model-state','interior','redesign','history','readings','digest','digest-brief','energy','energy-month','energy-chart','preact-energy','preact-digest','preact-weather','preact-quick','preact-facts','preact-room','light-wave','camera-player','rtc-player','rtc','api-session','sw','ambient','night-mode','night-health','yard-motion','yard-onvif','yard-clips','main-context']){
  await bundle(`tests/${name}.mjs`,`.qa/${name}.mjs`);
  run(process.execPath,[`.qa/${name}.mjs`]);
 }
 for(const name of ['integration','addon','stream','live-stream','scenarios','scenarios-user','health','energy-auto'])run(process.execPath,[`tests/${name}.mjs`]);
-console.log('All forty-five test suites passed.');
+console.log('All forty-six test suites passed.');
 

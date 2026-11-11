@@ -1,4 +1,5 @@
 // Common server-side poller: one interval for all SSE clients.
+import {journal} from './journal.js';
 export class LiveFeed{
  constructor({ha}){
   this.ha=ha;this.clients=new Set();this.last=new Map();this.states=[];this.timer=null;this.hb=null;this.lastError=null;this.lastLatencyMs=null
@@ -17,7 +18,8 @@ export class LiveFeed{
   if(!this.ha.enabled)return
   let states
   const started=Date.now()
-  try{states=await this.ha.states()}catch(error){this.lastError=error.message;this.broadcast('error',JSON.stringify({message:error.message}));return}
+  try{states=await this.ha.states()}catch(error){this.lastError=error.message;if(!this.journaled){this.journaled=true;journal('Нет связи с Home Assistant: '+error.message,'warn')}this.broadcast('error',JSON.stringify({message:error.message}));return}
+  this.journaled=false;
   this.lastError=null;this.lastLatencyMs=Date.now()-started
   const next=new Map(states.map(e=>[e.entity_id,JSON.stringify(e)]))
   const changed=states.filter(e=>this.last.get(e.entity_id)!==next.get(e.entity_id))

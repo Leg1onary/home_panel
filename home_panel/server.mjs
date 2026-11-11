@@ -3362,6 +3362,17 @@ var CameraRTC = class {
   }
 };
 
+// server/journal.js
+var MAX_JOURNAL = 50;
+var journalBuf = [];
+function journal(text, level = "info") {
+  journalBuf.push({ at: Date.now(), level: level === "warn" ? "warn" : "info", text: String(text).slice(0, 200) });
+  if (journalBuf.length > MAX_JOURNAL) journalBuf.shift();
+}
+function journalList() {
+  return [...journalBuf].reverse();
+}
+
 // server/live-stream.js
 var LiveFeed = class {
   constructor({ ha: ha2 }) {
@@ -3403,9 +3414,14 @@ data: ${data2}
       states = await this.ha.states();
     } catch (error) {
       this.lastError = error.message;
+      if (!this.journaled) {
+        this.journaled = true;
+        journal("\u041D\u0435\u0442 \u0441\u0432\u044F\u0437\u0438 \u0441 Home Assistant: " + error.message, "warn");
+      }
       this.broadcast("error", JSON.stringify({ message: error.message }));
       return;
     }
+    this.journaled = false;
     this.lastError = null;
     this.lastLatencyMs = Date.now() - started;
     const next = new Map(states.map((e) => [e.entity_id, JSON.stringify(e)]));
@@ -4618,11 +4634,14 @@ var yardOnvifEnsure = (prefs) => {
     pass,
     onMotion: () => {
       yardMotion.externalMotion();
-      yardClips.record().catch(() => {
-      });
+      yardClips.record().catch((error) => journal("\u041A\u043B\u0438\u043F \u0434\u0432\u043E\u0440\u0430 \u043D\u0435 \u0437\u0430\u043F\u0438\u0441\u0430\u043D: " + (error?.message || error), "warn"));
     },
-    onError: (error) => console.log("Yard ONVIF fallback to jpeg diff:", error?.message || error)
+    onError: (error) => {
+      console.log("Yard ONVIF fallback to jpeg diff:", error?.message || error);
+      journal("ONVIF-\u0441\u043E\u0431\u044B\u0442\u0438\u044F \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B: " + (error?.message || error) + " \u2014 \u0440\u0430\u0431\u043E\u0442\u0430\u0435\u0442 \u0440\u0435\u0437\u0435\u0440\u0432 \u043F\u043E \u043A\u0430\u0434\u0440\u0430\u043C", "warn");
+    }
   });
+  journal("ONVIF-\u0434\u0435\u0442\u0435\u043A\u0442\u043E\u0440 \u0434\u0432\u043E\u0440\u0430 \u0437\u0430\u043F\u0443\u0449\u0435\u043D: " + host + (port2 ? ":" + port2 : ""));
   return true;
 };
 var proofs = /* @__PURE__ */ new Map();
@@ -4797,6 +4816,7 @@ var server = http.createServer(async (req, res) => {
         }
         db.prepare("UPDATE profiles SET preferences=? WHERE id=?").run(JSON.stringify(next), id);
         yardOnvifEnsure(next);
+        journal("\u041F\u0440\u043E\u0444\u0438\u043B\u044C \u0441\u043E\u0445\u0440\u0430\u043D\u0451\u043D (" + (rejected.length ? "\u043E\u0442\u043A\u043B\u043E\u043D\u0435\u043D\u043E: " + rejected.length : "\u0432\u0441\u0435 \u043F\u0440\u0438\u0432\u044F\u0437\u043A\u0438 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u044B") + ")");
         energyCache = null;
         energyLastKnown = null;
         return json(res, 200, { saved: true, preferences: clientPreferences(next), rejected, offline });
@@ -4824,8 +4844,7 @@ var server = http.createServer(async (req, res) => {
         const entity = yardCameraEntity(p.preferences);
         if (entity) yardEntityHint = entity;
         const motion = await yardMotion.check(entity);
-        if (motion.motion) yardClips.record().catch(() => {
-        });
+        if (motion.motion) yardClips.record().catch((error) => journal("\u041A\u043B\u0438\u043F \u0434\u0432\u043E\u0440\u0430 \u043D\u0435 \u0437\u0430\u043F\u0438\u0441\u0430\u043D: " + (error?.message || error), "warn"));
         return json(res, 200, { ...motion, checkedAt: Date.now() });
       }
       if (route === "yard-clips" && req.method === "GET") {
@@ -4881,8 +4900,17 @@ var server = http.createServer(async (req, res) => {
           sse: { clients: live.clients.size },
           disk: { sqliteKB, backups: db.prepare("SELECT COUNT(*) c FROM profile_backups").get().c },
           uptime: { seconds: Math.floor((Date.now() - startedAt) / 1e3) },
-          version: PANEL_VERSION
+          version: PANEL_VERSION,
+          journal: journalList()
         });
+      }
+      if (route === "profile-snapshot" && req.method === "POST") {
+        const existing = db.prepare("SELECT COUNT(*) c FROM profile_backups WHERE profile_id=? AND reason LIKE 'manual%'").get(id).c;
+        const reason = existing ? "manual-" + (existing + 1) : "manual";
+        db.prepare("INSERT OR REPLACE INTO profile_backups(profile_id,reason,preferences) VALUES(?,?,?)").run(id, reason, JSON.stringify(p.preferences));
+        const saved = db.prepare("SELECT COUNT(*) c FROM profile_backups").get().c;
+        journal("\u041F\u0440\u043E\u0444\u0438\u043B\u044C: \u0440\u0443\u0447\u043D\u043E\u0439 \u0441\u043D\u0438\u043C\u043E\u043A \u0441\u043E\u0445\u0440\u0430\u043D\u0451\u043D (\u0432\u0441\u0435\u0433\u043E \u0441\u043D\u0438\u043C\u043A\u043E\u0432 " + saved + ")");
+        return json(res, 200, { ok: true, saved });
       }
       if (route === "ha/weather-forecast" && req.method === "GET") {
         const asked = url.searchParams.get("entity") || "", entityId = /^weather\.[a-z0-9_]+$/.test(asked) ? asked : (await ha.states()).find((e) => e.entity_id.startsWith("weather."))?.entity_id || "";
@@ -4916,6 +4944,7 @@ var server = http.createServer(async (req, res) => {
               energyCache = null;
               energyLastKnown = null;
               console.log("Energy: \u043F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u044F \u0422\u041D\u0421 " + autoDate + " = " + readingValue + " \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438 \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u044B \u0432 \u0438\u0441\u0442\u043E\u0440\u0438\u044E (" + nextReadings.length + " \u0437\u0430\u043F\u0438\u0441\u0435\u0439).");
+              journal("\u0421\u0447\u0451\u0442\u0447\u0438\u043A \u0422\u041D\u0421: \u043F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u044F " + autoDate + " = " + readingValue + " \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u044B \u0432 \u0438\u0441\u0442\u043E\u0440\u0438\u044E \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438");
             }
           } catch (error) {
             console.log("Energy: \u0430\u0432\u0442\u043E\u043F\u043E\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u0435 \u043E\u0442\u043A\u043B\u043E\u043D\u0435\u043D\u043E: " + (error?.message || error));
@@ -5090,6 +5119,7 @@ var server = http.createServer(async (req, res) => {
 server.requestTimeout = 25e3;
 server.listen(port, preview || addon ? "0.0.0.0" : "127.0.0.1", () => {
   console.log(`Panel ready: port ${port} \xB7 ${addon ? "Home Assistant add-on" : preview ? "private preview" : "local only"} \xB7 HA ${ha.enabled ? "configured" : "not configured"}`);
+  journal("\u041F\u0430\u043D\u0435\u043B\u044C \u0437\u0430\u043F\u0443\u0449\u0435\u043D\u0430: \u043F\u043E\u0440\u0442 " + port + (addon ? " \xB7 add-on" : preview ? " \xB7 \u043F\u0440\u0435\u0432\u044C\u044E" : " \xB7 \u043B\u043E\u043A\u0430\u043B\u044C\u043D\u043E") + (ha.enabled ? " \xB7 Home Assistant \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D" : " \xB7 \u0434\u0435\u043C\u043E\u0440\u0435\u0436\u0438\u043C"));
   if (process.platform === "win32" && process.argv.includes("--open")) spawn("rundll32.exe", ["url.dll,FileProtocolHandler", `http://127.0.0.1:${port}`], { stdio: "ignore" }).on("error", () => {
   });
 });

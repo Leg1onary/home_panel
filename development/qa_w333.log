@@ -1,0 +1,33 @@
+{
+ "chip": "ПогодаОблачно · 7,3 °C · 60 %",
+ "hint": "Завтра: Дождь",
+ "arc": "Светового дня пройдено 50 % от рассвета до заката",
+ "dash": "stroke-dasharray:157.07963267948966;stroke-dashoffset:78.54",
+ "arcBox": {
+  "x": 122,
+  "y": 133.984375,
+  "width": 170,
+  "height": 90.65625,
+  "top": 133.984375,
+  "right": 292,
+  "bottom": 224.640625,
+  "left": 122
+ }
+}
+{
+ "hero": "<div id=\"hero-clock\">14:37</div><span id=\"hero-date\">среда, 11 ноября</span><span id=\"hero-greeting\" class=\"hero-greeting\" hidden=\"\"></span><div class=\"day-arc-wrap\" role=\"img\" aria-label=\"Светового дня пройдено 50 % от рассвета до заката\"><svg class=\"day-arc\" viewBox=\"0 0 120 64\" aria-hidden=\"true\" focusable=\"false\">\n <defs><linearGradient id=\"day-arc-gradient\" x1=\"0\" y1=\"1\" x2=\"1\" y2=\"0\">\n <stop",
+ "ids": [
+  "weather.home",
+  "sun.sun",
+  "sensor.temp_living",
+  "sensor.temp_office",
+  "binary_sensor.door",
+  "binary_sensor.terrace",
+  "sensor.well",
+  "sensor.attic"
+ ],
+ "fcStatus": 200,
+ "fc": "{\"entityId\":\"weather.home\",\"forecast\":[{\"datetime\":\"2026-11-11T13:37:16.655Z\",\"condition\":\"cloudy\",\"temperature\":7},{\"datetime\":\"2026-11-12T13:37:16.655Z\",\"condition\":\"rainy\",\"temperature\":6}],\"cached"
+}
+app.js served: {"len":390758,"arc":true,"hint":true}
+ERRORS: []
