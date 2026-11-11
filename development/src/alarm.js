@@ -22,8 +22,10 @@ export function alarmMarkup(){
 }
 export function paintAlarm(){
  const node=$('#home-alarm');if(!node)return;
- const m=alarmMarkup();
- if(m){updateRegion('#home-alarm',m);node.hidden=false}else node.hidden=true;
+ // Охрана убрана с главной (решение юзера 3.3.6): сущность alarm_control_panel в HA есть,
+ // но сценарии не используются. Модуль сохранён — вернём, когда появятся охранные сценарии
+ // на дверях/камере. Дайджест по-прежнему честно покажет «Охрана активна», если сущность взведена.
+ node.hidden=true;
 }
 async function alarmCommand(service,code){
  const draft=$('#alarm-pin')?.value||'';
