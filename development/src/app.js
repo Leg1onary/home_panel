@@ -174,9 +174,16 @@ function roomCard(r){
  const channels=channelsFor(r),on=channels.filter(c=>c.on).length;
  const unknown=isLive()&&channels.some(c=>!canControl(c.id));
  const subtitle=noConnection()&&channels.length?'Нет связи':unknown?'Есть непроверенные линии':!channels.length?(r.channels.length?'Свет планируется':'Нет линий света'):on?'Свет включён':'Свет выключен';
- return `<button class="room-card ${on&&!state.demoOffline?'lit':''}" data-room="${r.id}">
+ // Мини-лампочки: точка на каждую линию, зажжённые — тёплым золотом (видно, где именно горит).
+ const lamps=channels.length?`<div class="room-lamps" aria-hidden="true">${channels.map(c=>`<i class="${c.on&&!state.demoOffline?'is-on':''}"></i>`).join('')}</div>`:'';
+ // Температура комнаты (живой сенсор) — мелко у нижнего края карточки.
+ const tdev=isLive()?state.devices.find(d=>d.type==='temperature'&&d.room===r.id&&d.status==='installed'):null;
+ const tv=tdev&&isLive()?Number(observed(tdev.id)?.state):NaN;
+ const temp=Number.isFinite(tv)?`<span class="room-temp">${reading(tv)}°</span>`:'';
+ const none=!channels.length;
+ return `<button class="room-card ${on&&!state.demoOffline?'lit':''} ${none?'is-empty':''}" data-room="${r.id}">
  <div class="card-top">${I(r.icon)}${channels.length?`<span class="room-status ${noConnection()||unknown?'offline':''}">${noConnection()?I('wifi-off'):unknown?'— / '+channels.length:`${on} / ${channels.length}`}</span>`:''}</div>
- <h3>${r.short}</h3><p>${subtitle}</p></button>`;
+ <h3>${r.short}${temp}</h3><p>${subtitle}</p>${lamps}</button>`;
 }
 function quietDoor(){
  const label=binaryLabel('door','Дверь открыта','Дверь закрыта');

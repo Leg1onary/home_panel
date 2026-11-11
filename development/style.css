@@ -54,6 +54,16 @@ main{min-height:650px}
 .room-card{min-height:125px;padding:var(--space-5);border-radius:22px;background:var(--surface);text-align:left;position:relative;transition:background .25s,transform .25s}
 .room-card:hover{transform:translateY(-2px);background:var(--surface-2)}
 .room-card.lit{background:var(--lit-bg)}
+/* Живые карточки комнат: тёплое свечение включённой комнаты, лампочки линий,
+   температура и приглушённые пустые помещения. */
+.room-card.lit{border:1px solid color-mix(in srgb,var(--lit) 45%,transparent);box-shadow:0 0 24px color-mix(in srgb,var(--lit) 22%,transparent),inset 0 1px 0 color-mix(in srgb,var(--lit) 18%,transparent);transition:box-shadow .8s ease,border-color .8s ease}
+.room-card{transition:box-shadow .8s ease,border-color .8s ease,transform 180ms ease,background .3s ease}
+.room-lamps{display:flex;gap:5px;margin-top:var(--space-2);min-height:6px}
+.room-lamps i{width:6px;height:6px;border-radius:50%;background:var(--border);opacity:.5;transition:background .6s ease,opacity .6s ease,box-shadow .6s ease}
+.room-lamps i.is-on{background:var(--lit);opacity:1;box-shadow:0 0 8px color-mix(in srgb,var(--lit) 70%,transparent)}
+.room-temp{margin-left:var(--space-2);font-size:var(--text-xs);font-weight:500;color:var(--muted)}
+.room-card.is-empty{opacity:.45;min-height:96px}
+.room-card.is-empty h3{font-size:var(--text-xs)}
 .room-card .card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-3)}
 .room-card .card-top>svg{color:var(--muted)}
 .room-card.lit .card-top>svg{color:var(--lit)}
