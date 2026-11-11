@@ -4823,7 +4823,10 @@ var server = http.createServer(async (req, res) => {
         yardOnvifEnsure(p.preferences);
         const entity = yardCameraEntity(p.preferences);
         if (entity) yardEntityHint = entity;
-        return json(res, 200, { ...await yardMotion.check(entity), checkedAt: Date.now() });
+        const motion = await yardMotion.check(entity);
+        if (motion.motion) yardClips.record().catch(() => {
+        });
+        return json(res, 200, { ...motion, checkedAt: Date.now() });
       }
       if (route === "yard-clips" && req.method === "GET") {
         const limit = Math.min(30, Math.max(1, Number(url.searchParams.get("limit")) || 20));

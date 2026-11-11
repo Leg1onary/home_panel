@@ -236,7 +236,10 @@ const server=http.createServer(async(req,res)=>{
    if(route==='ha/yard-motion'&&req.method==='GET'){
     yardOnvifEnsure(p.preferences);
     const entity=yardCameraEntity(p.preferences);if(entity)yardEntityHint=entity;
-    return json(res,200,{...(await yardMotion.check(entity)),checkedAt:Date.now()});
+    const motion=await yardMotion.check(entity);
+    // Движение увидел диффер (ONVIF молчит) — клип всё равно пишется; дедуп 15с в record().
+    if(motion.motion)yardClips.record().catch(()=>{});
+    return json(res,200,{...motion,checkedAt:Date.now()});
    }
    // Клипы двора: список без байтов и кадр по индексу (0..3).
    if(route==='yard-clips'&&req.method==='GET'){
