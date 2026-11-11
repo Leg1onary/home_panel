@@ -347,7 +347,7 @@ code{font-family:ui-monospace,monospace;font-size:.92em;background:var(--surface
 [data-kiosk=true] .shell{max-width:1920px;padding-inline:var(--space-6)}
 [data-kiosk=true] header{height:76px}
 [data-mode=live] #connection-badge>span{background:var(--accent)}
-@media(max-width:600px){#fullscreen{display:none}.header-right{gap:var(--space-2)}}
+@media(max-width:600px){.header-right{gap:var(--space-2)}}
 @media(max-width:480px){[data-mode=live] .header-right>.demo-badge:after{content:'HA'}}
 .sheet .eyebrow{padding-right:var(--space-8)}
 @media(max-width:480px){.header-right .icon-button{width:44px;height:44px}}
@@ -1016,10 +1016,10 @@ html[data-view=home] .shell>footer[data-storage=saved]{display:none}
 .visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .header-clock{display:none;text-align:center;min-width:0}
 html[data-view=home] .shell>header{display:grid;grid-template-columns:minmax(0,1fr) 180px minmax(0,1fr);gap:var(--space-4);height:110px;align-items:center}
-html[data-view=home] .header-clock{display:block}
+html[data-view=home] .header-clock{display:block;grid-column:1}
 .header-clock>div{font-size:var(--value);font-weight:500;letter-spacing:-.065em;line-height:1.05;font-variant-numeric:tabular-nums}
 .header-clock>span{display:block;font-size:var(--text-xs);color:var(--muted);margin-top:var(--space-2);line-height:1.4}
-.header-right{min-width:0;justify-self:end;max-width:100%}
+.header-right{min-width:0;justify-self:end;grid-column:3;max-width:100%}
 .header-right>.connection-status{min-height:44px;min-width:44px;flex-shrink:1;text-align:left;line-height:1.4;border:0;background:none;padding:var(--space-1) 0;white-space:normal}
 .connection-status>span{flex-shrink:0}
 .connection-status[data-warning=true]{color:var(--warning)}
@@ -1039,7 +1039,7 @@ html[data-view=home] .header-clock{display:block}
  html[data-view=home] .shell>header{grid-template-columns:minmax(0,1fr) 140px;grid-template-rows:28px minmax(72px,auto);height:auto;min-height:124px;padding:var(--space-2) 0;gap:var(--space-1) var(--space-2)}
  html[data-view=home] .place-label{display:flex;grid-column:1;grid-row:1;font-size:var(--text-xs)}
  html[data-view=home] .header-clock{grid-column:1;grid-row:2;text-align:left}
- html[data-view=home] .header-right{display:grid;grid-column:2;grid-row:1 / span 2;grid-template-columns:repeat(3,44px);grid-template-rows:44px minmax(44px,auto);align-self:start;gap:var(--space-2) var(--space-1);width:140px}
+ html[data-view=home] .header-right{display:grid;grid-column:2;grid-row:1 / span 2;grid-template-columns:repeat(2,44px);grid-template-rows:44px minmax(44px,auto);align-self:start;gap:var(--space-2) var(--space-1);width:140px}
  html[data-view=home] .header-right>.connection-status{grid-column:1 / -1;grid-row:2;justify-content:flex-end;text-align:right;max-width:none;margin:0}
  html[data-view=home] .header-right>.icon-button{grid-row:1}
 }
@@ -1154,12 +1154,14 @@ html[data-view=home] .header-clock{display:block}
 .home-fact.needs-attention{border-color:var(--warning)}.home-fact.needs-attention strong{color:var(--warning)}
 .home-fact.is-faint{opacity:.55}.home-fact.is-faint strong{color:var(--muted);font-weight:400}
 .weather-chip{cursor:default}
+.weather-chip .weather-hum{font-size:.72em;font-weight:500;color:var(--muted);letter-spacing:0}
 .weather-chip>span svg{color:var(--accent-teal)}
 /* Left rail: glass slab + accent pill for the active item. */
 .app-rail{background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.02)),var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--panel-shadow),inset 0 1px 0 rgba(255,255,255,.08);backdrop-filter:blur(18px) saturate(1.25);-webkit-backdrop-filter:blur(18px) saturate(1.25)}
 @supports not (backdrop-filter:blur(1px)){.app-rail{background:var(--surface-solid)}}
-.app-rail nav button.active{background:linear-gradient(135deg,var(--accent),var(--accent-teal));color:#14101e;border-radius:999px;box-shadow:0 10px 26px rgba(240,178,92,.28)}
-.app-rail nav button,.rail-settings{border-radius:999px}
+.app-rail nav button.active{background:linear-gradient(135deg,var(--accent),var(--accent-teal));color:#14101e;border-radius:var(--radius-md);box-shadow:0 10px 26px rgba(240,178,92,.28)}
+.app-rail nav button,.rail-settings{border-radius:var(--radius-md)}
+.app-rail nav button span{white-space:nowrap;letter-spacing:-.01em;font-size:.72rem}
 /* Quick actions: round glowing tiles (Станция keeps its media row). */
 .light-shortcut,.camera-shortcut{flex-direction:column;align-items:center;justify-content:center;gap:var(--space-2);text-align:center;min-height:118px;border-radius:var(--radius-lg);transition:box-shadow .25s ease,background .25s ease}
 .light-shortcut .quick-device-icon,.camera-shortcut .quick-device-icon{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 30% 25%,rgba(240,178,92,.38),rgba(240,178,92,.06));color:var(--accent);transition:box-shadow .25s ease,transform .25s ease}
@@ -1446,14 +1448,17 @@ input[type=range]:disabled::-moz-range-thumb{background:var(--faint);border-colo
 .home-rail .digest-card{width:min(300px,44vw);margin-top:0}
 .home-rail .profile-invite{width:min(300px,44vw);margin-top:0;padding:var(--space-3)}
 .rail-allrooms{min-height:36px;font-size:var(--text-xs);color:var(--muted)}
-.home-quick-rail{position:absolute;left:var(--space-5);bottom:calc(var(--space-5) + 100px);z-index:4}
-.home-quick-rail .quick-device{width:52px;min-height:52px;padding:0;justify-content:center;border-radius:var(--radius-md)}
+.home-quick-rail{position:absolute;left:var(--space-5);bottom:calc(var(--space-5) + 112px);z-index:4}
+.home-quick-rail .quick-devices{align-items:flex-end}
+.home-quick-rail .quick-device{width:52px;min-height:52px;padding:0;justify-content:center;border-radius:var(--radius-md);transition:padding .2s ease,margin .2s ease,background .2s ease}
+.home-quick-rail .quick-device:hover{padding:0 3px;margin:0 -3px}
 .home-quick-rail .quick-device>span:not(.quick-device-icon),.home-quick-rail .station-skip{display:none}
 /* «Станция» остаётся видимой плиткой в компакт-рельсе: иначе некуда тапнуть, чтобы открыть плеер. */
-.home-quick-rail .media-shortcut{display:flex;align-items:center;gap:var(--space-1)}
-.home-quick-rail .media-details{display:flex;flex-direction:column;align-items:center;width:52px;min-height:52px;padding:0;text-align:center;justify-content:center;border-radius:9999px}
+.home-quick-rail .media-shortcut{display:flex;align-items:flex-end;gap:var(--space-1)}
+.home-quick-rail .media-details{position:relative;display:flex;flex-direction:column;align-items:center;width:52px;height:52px;min-height:52px;padding:0;text-align:center;justify-content:center;border-radius:9999px}
 .home-quick-rail .media-details .media-title-line{display:none}
-.home-quick-rail .media-details::after{content:'Станция';font-size:.62rem;color:var(--muted)}
+.home-quick-rail .media-details small{display:none}
+.home-quick-rail .media-details::after{content:'Станция';position:absolute;top:calc(100% + 2px);left:0;right:0;text-align:center;white-space:nowrap;font-size:.62rem;color:var(--muted)}
 .home-quick-rail .quick-device .quick-device-icon{margin:0}
 /* Карточка комнаты — центр рабочей области: свободна от quick-рельсы (слева-снизу), rail (справа-сверху) и hero-facts (низ). */
 .home-room-card{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:6;width:min(330px,72vw);pointer-events:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:0 18px 48px rgba(0,0,0,.35);padding:var(--space-4);animation:room-card-in 180ms ease}

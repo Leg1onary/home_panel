@@ -25,7 +25,7 @@ export function weatherMarkup(entityStates){
  if(!label||!Number.isFinite(t))return '';
  const icon=WEATHER_ICON[e.state]||'cloudy';
  const temp=t.toFixed(1).replace('.',','),aria=`Погода: ${label}, температура ${temp} °C${Number.isFinite(h)?', влажность '+Math.round(h)+' %':''}`;
- return `<button class="home-fact weather-chip" data-weather="${WEATHER_DATA[e.state]||'cloudy'}" data-action="weather-forecast" role="img" aria-label="${esc(aria)}. Открыть прогноз" title="Открыть прогноз погоды"><span>${I(icon)}Погода</span><strong>${esc(label)} · ${temp} °C${Number.isFinite(h)?' · '+Math.round(h)+' %':''}</strong></button>`;
+ return `<button class="home-fact weather-chip" data-weather="${WEATHER_DATA[e.state]||'cloudy'}" data-action="weather-forecast" role="img" aria-label="${esc(aria)}. Открыть прогноз" title="Открыть прогноз погоды"><span>${I(icon)}Погода</span><strong>${esc(label)} · ${temp} °C${Number.isFinite(h)?' · <small class="weather-hum">влажн.</small> '+Math.round(h)+' %':''}</strong></button>`;
 }
 const paintIcons=paintAll;
 // Контекстный чип прогноза (3.3.2): чистая разметка chip + мелкая строка-уточнение

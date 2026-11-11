@@ -1762,11 +1762,6 @@ $('#theme').onclick=()=>{
  $('#theme').innerHTML=I(state.theme==='dark'?'sun':'moon');icons();persist();
  if(state.view==='statistics')paintStatistics();
 };
-$('#fullscreen').onclick=fullscreen;
-document.addEventListener('fullscreenchange',()=>{
- $('#fullscreen').innerHTML=I(document.fullscreenElement?'minimize':'maximize');
- $('#fullscreen').setAttribute('aria-label',document.fullscreenElement?'Выйти из полного экрана':'Полный экран');icons();
-});
 $('.close').onclick=closeModal;
 // Тап-устойчивость: на некоторых планшетах click после pointer-событий не доходит.
 document.addEventListener('pointerup',e=>{if(e.target?.closest?.('.sheet .close'))closeModal()});
