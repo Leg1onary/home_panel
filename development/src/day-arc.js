@@ -1,8 +1,6 @@
-// 3.3.2: дуга светового дня над hero-часами. Чистая геометрия — экспортируется
-// для тестов; разметка собирается здесь же (svg с двумя путями: track + fill).
-// Заполнение через stroke-dasharray/dashoffset: трек — полукруг радиуса r
-// (длина πr), заполнение «доезжает» слева направо по проценту дня.
-const R=50,CX=60,CY=56;
+// 3.4.3: пологая «арка восхода» — широкий полукруг за цифрами часов
+// (viewBox 220×106, центр (110,100), радиус 90: дуга от (20,100) до (200,100)).
+const R=90,CX=110,CY=100;
 export function dayArcPath(r=R,cx=CX,cy=CY){
  return `M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}`;
 }
@@ -15,10 +13,10 @@ export function arcParams(p,r=R,cx=CX,cy=CY){
   dasharray:String(length),dashoffset:String(+(length*(1-share)).toFixed(2))};
 }
 // Разметка дуги: aria — «Светового дня пройдено N %». Вставляется внутрь
-// .hero-clock (позиционируется CSS поверх/над цифрами, pointer-events нет).
+// .hero-clock (CSS: за цифрами, по центру, pointer-events нет).
 export function dayArcMarkup(p){
  const a=arcParams(p);
- return `<svg class="day-arc" viewBox="0 0 120 64" aria-hidden="true" focusable="false">
+ return `<svg class="day-arc" viewBox="0 0 220 106" aria-hidden="true" focusable="false">
  <defs><linearGradient id="day-arc-gradient" x1="0" y1="1" x2="1" y2="0">
  <stop offset="0" style="stop-color:var(--accent-teal)"/><stop offset="1" style="stop-color:var(--accent)"/>
  </linearGradient></defs>

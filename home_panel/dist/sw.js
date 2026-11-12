@@ -1,6 +1,6 @@
 // Offline shell only: static UI assets. /api/panel/* is never cached — the panel
 // honestly shows "Нет связи" instead of stale snapshots.
-const VERSION='3.4.2';
+const VERSION='3.4.3';
 // Deterministic small hash so the cache name changes whenever the version changes.
 const CACHE='home-panel-v'+[...VERSION].reduce((h,c)=>(h*31+c.charCodeAt(0))>>>0,7).toString(36);
 const PRECACHE=['index.html','style.css','app.js'];

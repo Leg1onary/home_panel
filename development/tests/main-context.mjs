@@ -37,14 +37,14 @@ assert.equal(tempTint(22),null,'граница 22 → нейтрально');
 assert.equal(tempTint(17),null,'граница 17 → нейтрально');
 assert.equal(tempTint(null),null,'null → нейтрально');
 assert.equal(tempTint(NaN),null,'NaN → нейтрально');
-// ─── дуга светового дня ───
+// ─── дуга светового дня (3.4.3: широкая арка восхода, r=90) ───
 const full=arcParams(100),half=arcParams(50),zero=arcParams(0),over=arcParams(150),junk=arcParams('бред');
-assert.ok(full.path.startsWith('M 10 56'),'полукруг: старт в (10,56)');
+assert.ok(full.path.startsWith('M 20 100'),'арка: старт в (20,100)');
 assert.equal(full.dashoffset,'0','100 % → полное заполнение');
 assert.equal(half.dashoffset,String(Math.round(full.length/2*100)/100),'50 % → половина длины');
-assert.equal(zero.dashoffset,'157.08','0 % → пустая дуга');
+assert.equal(zero.dashoffset,'282.74','0 % → пустая дуга');
 assert.deepEqual(arcParams(150),full,'>100 % зажимается');
-assert.equal(arcParams(-5).dashoffset,'157.08','<0 % зажимается');
-assert.equal(junk.dashoffset,'157.08','мусор → 0 %');
-assert.ok(dayArcPath().includes('A 50 50'),'радиус дуги 50');
+assert.equal(arcParams(-5).dashoffset,'282.74','<0 % зажимается');
+assert.equal(junk.dashoffset,'282.74','мусор → 0 %');
+assert.ok(dayArcPath().includes('A 90 90'),'радиус арки 90');
 console.log('main-context ok');
