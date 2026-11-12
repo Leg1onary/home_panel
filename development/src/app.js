@@ -28,12 +28,12 @@ import {duoUI,assistantView} from './assistant-ui.js';
 import {scenarioChipsRow,handleScenarioClick,bindScenarioPainter,bindScenarioHost} from './scenarios-ui.js';
 import {shouldAmbient,AMBIENT_AFTER_IDLE} from './ambient.js';
 import {isNight,isTime,nightLabel,nightDim} from './night.js';
-import {dayArcMarkup,dayProgressParams,rememberSunrise,storedSunrise} from './day-arc.js';
+import {rememberSunrise} from './day-arc.js';
 import {luxValue,autoTheme,AUTO_THEME_UP,AUTO_THEME_DOWN} from './auto-theme.js';
 import {render as preactRender,h as ph} from './preact/kit.js';
 import {EnergyWidget} from './preact/energy-widget.js';
 import {DigestWidget,digestBus} from './preact/digest-widget.js';
-import {WeatherChip,weatherBus} from './preact/weather-widget.js';
+import {WeatherChip,weatherBus,fetchForecast} from './preact/weather-widget.js';
 import {QuickWidget,quickBus} from './preact/quick-widget.js';
 import {StationWidget,stationBus} from './preact/station-widget.js';
 import {FactsWidget,factsBus} from './preact/facts-widget.js';
@@ -44,7 +44,8 @@ import {YARD_REFRESH_MS} from './yard-card.js';
 import {parseBrightness,scheduleWave} from './light-wave.js';
 import {loadShopping,paintShopping,shoppingMutate,shoppingState,shoppingCardMarkup} from './shopping.js';
 import {paintAlarm,alarmMarkup,alarmEntity,alarmAction} from './alarm.js';
-import {forecastSheet,loadForecast} from './weather-sheet.js';
+import {weatherViewArgs,weatherNowMarkup,weatherArcMarkup,weatherDailyMarkup,weatherHourlyMarkup,weatherEntityOf} from './weather-page.js';
+import {parseBlocks,serializeBlocks,digestEssence,energyEssence,stationEssence} from './home-blocks.js';
 
 import {esc,disabled,timeOf,clock,date,scheduleMinute,PANEL_TIMEZONE} from './dom.js';
 const $=s=>document.querySelector(s);
@@ -200,26 +201,56 @@ function heroStatusChip(){
  return `<button class="hero-status-chip ${offline?'is-offline':''}" data-action="house-review" title="${esc(isLive()?[state.liveError||'Home Assistant','Проверить подключение'].join(' · '):'Реальные устройства не подключены')}" aria-label="${esc(label)}: открыть настройки подключения"><span class="hero-dot"></span>${esc(label)}</button>`;
 }
 let lastSunState=null;
-function dayProgress(){
+// 3.4.4: дугу светового дня убрали с главной — она живёт на странице «Погода»
+// (src/weather-page.js). Запоминание восхода остаётся здесь: app.js единственный
+// видит переход below_horizon → above_horizon (в момент refresh).
+function trackSunrise(){
  const e=Object.values(state.entityStates||{}).find(e=>e.entity_id==='sun.sun');
- const dusk=e?.attributes?.next_dusk;
- if(!e||!dusk)return '';
- const now=Date.now();
- // 3.4.2: пока солнце над горизонтом, next_dawn у HA уже указывает на завтрашний
- // рассвет — поэтому днём дугу рисуем только при above_horizon, а начало дня
- // берём из localStorage (восход запоминается при below→above переходе ниже);
- // если записи нет — fallback next_dawn − 24 ч (вчерашний рассвет, точность
- // ±2 мин из-за DST — приемлемо).
- rememberSunrise(lastSunState,e.state,now);lastSunState=e.state;
- if(e.state!=='above_horizon')return '';
- const b=Date.parse(dusk);
- let a=storedSunrise(now);
- if(a===null)a=Date.parse(e.attributes?.next_dawn)-24*3600*1000;
- const p=dayProgressParams(now,a,b);
- if(p===null)return '';
- // 3.3.2: тонкая SVG-дуга над hero-часами (градиент тёмный → золотой Aurora),
- // заполнение = % светового дня. Чистая геометрия — src/day-arc.js (arcParams).
- return `<div class="day-arc-wrap" role="img" aria-label="Светового дня пройдено ${p} % от рассвета до заката">${dayArcMarkup(p)}</div>`;
+ if(!e)return;
+ rememberSunrise(lastSunState,e.state,Date.now());lastSunState=e.state;
+}
+// 3.4.4 (планшет): статус-чип и кнопка сброса ракурса переехали из hero в шапку
+// (слева): на узких экранах hero-top перестал наезжать на часы.
+function headerLeftMarkup(){
+ return `<span id="hero-status">${heroStatusChip()}</span><button id="reset-model" title="Вернуть исходный ракурс" aria-label="Сбросить ракурс">${I('rotate-ccw')}</button>`;
+}
+function paintHeaderLeft(){
+ const node=$('#header-left');if(!node)return;
+ const markup=headerLeftMarkup();
+ if(node.dataset.rendered===markup)return;
+ node.innerHTML=markup;node.dataset.rendered=markup;icons();
+}
+// Сворачиваемые блоки правой колонки: заголовок-строка всегда виден, тело
+// (Preact-монтаж #home-digest/#home-energy/#home-station) прячется классом collapsed.
+const BLOCK_IDS=['digest','energy','station'];
+function blockStates(){
+ try{return parseBlocks(localStorage.getItem('hp-blocks'))}catch{return {...parseBlocks(null)}}
+}
+function applyBlocks(){
+ const s=blockStates();
+ for(const id of BLOCK_IDS){
+  const b=$('#home-block-'+id);if(!b)continue;
+  b.classList.toggle('collapsed',!s[id]);
+  b.querySelector('.home-block-head')?.setAttribute('aria-expanded',String(!!s[id]));
+ }
+}
+function toggleBlock(id){
+ if(!BLOCK_IDS.includes(id))return;
+ const s=blockStates();s[id]=!s[id];
+ try{localStorage.setItem('hp-blocks',serializeBlocks(s))}catch{/* приватный режим — забыли, не страшно */}
+ applyBlocks();
+}
+// «Суть» строк-заголовков: обновляется в refresh(), данные уже посчитаны.
+function updateBlockEssences(){
+ const digestNode=$('#home-digest-essence');
+ if(digestNode){
+  const items=state.liveOnline?digestItems(digestArgs()):[];
+  digestNode.textContent=digestEssence(items.length);
+ }
+ const energyNode=$('#home-energy-essence');
+ if(energyNode)energyNode.textContent=isLive()&&meterKnownFromWidget?energyEssence(state.energy_readings,state.energy_tariff):'Показаний пока нет';
+ const stationNode=$('#home-station-essence');
+ if(stationNode)stationNode.textContent=stationEssence(stationArgs());
 }
 // Чип двора: только реальное движение по панельному детектору (ha/yard-motion).
 // Детектор панельный — сравнение кадров камеры на сервере, биндинг yard-motion не нужен.
@@ -368,18 +399,17 @@ async function loadYardFrame(force=false){
 
 function home(){
  const hero=`<div class="hero-overlay">
- <div class="hero-top"><div class="hero-clock" aria-label="Местное время дома"><div id="hero-clock">${clock()}</div><span id="hero-date">${date()}</span><span id="hero-greeting" class="hero-greeting" hidden></span>${dayProgress()}</div>
- <div class="hero-top-right"><span id="hero-status">${heroStatusChip()}</span><button id="reset-model" title="Вернуть исходный ракурс" aria-label="Сбросить ракурс">${I('rotate-ccw')}</button></div></div>
+ <div class="hero-top"><div class="hero-clock" aria-label="Местное время дома"><div id="hero-clock">${clock()}</div><span id="hero-date">${date()}</span><span id="hero-greeting" class="hero-greeting" hidden></span></div></div>
  <div class="hero-facts" id="home-status">${WEATHER_SLOT}${FACTS_SLOT}</div></div>`;
  return `<div class="view dashboard-view view-enter">
  <h1 class="visually-hidden">Мой дом</h1>
  <div class="home-stage-wrap">${sceneStage(hero)}
  <div id="home-room-card" class="home-room-card" hidden></div>
  <aside class="home-rail" aria-label="Сводка дома">
- <div id="home-digest" hidden></div>
- <div id="home-energy" hidden></div>
+ <div class="home-block" id="home-block-digest"><button class="home-block-head" data-block-toggle="digest" aria-expanded="true" aria-label="Свернуть дайджест"><span>Дайджест</span><span class="home-block-essence" id="home-digest-essence">…</span>${I('chevron-down')}</button><div id="home-digest" hidden></div></div>
+ <div class="home-block" id="home-block-energy"><button class="home-block-head" data-block-toggle="energy" aria-expanded="false" aria-label="Развернуть электроэнергию"><span>Электроэнергия</span><span class="home-block-essence" id="home-energy-essence">…</span>${I('chevron-down')}</button><div id="home-energy" hidden></div></div>
  <div id="home-alarm" hidden></div>
- <div id="home-station" hidden></div>
+ <div class="home-block" id="home-block-station"><button class="home-block-head" data-block-toggle="station" aria-expanded="false" aria-label="Развернуть станцию"><span>Станция</span><span class="home-block-essence" id="home-station-essence">…</span>${I('chevron-down')}</button><div id="home-station" hidden></div></div>
  <div id="home-light-overview">${lightOverviewBadge()}</div>
  <button class="text-button rail-allrooms" data-action="allrooms">Все комнаты ${I('arrow-up-right')}</button>
  ${!state.preview&&!state.houseProfileConfirmed&&state.devices.some(d=>houseBindings[d.id]===state.bindings[d.id]?.entityId)?'<div class="profile-invite"><div><strong>Профиль ждёт проверки</strong><p>Подтверди привязки перед управлением домом.</p></div><button class="secondary" data-action="house-review">Проверить профиль</button></div>':''}
@@ -520,19 +550,8 @@ function digestArgs(){
 }
 const digestSummary=()=>{const items=digestItems(digestArgs());return items.length?items.slice(0,2).map(i=>i.text).join(' · '):''};
 const dayPhase=hour=>hour>=6&&hour<11?'morning':hour>=11&&hour<17?'day':hour>=17&&hour<22?'evening':'night';
- // 3.3.2: дуга светового дня обновляется на лету (home() рисует её один раз,
- // live-состояния прилетают позже) — создаём/заменяем узел по проценту.
- function paintDayArc(){
-  const node=document.querySelector('.day-arc-wrap');
-  const next=dayProgress();
-  if(!next){node?.remove();return}
-  const label=next.match(/aria-label="([^"]+)"/)?.[1];
-  if(node){if(label&&node.getAttribute('aria-label')!==label)node.outerHTML=next;return}
-  document.querySelector('.hero-clock')?.insertAdjacentHTML('beforeend',next);
- }
+ // 3.4.4: дуга переехала на страницу «Погода» — здесь только приветствие/дата.
 function updateHeroTime(){
- if(state.view!=='home')return;
- paintDayArc();
  const hour=+new Intl.DateTimeFormat('en-GB',{hour:'numeric',hourCycle:'h23',timeZone:PANEL_TIMEZONE}).format(Date.now());
  const greeting=$('#hero-greeting'),dateNode=$('#hero-date');
  if(!greeting||!dateNode)return;
@@ -567,7 +586,7 @@ function stationSkipButtons(){
 function sceneStage(hero=''){
  return `<section class="model-stage spatial-stage${hero?' hero-stage':''}"><canvas id="canvas" aria-label="Интерактивная объёмная модель дома"></canvas>
  <div id="model-loading" class="model-loading">${I('loader-circle')}Загружаем план дома</div>
- ${hero?hero:`<div class="model-top"><span id="model-name">${state.view==='room'?esc(getRoom(state.selected).short):'Первый этаж'}</span><button id="reset-model" title="Вернуть исходный ракурс" aria-label="Сбросить ракурс">${I('rotate-ccw')}</button></div>`}
+ ${hero?hero:`<div class="model-top"><span id="model-name">${state.view==='room'?esc(getRoom(state.selected).short):'Первый этаж'}</span></div>`}
  </section>`;
 }
 function phaseLine(id){
@@ -629,6 +648,39 @@ function lights(){
  return `<div class="view"><div class="view-title"><div><div class="eyebrow">Управление</div><h1>Свет в доме</h1><p>Выбери комнату. Все линии доступны независимо.</p></div>
  <span class="demo-badge">${state.demoOffline?'Нет связи · демо':lightCountLabel()}</span></div>
  <div class="room-list">${rooms.map(roomCard).join('')}</div><div class="wide-hint"><span>Инженерное оборудование не входит в мастер-свет.</span><button data-action="catalog">Каталог устройств ${I('arrow-right')}</button></div></div>`;
+}
+// 3.4.4: страница «Погода». Чистая разметка — src/weather-page.js; здесь только
+// сборка аргументов, кеш прогноза (fetchForecast, 10 мин) и живое обновление арки.
+let weatherForecast=[];
+function weatherPage(){
+ trackSunrise();
+ const args=weatherViewArgs(state.entityStates,weatherForecast);
+ return `<div class="view weather-view"><div class="view-title"><div><div class="eyebrow">Среда</div><h1>Погода</h1><p>Сейчас, световой день и прогноз.</p></div></div>
+ <section class="weather-now-card">${weatherNowMarkup(args)}</section>
+ <section class="weather-arc-card"><div id="weather-arc">${args?.sun?weatherArcMarkup(args.sun):''}</div></section>
+ <section class="weather-forecast-card"><h2>Прогноз на дни</h2><div id="weather-daily">${args?weatherDailyMarkup(args.daily):'<p class="description forecast-error">Прогноз недоступен</p>'}</div></section>
+ ${args?.hourly?.length?`<section class="weather-forecast-card"><h2>По часам</h2>${weatherHourlyMarkup(args.hourly)}</section>`:''}
+ </div>`;
+}
+function paintWeatherArc(){
+ const node=$('#weather-arc');if(!node)return;
+ const args=weatherViewArgs(state.entityStates,weatherForecast);
+ const markup=args?.sun?weatherArcMarkup(args.sun):node.innerHTML;
+ if(markup&&node.dataset.rendered!==markup){node.innerHTML=markup;node.dataset.rendered=markup;icons()}
+}
+async function loadWeatherForecast(){
+ const e=weatherEntityOf(state.entityStates||{});if(!e)return;
+ const forecast=await fetchForecast(e.entity_id)||[];
+ if(state.view!=='weather'||!forecast.length)return;
+ weatherForecast=forecast;
+ const args=weatherViewArgs(state.entityStates,weatherForecast);
+ if(!args)return;
+ updateRegion('#weather-daily',weatherDailyMarkup(args.daily));icons();
+ const tape=document.querySelector('.weather-view .weather-hourly-tape');
+ if(!tape&&args.hourly?.length){
+  const last=$('.weather-view')?.lastElementChild;
+  last?.insertAdjacentHTML('afterend',`<section class="weather-forecast-card"><h2>По часам</h2>${weatherHourlyMarkup(args.hourly)}</section>`);icons();
+ }
 }
 function watch(){
  const motion=state.devices.find(d=>d.id==='terrace-motion'&&d.status==='installed');
@@ -772,9 +824,12 @@ async function cameraFrame(id,button){
 }
 function render(animate=true){
  const revision=++viewRevision;modelAPI?.disposeModel();if(state.view!=='home')activeRoomCard=null;
- $('#main').innerHTML=state.view==='home'?home():state.view==='room'?roomPage():state.view==='model'?model():state.view==='rooms'?lights():state.view==='engineering'?engineering():state.view==='statistics'?statisticsView():watch();
+ $('#main').innerHTML=state.view==='home'?home():state.view==='room'?roomPage():state.view==='model'?model():state.view==='rooms'?lights():state.view==='engineering'?engineering():state.view==='statistics'?statisticsView():state.view==='weather'?weatherPage():watch();
  document.documentElement.dataset.view=state.view;
  if(!animate&&$('#main .view'))$('#main .view').style.animation='none';
+ paintHeaderLeft();
+ if(state.view==='home')applyBlocks();
+ if(state.view==='weather')loadWeatherForecast();
  document.querySelectorAll('nav button').forEach(b=>{
   const active=b.dataset.view===state.view||(['room','model'].includes(state.view)&&b.dataset.view==='home');
   b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');
@@ -824,6 +879,7 @@ function updateDetail(){
 function refresh(){
  const focus=document.activeElement?.getAttribute('aria-label');
   applyAutoTheme();
+  trackSunrise();
  if(['home','model','room'].includes(state.view)){
   updateDetail();modelAPI?.updateModel(rooms,state);
   const weatherEntity=Object.values(state.entityStates||{}).find(e=>e.entity_id?.startsWith('weather.')),weatherTemp=weatherEntity?.attributes?.temperature;
@@ -840,8 +896,10 @@ function refresh(){
     paintAlarm(); // #home-alarm скрыт (3.3.6); alarmMarkup не рендерим в обход.
     const energy=$('#home-energy');if(energy)updateEnergyRegion();
     updateHeroTime();
+    updateBlockEssences();
   }else if(state.view==='room'&&$('#room-scenarios'))updateRegion('#room-scenarios',scenarioChipsRow());
- }else if(state.view!=='statistics')render(false);
+ }else if(state.view==='weather'){paintWeatherArc();loadWeatherForecast()}
+ else if(state.view!=='statistics')render(false);
  if(!$('#overlay').hidden){
   if(state.techOpen&&techTab==='diagnostics')$('#sheet-content').innerHTML=technical();
   else if(settingsOpen){/* HA polling must not replace an open form or its focus. */}
@@ -1563,9 +1621,9 @@ async function dispatchAction(e){
  if(a==='shopping-refresh')return loadShopping();
  if(b.dataset.ttsPreset){const i=$('#tts-text');if(i){i.value=b.dataset.ttsPreset;const c=$('#tts-count');if(c)c.textContent=b.dataset.ttsPreset.length+'/100'}return}
  if(a==='tts-send')return sendTTS();
- if(a==='weather-forecast')return forecastSheet();
+ if(a==='weather-forecast'){state.view='weather';render();return;}
  if(a==='model-retry'){state.modelError='';render(false);return}
- if(b.hasAttribute('data-forecast-reload'))return loadForecast(true);
+ if(b.hasAttribute('data-forecast-reload'))return; // щиток прогноза заменён страницей «Погода» (3.4.4)
   if(b.hasAttribute('data-energy-reload'))return; // кнопку обновления обрабатывает Preact-виджет
   if(b.dataset.energyReadingDel){
    state.energy_readings=state.energy_readings.filter(r=>r.date!==b.dataset.energyReadingDel);
@@ -1675,6 +1733,7 @@ async function dispatchAction(e){
  }
  if(a==='camera')return openYardCamera();
  if(a==='yard-clip')return openYardClipSheet(b);
+ if(b.dataset.blockToggle){toggleBlock(b.dataset.blockToggle);return}
  if(b.id==='reset-model')return modelAPI?.resetModel();
 }
 document.addEventListener('change',async e=>{

@@ -1,0 +1,7 @@
+HOME: {"menuWeather":true,"headerLeftChip":true,"headerLeftReset":true,"heroArc":false,"heroStatusOld":false,"digestOpen":true,"energyCollapsed":true,"stationCollapsed":true,"energyEssence":"Показаний пока нет","digestEssence":"0 событий","stationEssence":"Тишина","chip":true}
+WEATHER: {"view":"weather","now":"7,3°","label":"Переменная облачность","facts":["60 %","12.4 км/ч","1013 гПа"],"arc":"Светового дня пройдено 40 % от рассвета до заката","times":["Восход 09:15","Закат 14:15"],"progress":"Пройдено 40 %","daily":["чт, 12 нояб.6° / 3°","пт, 13 нояб.5° / 2°"]}
+TOGGLE: {"energyOpen":true,"saved":{"digest":true,"energy":true,"station":false}}
+PERSISTED: {"energyOpen":true,"digestOpen":true}
+DEMO: {"hero":"11:15","headerChip":true,"menuWeather":true} DEMO_ERRORS: []
+ERRORS: []
+QA344 PASS

@@ -1492,6 +1492,57 @@ input[type=range]:disabled::-moz-range-thumb{background:var(--faint);border-colo
 .idle-screen>*{transition:opacity .6s ease,letter-spacing .6s ease}
 body.is-ambient .idle-screen{background:linear-gradient(180deg,#0a0e09f7,#0a0e09),var(--hero-image,url(assets/interior.webp)) center/cover}
 body.is-ambient .idle-place,body.is-ambient .idle-hint{opacity:0;pointer-events:none}
+/* 3.4.4: шапка слева — статус-чип и сброс ракурса (переехали из hero). */
+.header-left{display:flex;align-items:center;gap:var(--space-2);min-width:0;flex:1}
+.header-left #hero-status{display:flex;min-width:0}
+.header-left #reset-model{width:44px;height:44px;display:grid;place-items:center;border:1px solid var(--border);border-radius:50%;color:var(--muted);background:none;cursor:pointer;transition:background .2s;flex-shrink:0}
+.header-left #reset-model:hover{background:var(--surface-2);color:var(--text)}
+@media(max-width:600px){.header-left #hero-status .hero-status-chip{font-size:var(--text-xs)}.header-left #reset-model{width:40px;height:40px}}
+/* 3.4.4: страница «Погода». */
+.weather-view{display:flex;flex-direction:column;gap:var(--space-4);max-width:760px}
+.weather-now-card{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--space-4);padding:var(--space-5) var(--space-6);background:linear-gradient(155deg,rgba(255,255,255,.07),rgba(255,255,255,.02)),var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg)}
+[data-theme=light] .weather-now-card{background:linear-gradient(155deg,rgba(255,255,255,.9),rgba(255,255,255,.55)),var(--surface)}
+.weather-now-main{display:flex;align-items:center;gap:var(--space-4)}
+.weather-now-main svg{width:52px;height:52px;color:var(--lit)}
+.weather-temp{font-size:clamp(56px,9vw,84px);font-weight:150;font-variation-settings:'wght' 150;letter-spacing:-.04em;display:block;line-height:1}
+.weather-label{color:var(--muted);font-size:var(--text-sm)}
+.weather-facts{display:flex;gap:var(--space-4);flex-wrap:wrap}
+.weather-fact{display:flex;flex-direction:column;gap:2px;min-width:86px}
+.weather-fact span{font-size:var(--text-xs);color:var(--muted)}
+.weather-fact strong{font-size:var(--text-base);font-weight:500}
+.weather-fact.is-faint{color:var(--muted);font-size:var(--text-xs)}
+/* Большая арка светового дня: свободная (не за цифрами), до 520 px. */
+.weather-arc-card{padding:var(--space-5) var(--space-6) var(--space-6);background:linear-gradient(155deg,rgba(255,255,255,.07),rgba(255,255,255,.02)),var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg)}
+[data-theme=light] .weather-arc-card{background:linear-gradient(155deg,rgba(255,255,255,.9),rgba(255,255,255,.55)),var(--surface)}
+.weather-arc{position:relative;width:min(520px,100%);margin:0 auto;text-align:center}
+.weather-arc .day-arc{width:100%;height:auto}
+.weather-arc-times{display:flex;justify-content:space-between;margin-top:var(--space-2);font-size:var(--text-sm);color:var(--muted)}
+.weather-arc-progress{margin-top:var(--space-1);font-size:var(--text-xs);letter-spacing:.06em;text-transform:uppercase;color:var(--lit)}
+.weather-arc-night{display:flex;gap:var(--space-2);justify-content:center;flex-wrap:wrap;color:var(--muted);font-size:var(--text-sm);padding:var(--space-3) 0}
+.weather-forecast-card{padding:var(--space-5) var(--space-6);background:linear-gradient(155deg,rgba(255,255,255,.07),rgba(255,255,255,.02)),var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg)}
+[data-theme=light] .weather-forecast-card{background:linear-gradient(155deg,rgba(255,255,255,.9),rgba(255,255,255,.55)),var(--surface)}
+.weather-forecast-card h2{font-size:var(--text-sm);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:var(--space-3)}
+.weather-hourly-tape{display:flex;gap:var(--space-2);overflow-x:auto;padding-bottom:var(--space-2)}
+.weather-hour{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:56px;padding:var(--space-2);border-radius:var(--radius-md);background:rgba(255,255,255,.03);font-size:var(--text-xs);color:var(--muted)}
+.weather-hour b{color:var(--text);font-size:var(--text-sm);font-weight:500}
+.weather-hour.is-wet{background:rgba(120,170,220,.14);color:var(--text)}
+[data-theme=light] .weather-hour{background:rgba(20,24,44,.04)}
+/* 3.4.4: сворачиваемые блоки правой колонки главной. */
+.home-block{display:flex;flex-direction:column;align-items:stretch;width:min(300px,44vw);border:1px solid var(--border);border-radius:var(--radius-lg);background:linear-gradient(155deg,rgba(255,255,255,.06),rgba(255,255,255,.02)),var(--surface);overflow:hidden}
+[data-theme=light] .home-block{background:linear-gradient(155deg,rgba(255,255,255,.9),rgba(255,255,255,.55)),var(--surface)}
+.home-block-head{display:flex;align-items:center;gap:var(--space-2);width:100%;min-height:44px;padding:var(--space-2) var(--space-4);background:none;border:0;border-bottom:1px solid transparent;color:var(--text);font:inherit;font-size:var(--text-sm);cursor:pointer;text-align:left}
+.home-block-head>span:first-child{font-weight:600;letter-spacing:-.01em;white-space:nowrap}
+.home-block-head:hover{background:rgba(255,255,255,.04)}
+[data-theme=light] .home-block-head:hover{background:rgba(20,24,44,.04)}
+.home-block-essence{flex:1;min-width:0;font-size:var(--text-xs);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right}
+.home-block-head svg{width:16px;height:16px;flex-shrink:0;color:var(--muted);transition:transform .2s ease}
+.home-block.collapsed .home-block-head{border-bottom-color:transparent}
+.home-block.collapsed .home-block-head svg{transform:rotate(-90deg)}
+.home-block.collapsed>:not(.home-block-head){display:none!important}
+.home-block:not(.collapsed) .home-block-head{border-bottom-color:var(--border)}
+#home-block-digest:has(#home-digest:empty){display:none}
+@media(max-width:900px){.home-block{width:100%}}
+
 body.is-ambient .idle-time{font-weight:150;font-variation-settings:'wght' 150;font-size:clamp(88px,16vw,240px);letter-spacing:-.06em}
 body.is-ambient .idle-date{opacity:.55;letter-spacing:.12em}
 body.is-ambient .idle-climate{opacity:.4}

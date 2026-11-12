@@ -38,6 +38,7 @@ yard-onvif: ok
 PASS: yard-snapshot — GetSnapshotUri+GET, кеш URI, ONVIF-первоисточник без camera_proxy, дедуп одинаковых, basic при 401, fallback.
 PASS: yard-clips — таблица/пустой список, testCapture → клип + JPEG-кадр, ретеншен ≤30, дедуп <15с.
 main-context ok
+weather-page: ok
 PASS: clean v3 initialization, no migration schema, old formats rejected, persistence, CSRF, verified mappings, stable reorder, move resets verification, HA command/readback, locked engineering, camera images, secret filtering, unknown format leaves database unchanged, preview isolation.
 PASS: local manifest, Supervisor token, correct /core/api routes, LAN Host/Origin/CSRF, shared SQLite profile, saved theme/favorites/mode/bindings after restart, light command/readback, camera frame, secret filtering, HA auth error, health.
 PASS: WS auth/stream command, verified camera only, CSRF, HLS rewrites incl init/parts, progressive first bytes before upstream completion, secret filtering, query/file allowlists, SSRF rejection, stop invalidates session, mode change blocks existing stream.
@@ -50,4 +51,4 @@ PASS: panel scenarios (leave/evening/cinema), per-line readback, unavailable lin
 PASS: user scenarios — strict validation drops bad id/name/steps, 8/12 limits enforced, ordered run with readback, unavailable line fails alone, brightness fallback honesty, unknown id 400, CRUD through preferences endpoint.
 PASS: health endpoint fields, ha connected via fake HA, yard_onvif_enabled default on, off stops watcher, on reconfigures.
 PASS: TNS readings auto-append — no duplicate for same date, new later date appended and month recalculated, rollback ignored, same-date refinement updates the value.
-All forty-nine test suites passed.
+All fifty test suites passed.
