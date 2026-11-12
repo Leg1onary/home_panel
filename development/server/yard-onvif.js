@@ -4,10 +4,13 @@
 // PullPoint-подписка, PullMessages-цикл, Renew, ретраи с экспоненциальной паузой.
 // XML разбирается namespace-независимыми строковыми метками (MotionDetected|MotionAlarm|IsMotion).
 import {createHash,randomBytes} from 'node:crypto';
+import {journal} from './journal.js';
 
 const WSSE='http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd';
 const WSU='http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd';
-const DIGEST_DEFAULTS={pullIntervalMs:1000,responseTimeoutMs:6000,renewIntervalMs:2*60*1000,retryLimit:3,
+const DIGEST_DEFAULTS={pullIntervalMs:1000,responseTimeoutMs:9000,renewIntervalMs:2*60*1000,retryLimit:3,
+ // 3.4.2: responseTimeoutMs 9000 — камера отвечает на PullMessages с Timeout PT5S,
+ // 6 с было впритык и давало «This operation was aborted» в журнал.
  restartPausesMs:[5000,15000,60000],motionThrottleMs:2000};
 
 const enc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -94,6 +97,20 @@ export function onvifSnapshots({host,port=2020,user,pass,timeoutMs=5000,log=()=>
  return {getSnapshot};
 }
 
+// 3.4.2: топики движения — базовые MotionDetected|MotionAlarm + Tapo-специфика
+// (VehicleDetect, CellMotion, HumanDetect, LineCrossing, RegionEntrance, Tamper).
+const MOTION_TOPIC=/MotionDetected|MotionAlarm|VehicleDetect|CellMotion|HumanDetect|LineCross|RegionEntrance|Tamper/i;
+// «истина» в теле: атрибут Value="true"|"1" или текстовый >true</ / >1</ (SimpleItem и т.п.).
+const MOTION_TRUE=/Value\s*=\s*"(?:true|1)"|>\s*(?:true|1)\s*</i;
+// Явный сброс (false/0) — НЕ движение: сбросы не должны триггерить запись.
+const MOTION_FALSE=/Value\s*=\s*"(?:false|0)"|>\s*(?:false|0)\s*</i;
+// Сообщение — движение, если топик известен И в теле истинное значение.
+// В сомнении (топик известен, но значения нет) — не движение.
+export function isMotionMessage(text){
+ if(!MOTION_TOPIC.test(String(text)))return false;
+ if(MOTION_FALSE.test(text))return false;
+ return MOTION_TRUE.test(text);
+}
 export function onvifWatch({host,port=2020,user,pass,onMotion,onError,onReady,log=()=>{},...timing}={}){
  const t={...DIGEST_DEFAULTS,...timing};
  let stopped=false,restarts=0,pullFailures=0;
@@ -128,7 +145,7 @@ export function onvifWatch({host,port=2020,user,pass,onMotion,onError,onReady,lo
     status={...status,subscription:pullPoint,alive:true,lastError:null};
     pullFailures=0;restarts=0;
     onReady?.({eventService:deviceService,subscription:pullPoint});
-    let lastMotion=0,lastRenew=Date.now();
+    let lastMotion=0,lastRenew=Date.now(),lastUnrecognized=0;
     // Цикл PullMessages: сразу новый запрос после ответа (Timeout PT5S, MessageLimit 10).
     while(!stopped){
      let text=null,error=null;
@@ -146,9 +163,22 @@ export function onvifWatch({host,port=2020,user,pass,onMotion,onError,onReady,lo
      }
      pullFailures=0;
      if(status.lastError)status={...status,lastError:null}; // успешный цикл — прошлые сетевые ошибки сбрасываем
-     // Движение: topic/data содержит MotionDetected|MotionAlarm или SimpleItem IsMotion=true.
-     if(/MotionDetected|MotionAlarm/.test(text)||/IsMotion[^>]*>\s*(true|1)\s*</i.test(text)){
-      const now=Date.now();
+     // Движение (3.4.2): разбираем каждое NotificationMessage — известный топик
+     // (MotionDetected/Alarm, VehicleDetect, CellMotion, HumanDetect, LineCrossing,
+     // RegionEntrance, Tamper) + истинное значение (IsMotion true|1, Value="true").
+     // Сбросы (false) движением НЕ считаются; нераспознанные непустые сообщения
+     // пишем в журнал не чаще раза в 60 с — чтобы увидеть формат события юзера.
+     const now=Date.now();
+     let motion=false;
+     const notifs=text.match(/<tev:NotificationMessage[\s\S]*?<\/tev:NotificationMessage>/g)||[text];
+     for(const n of notifs){
+      if(isMotionMessage(n)){motion=true;continue}
+      if(/Topic/.test(n)&&now-lastUnrecognized>=60000){
+       lastUnrecognized=now;
+       journal('Двор ONVIF: нераспознано: '+n.replace(/\s+/g,' ').slice(0,150),'warn');
+      }
+     }
+     if(motion){
       status={...status,lastMotionAt:now};
       if(now-lastMotion>=t.motionThrottleMs){lastMotion=now;onMotion?.()}
      }

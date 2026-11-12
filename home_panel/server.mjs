@@ -3563,9 +3563,11 @@ var WSSE = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-s
 var WSU = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd";
 var DIGEST_DEFAULTS = {
   pullIntervalMs: 1e3,
-  responseTimeoutMs: 6e3,
+  responseTimeoutMs: 9e3,
   renewIntervalMs: 2 * 60 * 1e3,
   retryLimit: 3,
+  // 3.4.2: responseTimeoutMs 9000 — камера отвечает на PullMessages с Timeout PT5S,
+  // 6 с было впритык и давало «This operation was aborted» в журнал.
   restartPausesMs: [5e3, 15e3, 6e4],
   motionThrottleMs: 2e3
 };
@@ -3663,6 +3665,14 @@ function onvifSnapshots({ host, port: port2 = 2020, user, pass, timeoutMs = 5e3,
   };
   return { getSnapshot };
 }
+var MOTION_TOPIC = /MotionDetected|MotionAlarm|VehicleDetect|CellMotion|HumanDetect|LineCross|RegionEntrance|Tamper/i;
+var MOTION_TRUE = /Value\s*=\s*"(?:true|1)"|>\s*(?:true|1)\s*</i;
+var MOTION_FALSE = /Value\s*=\s*"(?:false|0)"|>\s*(?:false|0)\s*</i;
+function isMotionMessage(text) {
+  if (!MOTION_TOPIC.test(String(text))) return false;
+  if (MOTION_FALSE.test(text)) return false;
+  return MOTION_TRUE.test(text);
+}
 function onvifWatch({ host, port: port2 = 2020, user, pass, onMotion, onError, onReady, log = () => {
 }, ...timing } = {}) {
   const t = { ...DIGEST_DEFAULTS, ...timing };
@@ -3708,7 +3718,7 @@ function onvifWatch({ host, port: port2 = 2020, user, pass, onMotion, onError, o
         pullFailures = 0;
         restarts = 0;
         onReady?.({ eventService: deviceService, subscription: pullPoint });
-        let lastMotion = 0, lastRenew = Date.now();
+        let lastMotion = 0, lastRenew = Date.now(), lastUnrecognized = 0;
         while (!stopped) {
           let text = null, error = null;
           try {
@@ -3736,8 +3746,20 @@ function onvifWatch({ host, port: port2 = 2020, user, pass, onMotion, onError, o
           }
           pullFailures = 0;
           if (status.lastError) status = { ...status, lastError: null };
-          if (/MotionDetected|MotionAlarm/.test(text) || /IsMotion[^>]*>\s*(true|1)\s*</i.test(text)) {
-            const now = Date.now();
+          const now = Date.now();
+          let motion = false;
+          const notifs = text.match(/<tev:NotificationMessage[\s\S]*?<\/tev:NotificationMessage>/g) || [text];
+          for (const n of notifs) {
+            if (isMotionMessage(n)) {
+              motion = true;
+              continue;
+            }
+            if (/Topic/.test(n) && now - lastUnrecognized >= 6e4) {
+              lastUnrecognized = now;
+              journal("\u0414\u0432\u043E\u0440 ONVIF: \u043D\u0435\u0440\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u043D\u043E: " + n.replace(/\s+/g, " ").slice(0, 150), "warn");
+            }
+          }
+          if (motion) {
             status = { ...status, lastMotionAt: now };
             if (now - lastMotion >= t.motionThrottleMs) {
               lastMotion = now;

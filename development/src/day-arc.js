@@ -26,3 +26,23 @@ export function dayArcMarkup(p){
  <path class="day-arc-fill" d="${a.path}" stroke="url(#day-arc-gradient)" style="stroke-dasharray:${a.dasharray};stroke-dashoffset:${a.dashoffset}"/>
  </svg>`;
 }
+// 3.4.2: процент светового дня — чистая математика (тестится отдельно).
+// nowMs внутри окна [dawnMs..duskMs] → 0..100; мусор/вне окна → null.
+export function dayProgressParams(nowMs,dawnMs,duskMs){
+ if(![nowMs,dawnMs,duskMs].every(Number.isFinite)||duskMs<=dawnMs)return null;
+ if(nowMs<dawnMs||nowMs>duskMs)return null;
+ return Math.round(Math.min(1,Math.max(0,(nowMs-dawnMs)/(duskMs-dawnMs)))*100);
+}
+// Запоминание восхода (3.4.2): пока солнце над горизонтом sun.next_dawn HA
+// указывает уже на ЗАВТРАШНИЙ рассвет, поэтому начало дня — восход сегодня.
+// При переходе below_horizon → above_horizon фиксируем текущее время в
+// localStorage ('hp-sunrise-<YYYY-MM-DD>', локальная дата).
+export const sunriseKey=nowMs=>{const d=new Date(nowMs);
+ return 'hp-sunrise-'+`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
+export function rememberSunrise(prevState,nextState,nowMs,storage=globalThis.localStorage){
+ if(prevState!=='below_horizon'||nextState!=='above_horizon')return false;
+ try{storage?.setItem(sunriseKey(nowMs),String(nowMs));return true}catch{return false}
+}
+export function storedSunrise(nowMs,storage=globalThis.localStorage){
+ try{const v=Number(storage?.getItem(sunriseKey(nowMs)));return Number.isFinite(v)&&v>0?v:null}catch{return null}
+}

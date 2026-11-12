@@ -28,7 +28,7 @@ import {duoUI,assistantView} from './assistant-ui.js';
 import {scenarioChipsRow,handleScenarioClick,bindScenarioPainter,bindScenarioHost} from './scenarios-ui.js';
 import {shouldAmbient,AMBIENT_AFTER_IDLE} from './ambient.js';
 import {isNight,isTime,nightLabel,nightDim} from './night.js';
-import {dayArcMarkup} from './day-arc.js';
+import {dayArcMarkup,dayProgressParams,rememberSunrise,storedSunrise} from './day-arc.js';
 import {luxValue,autoTheme,AUTO_THEME_UP,AUTO_THEME_DOWN} from './auto-theme.js';
 import {render as preactRender,h as ph} from './preact/kit.js';
 import {EnergyWidget} from './preact/energy-widget.js';
@@ -199,13 +199,24 @@ function heroStatusChip(){
  const label=offline?`Нет связи${state.liveError?' · '+state.liveError:''}`:online?'Home Assistant · Онлайн':'Демо · без Home Assistant';
  return `<button class="hero-status-chip ${offline?'is-offline':''}" data-action="house-review" title="${esc(isLive()?[state.liveError||'Home Assistant','Проверить подключение'].join(' · '):'Реальные устройства не подключены')}" aria-label="${esc(label)}: открыть настройки подключения"><span class="hero-dot"></span>${esc(label)}</button>`;
 }
+let lastSunState=null;
 function dayProgress(){
  const e=Object.values(state.entityStates||{}).find(e=>e.entity_id==='sun.sun');
- const dawn=e?.attributes?.next_dawn,dusk=e?.attributes?.next_dusk;
- if(!dawn||!dusk)return '';
- const now=Date.now(),a=Date.parse(dawn),b=Date.parse(dusk);
- if(![a,b].every(Number.isFinite)||now<a||now>b)return '';
- const p=Math.round(Math.min(1,Math.max(0,(now-a)/(b-a)))*100);
+ const dusk=e?.attributes?.next_dusk;
+ if(!e||!dusk)return '';
+ const now=Date.now();
+ // 3.4.2: пока солнце над горизонтом, next_dawn у HA уже указывает на завтрашний
+ // рассвет — поэтому днём дугу рисуем только при above_horizon, а начало дня
+ // берём из localStorage (восход запоминается при below→above переходе ниже);
+ // если записи нет — fallback next_dawn − 24 ч (вчерашний рассвет, точность
+ // ±2 мин из-за DST — приемлемо).
+ rememberSunrise(lastSunState,e.state,now);lastSunState=e.state;
+ if(e.state!=='above_horizon')return '';
+ const b=Date.parse(dusk);
+ let a=storedSunrise(now);
+ if(a===null)a=Date.parse(e.attributes?.next_dawn)-24*3600*1000;
+ const p=dayProgressParams(now,a,b);
+ if(p===null)return '';
  // 3.3.2: тонкая SVG-дуга над hero-часами (градиент тёмный → золотой Aurora),
  // заполнение = % светового дня. Чистая геометрия — src/day-arc.js (arcParams).
  return `<div class="day-arc-wrap" role="img" aria-label="Светового дня пройдено ${p} % от рассвета до заката">${dayArcMarkup(p)}</div>`;
