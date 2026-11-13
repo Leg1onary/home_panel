@@ -4065,6 +4065,40 @@ var monthDelta = (currentValue, currentDate, readings) => {
   return { prevValue, prevDate: String(prev.date), delta: current < prevValue ? null : Math.round((current - prevValue) * 10) / 10 };
 };
 var monthCost = (delta, tariff) => Number.isFinite(delta) && Number.isFinite(tariff) && tariff > 0 ? Math.round(delta * tariff) : null;
+function monthForecast(month, now = Date.now()) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(month?.prevDate ?? ""));
+  const delta = Number(month?.delta);
+  if (!m || !Number.isFinite(delta) || delta < 0) return null;
+  const prev = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const elapsedDays = (now - prev) / 864e5;
+  if (!(elapsedDays >= 1)) return null;
+  const rate = delta / elapsedDays;
+  const d = new Date(now), end = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
+  const daysToGo = Math.max(0, Math.round((end - now) / 864e5));
+  return { projected: Math.round((delta + rate * daysToGo) * 10) / 10, ratePerDay: Math.round(rate * 100) / 100, daysToGo };
+}
+function monthComparison(readings, month, now = Date.now()) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(month?.prevDate ?? ""));
+  const delta = Number(month?.delta);
+  if (!m || !Number.isFinite(delta) || delta < 0) return null;
+  const prev = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const elapsedDays = (now - prev) / 864e5;
+  if (!(elapsedDays >= 1)) return null;
+  const valid = (Array.isArray(readings) ? readings : []).map((r) => ({ date: String(r?.date ?? ""), value: Number(r?.value) })).filter((r) => READING_DATE.test(r.date) && Number.isFinite(r.value) && r.value >= 0).sort((a, b) => a.date < b.date ? -1 : 1);
+  const spans = [];
+  for (let i = 0; i < valid.length - 1; i++) {
+    const a = valid[i], b = valid[i + 1];
+    if (b.date > String(m[0])) continue;
+    const days = (Date.parse(b.date + "T00:00:00Z") - Date.parse(a.date + "T00:00:00Z")) / 864e5;
+    const d = Math.round((b.value - a.value) * 10) / 10;
+    if (days >= 20 && days <= 40 && d >= 0) spans.push({ days, d });
+  }
+  const recent = spans.slice(-3);
+  if (!recent.length) return null;
+  const avgRate = recent.reduce((s, x) => s + x.d, 0) / recent.reduce((s, x) => s + x.days, 0);
+  if (!(avgRate > 0)) return null;
+  return { ratio: Math.round(delta / elapsedDays / avgRate * 100) / 100, avgRate: Math.round(avgRate * 100) / 100 };
+}
 
 // src/sensor-state.js
 function binaryValue(type, value) {
@@ -5210,7 +5244,12 @@ var server = http.createServer(async (req, res) => {
           }
         }
         const monthRaw = monthDelta(readingValue, readingsDate?.state, p.preferences.energy_readings);
-        const month = { ...monthRaw, cost: monthCost(monthRaw.delta, p.preferences.energy_tariff) };
+        const month = {
+          ...monthRaw,
+          cost: monthCost(monthRaw.delta, p.preferences.energy_tariff),
+          forecast: monthForecast(monthRaw),
+          comparison: monthComparison(p.preferences.energy_readings, monthRaw)
+        };
         const profileReadings = (Array.isArray(p.preferences.energy_readings) ? p.preferences.energy_readings : []).slice(-36).map((r) => ({ date: String(r?.date ?? ""), value: Number(r?.value) }));
         const profileTariff = Number(p.preferences.energy_tariff);
         const tariff = Number.isFinite(profileTariff) && profileTariff > 0 ? profileTariff : null;

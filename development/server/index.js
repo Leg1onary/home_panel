@@ -15,7 +15,7 @@ import {YardMotion} from './yard-motion.js';
 import {onvifWatch,onvifSnapshots} from './yard-onvif.js';
 import {YardClips} from './yard-clips.js';
 import {journal,journalList} from './journal.js';
-import {meterValue,monthDelta,monthCost} from '../src/energy.js';
+import {meterValue,monthDelta,monthCost,monthForecast,monthComparison} from '../src/energy.js';
 import {energyDeltas} from './ha.js';
 
 import {deviceTypes,samePhysicalDevice} from '../src/catalog.js';
@@ -413,7 +413,8 @@ const server=http.createServer(async(req,res)=>{
      // даты показаний — ТНС снимает показания раз в месяц. Расчёт живёт на
      // сервере: единый источник истины для карточки.
      const monthRaw=monthDelta(readingValue,readingsDate?.state,p.preferences.energy_readings);
-     const month={...monthRaw,cost:monthCost(monthRaw.delta,p.preferences.energy_tariff)};
+     const month={...monthRaw,cost:monthCost(monthRaw.delta,p.preferences.energy_tariff),
+      forecast:monthForecast(monthRaw),comparison:monthComparison(p.preferences.energy_readings,monthRaw)};
      // История показаний и тариф одним ответом: вкладка «Статистика» строит
      // месячный график без второго запроса. Компактный формат {date,value}, ≤36.
      const profileReadings=(Array.isArray(p.preferences.energy_readings)?p.preferences.energy_readings:[])

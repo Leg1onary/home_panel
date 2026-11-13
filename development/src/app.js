@@ -647,6 +647,7 @@ function roomEquipment(r){
 function lights(){
  return `<div class="view"><div class="view-title"><div><div class="eyebrow">Управление</div><h1>Свет в доме</h1><p>Выбери комнату. Все линии доступны независимо.</p></div>
  <span class="demo-badge">${state.demoOffline?'Нет связи · демо':lightCountLabel()}</span></div>
+ <div id="lights-scenarios" class="lights-scenarios">${scenarioChipsRow()}</div>
  <div class="room-list">${rooms.map(roomCard).join('')}</div><div class="wide-hint"><span>Инженерное оборудование не входит в мастер-свет.</span><button data-action="catalog">Каталог устройств ${I('arrow-right')}</button></div></div>`;
 }
 // 3.4.5: страница «Погода». Чистая разметка — src/weather-page.js; здесь только

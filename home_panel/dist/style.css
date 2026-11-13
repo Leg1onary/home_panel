@@ -1564,6 +1564,12 @@ body.is-ambient .idle-place,body.is-ambient .idle-hint{opacity:0;pointer-events:
 .home-block:not(.collapsed) .home-block-head{border-bottom-color:var(--border)}
 #home-block-digest:has(#home-digest:empty){display:none}
 @media(max-width:900px){.home-block{width:100%}}
+/* 3.4.8: быстрые сцены над сеткой света + прогноз энергии. */
+.lights-scenarios{margin:var(--space-3) 0 var(--space-4)}
+.lights-scenarios .scenario-chips{flex-wrap:wrap}
+.energy-forecast span{color:var(--muted)}
+.energy-forecast strong{font-weight:400}
+.energy-note{font-size:var(--text-xs);color:var(--muted);margin:var(--space-1) 0 0}
 /* 3.4.6: редактор камер ONVIF в тех.разделе. */
 .cam-edit-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-2) var(--space-3);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-3) var(--space-3) var(--space-2);margin:0 0 var(--space-3)}
 .cam-edit-row legend{font-size:var(--text-xs);color:var(--muted);padding:0 var(--space-2)}

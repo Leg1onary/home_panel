@@ -60,12 +60,66 @@ export function energyBars(readings,tariff,currentReading){
 }
 const deltaRow=(label,value,cost)=>`<p class="energy-delta"><span>${label}</span><strong>${fmt(value)} кВт·ч${cost!=null?` <small class="energy-cost">≈ ${esc(intFmt(cost))} ₽</small>`:''}</strong></p>`;
 const FALLBACK='Расход появится после следующей передачи показаний';
+// 3.4.8: прогноз до конца месяца — темп текущего интервала × дни до календарного
+// конца месяца. prevDate — начало интервала (последнее внесённое показание).
+export function monthForecast(month,now=Date.now()){
+ const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(month?.prevDate??''));
+ const delta=Number(month?.delta);
+ if(!m||month?.delta==null||!Number.isFinite(delta)||delta<0)return null;
+ const prev=Date.UTC(Number(m[1]),Number(m[2])-1,Number(m[3]));
+ const elapsedDays=(now-prev)/86400000;
+ if(!(elapsedDays>=1))return null;
+ const rate=delta/elapsedDays;
+ const d=new Date(now),end=Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1);
+ const daysToGo=Math.max(0,Math.round((end-now)/86400000));
+ return {projected:Math.round((delta+rate*daysToGo)*10)/10,ratePerDay:Math.round(rate*100)/100,daysToGo};
+}
+// Сравнение темпа с «обычным»: средний суточный темп последних ≤3 закрытых
+// интервалов (оба конца строго не позже prevDate) против текущего.
+export function monthComparison(readings,month,now=Date.now()){
+ const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(month?.prevDate??''));
+ const delta=Number(month?.delta);
+ if(!m||month?.delta==null||!Number.isFinite(delta)||delta<0)return null;
+ const prev=Date.UTC(Number(m[1]),Number(m[2])-1,Number(m[3]));
+ const elapsedDays=(now-prev)/86400000;
+ if(!(elapsedDays>=1))return null;
+ const valid=(Array.isArray(readings)?readings:[])
+  .map(r=>({date:String(r?.date??''),value:Number(r?.value)}))
+  .filter(r=>READING_DATE.test(r.date)&&Number.isFinite(r.value)&&r.value>=0)
+  .sort((a,b)=>a.date<b.date?-1:1);
+ const spans=[];
+ for(let i=0;i<valid.length-1;i++){
+  const a=valid[i],b=valid[i+1];
+  if(b.date>String(m[0]))continue;
+  const days=(Date.parse(b.date+'T00:00:00Z')-Date.parse(a.date+'T00:00:00Z'))/86400000;
+  const d=Math.round((b.value-a.value)*10)/10;
+  if(days>=20&&days<=40&&d>=0)spans.push({days,d});
+ }
+ const recent=spans.slice(-3);
+ if(!recent.length)return null;
+ const avgRate=recent.reduce((s,x)=>s+x.d,0)/recent.reduce((s,x)=>s+x.days,0);
+ if(!(avgRate>0))return null;
+ return {ratio:Math.round(delta/elapsedDays/avgRate*100)/100,avgRate:Math.round(avgRate*100)/100};
+}
+const comparisonText=c=>{
+ if(!c)return '';
+ const pct=Math.round(Math.abs(c.ratio-1)*100);
+ if(c.ratio>=1.15)return `Темп выше обычного на ~${pct} %`;
+ if(c.ratio<=0.85)return `Темп ниже обычного на ~${pct} %`;
+ return 'Темп в обычном ритме';
+};
 const deltaMarkup=extra=>{
  if(!extra||(extra.deltas===undefined&&extra.month===undefined))return '';
  const rows=[];
  if(Number.isFinite(extra.deltas?.day))rows.push(deltaRow('Сутки',extra.deltas.day));
  const m=extra.month;
- if(m&&Number.isFinite(m.delta))rows.push(deltaRow('Месяц',m.delta,m.cost));
+ if(m&&Number.isFinite(m.delta)){
+  rows.push(deltaRow('Месяц',m.delta,m.cost));
+  const f=m.forecast;
+  if(f)rows.push(`<p class="energy-delta energy-forecast"><span>Прогноз до конца месяца</span><strong>${fmt(f.projected)} кВт·ч${m.cost!=null&&m.delta>0?` <small class="energy-cost">≈ ${esc(intFmt(m.cost/m.delta*f.projected))} ₽</small>`:''}</strong></p>`);
+  const cmp=comparisonText(m.comparison);
+  if(cmp)rows.push(`<p class="energy-note">${esc(cmp)}</p>`);
+ }
  else rows.push(`<p class="energy-deltas is-faint">${FALLBACK}</p>`);
  return rows.join('');
 };
