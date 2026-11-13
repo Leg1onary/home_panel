@@ -2354,6 +2354,19 @@ var TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 function isTime(value) {
   return typeof value === "string" && TIME_RE.test(value);
 }
+var minutes = (value) => {
+  const [h, m] = value.split(":").map(Number);
+  return h * 60 + m;
+};
+function isNight(minute, start, end, mode = "auto") {
+  if (mode === "on") return true;
+  if (mode === "off") return false;
+  if (!isTime(start) || !isTime(end)) return false;
+  const s = minutes(start), e = minutes(end);
+  if (s === e) return false;
+  const cur = (Math.floor(minute) % 1440 + 1440) % 1440;
+  return s < e ? cur >= s && cur < e : cur >= s || cur < e;
+}
 
 // src/station.js
 var mediaFeatures = { PAUSE: 1, VOLUME_SET: 4, PREVIOUS_TRACK: 16, NEXT_TRACK: 32, PLAY: 16384 };
@@ -2528,7 +2541,18 @@ var defaultPreferences = () => ({
   // Ночная охрана (3.4.0): auto = активна по расписанию ночи; дверь открыта дольше
   // N минут → алерт в сводке. Отсутствие ключей в старых профилях = дефолты.
   guardNight: "auto",
-  guardDoorMinutes: 15
+  guardDoorMinutes: 15,
+  // 3.7.0: пилотная охранная система. guardArmedAway — режим «вне дома» (переживает
+  // рестарт); тайминги в минутах; guardFlash — мигание светом при сирене;
+  // guardMasterArms — мастер-кнопка: короткое = уход (без команд света, сцену
+  // выполняет Умный дом с Алисой), длинное = снятие.
+  guardArmedAway: false,
+  guardExitDelay: 120,
+  guardAwayMinutes: 3,
+  guardHomeAlertMinutes: 10,
+  guardHomeAnnounceMinutes: 30,
+  guardFlash: true,
+  guardMasterArms: true
 });
 var USER_SCENARIO_LIMITS = { max: 8, maxSteps: 12, minBrightness: 30, maxBrightness: 100 };
 var MAX_YARD_CAMERAS = 4;
@@ -2660,6 +2684,18 @@ function validatePreferences(input, { importing = false } = {}) {
   p.guardNight = raw.guardNight === void 0 ? "auto" : raw.guardNight;
   if (raw.guardDoorMinutes !== void 0 && (!Number.isInteger(raw.guardDoorMinutes) || raw.guardDoorMinutes < 5 || raw.guardDoorMinutes > 120)) throw new Error("\u041C\u0438\u043D\u0443\u0442\u044B \u043E\u0442\u043A\u0440\u044B\u0442\u0438\u044F \u0434\u0432\u0435\u0440\u0438: \u0446\u0435\u043B\u043E\u0435 \u0447\u0438\u0441\u043B\u043E \u043E\u0442 5 \u0434\u043E 120.");
   p.guardDoorMinutes = raw.guardDoorMinutes === void 0 ? 15 : raw.guardDoorMinutes;
+  if (raw.guardArmedAway !== void 0 && typeof raw.guardArmedAway !== "boolean") throw new Error("\u041D\u0435\u0432\u0435\u0440\u043D\u044B\u0439 \u0444\u043B\u0430\u0433 \u043E\u0445\u0440\u0430\u043D\u044B.");
+  p.guardArmedAway = raw.guardArmedAway === true;
+  if (raw.guardExitDelay !== void 0 && (!Number.isInteger(raw.guardExitDelay) || raw.guardExitDelay < 0 || raw.guardExitDelay > 600)) throw new Error("\u0417\u0430\u0434\u0435\u0440\u0436\u043A\u0430 \u0432\u044B\u0445\u043E\u0434\u0430: \u0446\u0435\u043B\u043E\u0435 \u043E\u0442 0 \u0434\u043E 600 \u0441\u0435\u043A\u0443\u043D\u0434.");
+  p.guardExitDelay = raw.guardExitDelay === void 0 ? 120 : raw.guardExitDelay;
+  if (raw.guardAwayMinutes !== void 0 && (!Number.isInteger(raw.guardAwayMinutes) || raw.guardAwayMinutes < 1 || raw.guardAwayMinutes > 30)) throw new Error("\u041C\u0438\u043D\u0443\u0442\u044B \u0434\u043E \u0441\u0438\u0440\u0435\u043D\u044B: \u0446\u0435\u043B\u043E\u0435 \u043E\u0442 1 \u0434\u043E 30.");
+  p.guardAwayMinutes = raw.guardAwayMinutes === void 0 ? 3 : raw.guardAwayMinutes;
+  if (raw.guardHomeAlertMinutes !== void 0 && (!Number.isInteger(raw.guardHomeAlertMinutes) || raw.guardHomeAlertMinutes < 5 || raw.guardHomeAlertMinutes > 120)) throw new Error("\u0410\u043B\u0435\u0440\u0442 \u0434\u043E\u043C\u0430: \u0446\u0435\u043B\u043E\u0435 \u043E\u0442 5 \u0434\u043E 120 \u043C\u0438\u043D\u0443\u0442.");
+  p.guardHomeAlertMinutes = raw.guardHomeAlertMinutes === void 0 ? 10 : raw.guardHomeAlertMinutes;
+  if (raw.guardHomeAnnounceMinutes !== void 0 && (!Number.isInteger(raw.guardHomeAnnounceMinutes) || raw.guardHomeAnnounceMinutes < 5 || raw.guardHomeAnnounceMinutes > 240)) throw new Error("\u041E\u0437\u0432\u0443\u0447\u043A\u0430 \u0434\u043E\u043C\u0430: \u0446\u0435\u043B\u043E\u0435 \u043E\u0442 5 \u0434\u043E 240 \u043C\u0438\u043D\u0443\u0442.");
+  p.guardHomeAnnounceMinutes = raw.guardHomeAnnounceMinutes === void 0 ? 30 : raw.guardHomeAnnounceMinutes;
+  p.guardFlash = raw.guardFlash !== false;
+  p.guardMasterArms = raw.guardMasterArms !== false;
   const used = /* @__PURE__ */ new Set();
   p.bindings = {};
   for (const definition of bindingDefinitions(p.devices)) {
@@ -4106,7 +4142,8 @@ var EVENT_TYPES = {
   door: { icon: "door-open", label: "\u0414\u0432\u0435\u0440\u0438" },
   light: { icon: "lightbulb", label: "\u0421\u0432\u0435\u0442" },
   meter: { icon: "zap", label: "\u041F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u044F" },
-  system: { icon: "activity", label: "\u0421\u0438\u0441\u0442\u0435\u043C\u0430" }
+  system: { icon: "activity", label: "\u0421\u0438\u0441\u0442\u0435\u043C\u0430" },
+  guard: { icon: "shield", label: "\u041E\u0445\u0440\u0430\u043D\u0430" }
 };
 var DAY_LABEL = (d) => `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}`;
 function computeAnalytics(rows, now = Date.now()) {
@@ -5018,11 +5055,11 @@ setInterval(async () => {
       if (!e) continue;
       const open = e.state === "on", prev = doorTracker.get(eid);
       if (prev === void 0) {
-        doorTracker.set(eid, open);
+        doorTracker.set(eid, { open, since: open ? Date.now() : 0 });
         continue;
       }
-      if (prev !== open) {
-        doorTracker.set(eid, open);
+      if (prev.open !== open) {
+        doorTracker.set(eid, { open, since: open ? Date.now() : 0 });
         recordEvent("door", d.device.name + (open ? " \u043E\u0442\u043A\u0440\u044B\u0442\u0430" : " \u0437\u0430\u043A\u0440\u044B\u0442\u0430"));
       }
     }
@@ -5030,6 +5067,158 @@ setInterval(async () => {
     console.log("Door poll:", error?.message || error);
   }
 }, Number(process.env.PANEL_DOOR_POLL_MS) || 2e4).unref();
+var GUARD_SCALE = Number(process.env.PANEL_GUARD_SCALE) || 1;
+var guard = { exitUntil: 0, alarm: null, timers: [], alerted: /* @__PURE__ */ new Map(), flashTimer: null, flashOn: false };
+var guardTimers = [];
+var gT = (fn, ms) => {
+  const t = setTimeout(fn, ms);
+  guardTimers.push(t);
+  return t;
+};
+var guardClearTimers = () => {
+  for (const t of guardTimers.splice(0)) clearTimeout(t);
+  if (guard.flashTimer) {
+    clearInterval(guard.flashTimer);
+    guard.flashTimer = null;
+  }
+};
+var guardPrefs = () => getProfile(addon ? "home" : "local").preferences;
+async function guardDoors() {
+  const prefs = guardPrefs();
+  const defs = bindingDefinitions(prefs.devices).filter((d) => d.type === "door" && d.device.status === "installed" && prefs.bindings[d.id]?.verified && prefs.bindings[d.id]?.entityId);
+  const byId = new Map((await ha.states() || []).map((s) => [s.entity_id, s]));
+  const out = defs.map((d) => {
+    const eid = prefs.bindings[d.id].entityId, e = byId.get(eid);
+    const stateOpen = e ? e.state === "on" : false;
+    const tr = doorTracker.get(eid);
+    const since = stateOpen ? tr?.since && tr.since > 0 ? tr.since : Date.now() : 0;
+    if (!tr || tr.open !== stateOpen) doorTracker.set(eid, { open: stateOpen, since });
+    return { id: d.id, name: d.device.name, entityId: eid, open: stateOpen, since, state: e?.state };
+  });
+  return out;
+}
+async function guardLights(on) {
+  const prefs = guardPrefs();
+  for (const def of bindingDefinitions(prefs.devices).filter((d) => ["light", "rgb"].includes(d.type) && d.device.status === "installed" && prefs.bindings[d.id]?.verified && prefs.bindings[d.id]?.entityId)) {
+    try {
+      await ha.command({ id: def.id, value: on }, prefs);
+    } catch (error) {
+      journal("\u041E\u0445\u0440\u0430\u043D\u0430: \u0441\u0432\u0435\u0442 " + def.name + " \u2014 " + (error?.message || error), "warn");
+    }
+  }
+}
+async function guardSiren() {
+  try {
+    const r = await ha.converse("\u0432\u043A\u043B\u044E\u0447\u0438 \u043F\u0435\u0441\u043D\u044E \u041F\u043E\u043B\u0438\u0446\u0435\u0439\u0441\u043A\u0430\u044F \u0441\u0438\u0440\u0435\u043D\u0430");
+    journal("\u041E\u0445\u0440\u0430\u043D\u0430: \u0438\u043D\u0442\u0435\u043D\u0442 \u0441\u0438\u0440\u0435\u043D\u044B \u2014 " + (r.speech || "\u0431\u0435\u0437 \u043E\u0442\u0432\u0435\u0442\u0430"));
+  } catch (error) {
+    journal("\u041E\u0445\u0440\u0430\u043D\u0430: \u0438\u043D\u0442\u0435\u043D\u0442 \u043D\u0435 \u0441\u0440\u0430\u0431\u043E\u0442\u0430\u043B (" + (error?.message || error) + ") \u2014 TTS-\u0441\u0438\u0440\u0435\u043D\u0430", "warn");
+    try {
+      await ha.announce("\u0412\u043D\u0438\u043C\u0430\u043D\u0438\u0435! \u0412\u043D\u0438\u043C\u0430\u043D\u0438\u0435! \u041E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u0434\u0432\u0435\u0440\u044C \u0438 \u0443\u0431\u0435\u0440\u0438\u0442\u0435 \u0440\u0443\u043A\u0438!", guardPrefs());
+    } catch (e2) {
+      journal("\u041E\u0445\u0440\u0430\u043D\u0430: TTS-\u0441\u0438\u0440\u0435\u043D\u0430 \u043D\u0435 \u0443\u0434\u0430\u043B\u0430\u0441\u044C: " + (e2?.message || e2), "warn");
+    }
+  }
+}
+async function guardSirenStop() {
+  try {
+    await ha.command({ id: "station:playing", value: false }, guardPrefs());
+  } catch (error) {
+    journal("\u041E\u0445\u0440\u0430\u043D\u0430: \u0441\u0442\u043E\u043F \u0441\u0438\u0440\u0435\u043D\u044B \u2014 " + (error?.message || error), "warn");
+  }
+}
+function guardStopFlash() {
+  if (guard.flashTimer) {
+    clearInterval(guard.flashTimer);
+    guard.flashTimer = null;
+  }
+  guard.flashOn = false;
+}
+function guardStartAlarmCycle(doorName) {
+  guard.alarm = { startedAt: Date.now(), doorName };
+  recordEvent("guard", "\u0421\u0438\u0440\u0435\u043D\u0430 \xB7 " + doorName + " (\u0446\u0438\u043A\u043B)");
+  guardLights(true).then(() => {
+    if (guardPrefs().guardFlash) {
+      guard.flashOn = true;
+      guard.flashTimer = setInterval(() => {
+        guardLights(guard.flashOn = !guard.flashOn);
+      }, 2e3);
+    }
+  });
+  guardSiren();
+  const play = 3 * 6e4 * GUARD_SCALE, pause = 2 * 6e4 * GUARD_SCALE;
+  gT(async () => {
+    guardStopFlash();
+    await guardSirenStop();
+  }, play);
+  gT(async () => {
+    if (!guardPrefs().guardArmedAway) return;
+    recordEvent("guard", "\u0421\u0438\u0440\u0435\u043D\u0430 \xB7 \u043F\u0430\u0443\u0437\u0430 2 \u043C\u0438\u043D, \u0436\u0434\u0451\u043C \u0441\u043D\u044F\u0442\u0438\u044F");
+    gT(async () => {
+      if (guardPrefs().guardArmedAway) guardStartAlarmCycle(doorName);
+    }, pause);
+  }, play + pause);
+}
+async function guardStopAlarm(silent = false) {
+  guardClearTimers();
+  guardStopFlash();
+  guard.alarm = null;
+  if (!silent) {
+    await guardSirenStop().catch(() => {
+    });
+    await guardLights(false).catch(() => {
+    });
+  }
+}
+async function guardTick() {
+  let prefs;
+  try {
+    prefs = guardPrefs();
+  } catch {
+    return;
+  }
+  const now = Date.now();
+  const armed = prefs.guardArmedAway === true;
+  if (!armed) {
+    if (guard.alarm || guardTimers.length) await guardStopAlarm(true);
+    guard.exitUntil = 0;
+    guard.alerted.clear();
+    return;
+  }
+  const doors = await guardDoors();
+  if (guard.exitUntil > now) return;
+  const open = doors.filter((d2) => d2.open && Number.isFinite(d2.since) && d2.since > 0);
+  if (!guard.alarm) {
+    const trigger = open.find((d2) => now - d2.since >= prefs.guardAwayMinutes * 6e4 * GUARD_SCALE);
+    if (trigger) {
+      recordEvent("guard", "\u0422\u0440\u0435\u0432\u043E\u0433\u0430: " + trigger.name + " \u043E\u0442\u043A\u0440\u044B\u0442\u0430 \u0434\u043E\u043B\u044C\u0448\u0435 " + prefs.guardAwayMinutes + " \u043C\u0438\u043D");
+      await guardStartAlarmCycle(trigger.name);
+      return;
+    }
+  }
+  const d = new Date(now), minutes2 = d.getHours() * 60 + d.getMinutes();
+  const night = prefs.guardNight !== "off" && isNight(minutes2, prefs.nightStart, prefs.nightEnd, prefs.guardNight);
+  if (night && !guard.alarm) {
+    for (const door of open) {
+      const openMin = (now - door.since) / 6e4;
+      const keyA = door.entityId + ":a", keyN = door.entityId + ":n";
+      if (openMin >= prefs.guardHomeAlertMinutes && !guard.alerted.has(keyA)) {
+        guard.alerted.set(keyA, now);
+        recordEvent("door", door.name + " \u043E\u0442\u043A\u0440\u044B\u0442\u0430 \u0434\u043E\u043B\u044C\u0448\u0435 " + prefs.guardHomeAlertMinutes + " \u043C\u0438\u043D (\u043D\u043E\u0447\u044C)");
+      }
+      if (openMin >= prefs.guardHomeAnnounceMinutes && !guard.alerted.has(keyN)) {
+        guard.alerted.set(keyN, now);
+        recordEvent("door", door.name + " \u043E\u0442\u043A\u0440\u044B\u0442\u0430 \u0434\u043E\u043B\u044C\u0448\u0435 " + prefs.guardHomeAnnounceMinutes + " \u043C\u0438\u043D \u2014 \u043E\u0437\u0432\u0443\u0447\u043A\u0430");
+        try {
+          await ha.announce("\u0412\u043D\u0438\u043C\u0430\u043D\u0438\u0435, \u043E\u0442\u043A\u0440\u044B\u0442\u0430 " + door.name, prefs);
+        } catch (error) {
+          journal("\u041E\u0445\u0440\u0430\u043D\u0430: \u043E\u0437\u0432\u0443\u0447\u043A\u0430 \u043D\u0435 \u0443\u0434\u0430\u043B\u0430\u0441\u044C \u2014 " + (error?.message || error), "warn");
+        }
+      }
+    }
+  }
+}
+setInterval(guardTick, Math.max(250, 5e3 * GUARD_SCALE)).unref();
 var getProfile = (id) => {
   let row = db.prepare("SELECT * FROM profiles WHERE id=?").get(id);
   if (!row) {
@@ -5167,6 +5356,7 @@ var server = http.createServer(async (req, res) => {
           }
           if (input.energy_readings === void 0) input.energy_readings = p.preferences.energy_readings;
           if (input.energy_tariff === void 0) input.energy_tariff = p.preferences.energy_tariff;
+          if (input.guardArmedAway === void 0) input.guardArmedAway = p.preferences.guardArmedAway;
         }
         if (input && typeof input === "object" && input.deviceModel === void 0 && Array.isArray(input.devices)) {
           const ids = new Set(input.devices.map((d) => d?.id));
@@ -5273,7 +5463,7 @@ var server = http.createServer(async (req, res) => {
       if (route === "events" && req.method === "GET") {
         const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 120));
         const type2 = url.searchParams.get("type");
-        const rows = type2 && ["yard", "door", "light", "meter", "system"].includes(type2) ? db.prepare("SELECT * FROM events WHERE type=? ORDER BY id DESC LIMIT ?").all(type2, limit) : db.prepare("SELECT * FROM events ORDER BY id DESC LIMIT ?").all(limit);
+        const rows = type2 && ["yard", "door", "light", "meter", "system", "guard"].includes(type2) ? db.prepare("SELECT * FROM events WHERE type=? ORDER BY id DESC LIMIT ?").all(type2, limit) : db.prepare("SELECT * FROM events ORDER BY id DESC LIMIT ?").all(limit);
         const clipCount = db.prepare("SELECT frames FROM yard_clips WHERE id=?");
         const events = rows.map((r) => {
           const ref = typeof r.ref === "string" && r.ref.startsWith("clip:") ? Number(r.ref.slice(5)) : null;
@@ -5290,6 +5480,49 @@ var server = http.createServer(async (req, res) => {
       if (route === "analytics" && req.method === "GET") {
         const rows = db.prepare("SELECT at,type,text FROM events WHERE at>? ORDER BY at ASC").all(Date.now() - 14 * 864e5);
         return json(res, 200, computeAnalytics(rows));
+      }
+      if (route === "guard" && req.method === "GET") {
+        const prefs = p.preferences, doors = await guardDoors().catch(() => []);
+        return json(res, 200, {
+          armed: prefs.guardArmedAway === true,
+          exitRemaining: guard.exitUntil > Date.now() ? Math.round((guard.exitUntil - Date.now()) / 1e3) : 0,
+          alarm: guard.alarm ? { doorName: guard.alarm.doorName, startedAt: guard.alarm.startedAt } : null,
+          flash: prefs.guardFlash,
+          masterArms: prefs.guardMasterArms,
+          doors: doors.map((d) => ({ name: d.name, open: d.open }))
+        });
+      }
+      if (route === "guard" && req.method === "POST") {
+        const request = JSON.parse((await body(req)).toString());
+        const prefs = p.preferences;
+        if (request.action === "arm") {
+          const doors = await guardDoors();
+          const open = doors.find((d) => d.open);
+          if (open) return json(res, 409, { error: "\u041D\u0435\u043B\u044C\u0437\u044F \u043F\u043E\u0441\u0442\u0430\u0432\u0438\u0442\u044C \u043D\u0430 \u043E\u0445\u0440\u0430\u043D\u0443: " + open.name + " \u043E\u0442\u043A\u0440\u044B\u0442\u0430." });
+          prefs.guardArmedAway = true;
+          db.prepare("UPDATE profiles SET preferences=? WHERE id=?").run(JSON.stringify(prefs), id);
+          guard.exitUntil = Date.now() + prefs.guardExitDelay * 1e3 * GUARD_SCALE;
+          await guardStopAlarm(true);
+          recordEvent("guard", "\u041E\u0445\u0440\u0430\u043D\u0430: \u0432\u044B\u0445\u043E\u0434, " + prefs.guardExitDelay + " \u0441 \u043D\u0430 \u0434\u0432\u0435\u0440\u044C");
+          return json(res, 200, { armed: true, exitDelay: prefs.guardExitDelay });
+        }
+        if (request.action === "disarm") {
+          const was = guard.alarm !== null;
+          prefs.guardArmedAway = false;
+          db.prepare("UPDATE profiles SET preferences=? WHERE id=?").run(JSON.stringify(prefs), id);
+          guard.exitUntil = 0;
+          await guardStopAlarm();
+          recordEvent("guard", was ? "\u041E\u0445\u0440\u0430\u043D\u0430 \u0441\u043D\u044F\u0442\u0430 \u2014 \u0441\u0438\u0440\u0435\u043D\u0430 \u043E\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u0430" : "\u041E\u0445\u0440\u0430\u043D\u0430 \u0441\u043D\u044F\u0442\u0430");
+          return json(res, 200, { armed: false });
+        }
+        if (request.action === "cancel-exit") {
+          guard.exitUntil = 0;
+          prefs.guardArmedAway = false;
+          db.prepare("UPDATE profiles SET preferences=? WHERE id=?").run(JSON.stringify(prefs), id);
+          recordEvent("guard", "\u0412\u044B\u0445\u043E\u0434 \u043E\u0442\u043C\u0435\u043D\u0451\u043D \u2014 \u043E\u0445\u0440\u0430\u043D\u0430 \u043D\u0435 \u0432\u043A\u043B\u044E\u0447\u0435\u043D\u0430");
+          return json(res, 200, { armed: false });
+        }
+        return json(res, 400, { error: "\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435 \u043E\u0445\u0440\u0430\u043D\u044B." });
       }
       if (route === "onvif-discover" && req.method === "POST") {
         try {

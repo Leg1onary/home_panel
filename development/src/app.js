@@ -373,6 +373,47 @@ function paintHomeTicker(ev){
  tickerFlash=setTimeout(()=>node.classList.remove('is-flash'),2500);
  icons();
 }
+let guardData=null,guardPoll=null;
+function guardChipLabel(){
+ if(!isLive())return 'Демо';
+ const g=guardData;
+ if(!g)return '…';
+ if(g.alarm)return 'Тревога';
+ if(g.exitRemaining>0)return 'Выход · '+g.exitRemaining+' с';
+ if(g.armed)return 'Активна';
+ return 'Снята';
+}
+function paintGuardChip(){
+ const node=$('#home-guard');
+ if(!node)return;
+ if(!isLive()){node.hidden=true;return}
+ const g=guardData||{};
+ const openDoor=(g.doors||[]).find(d=>d.open);
+ const label=guardChipLabel();
+ const tone=g.alarm?'is-alarm':g.armed?'is-armed':'';
+ node.innerHTML=`<button type="button" class="guard-chip ${tone}" data-action="guard-sheet">${I('shield')}<div><strong>Охрана · ${esc(label)}</strong><small>${openDoor?esc(openDoor.name+' открыта'):'все двери закрыты'}</small></div></button>`;
+ icons();
+}
+async function loadGuardChip(){
+ if(!isLive())return paintGuardChip();
+ try{
+  guardData=await api('guard');
+  if(state.view==='home')paintGuardChip();
+ }catch{/* чип не критичен */}
+ clearInterval(guardPoll);
+ guardPoll=setInterval(()=>{if(state.view==='home'&&isLive())loadGuardChip()},10000);
+}
+function openGuardSheet(){
+ const g=guardData||{};
+ const doors=(g.doors||[]).map(d=>`<div class="status-line"><span>${I('door-closed')}${esc(d.name)}</span><strong>${d.open?'Открыта':'Закрыта'}</strong></div>`).join('');
+ const status=g.alarm?'ТРЕВОГА · '+esc(g.alarm.doorName):g.exitRemaining>0?'Выход · '+g.exitRemaining+' с':g.armed?'Охрана активна (вне дома)':'Охрана снята';
+ simpleSheet(`<div class="guard-sheet"><div class="eyebrow">Пилотная охрана</div><h2>${status}</h2>
+ ${doors||'<p class="description">Двери не привязаны — привяжи в тех.разделе.</p>'}
+ <div class="sheet-actions"><button class="primary" data-action="guard-arm" ${disabled(g.armed&&!g.alarm)}>Ушёл — поставить</button>
+ <button class="secondary" data-action="guard-disarm" ${disabled(!g.armed)}>Снять с охраны</button>
+ ${g.exitRemaining>0?'<button class="secondary" data-action="guard-cancel">Отменить выход</button>':''}</div>
+ <p class="description">Вне дома: дверь открыта дольше ${state.guardAwayMinutes||3} мин — сирена циклами (3 мин / пауза 2 мин) + свет. Ночь: алерт через ${state.guardHomeAlertMinutes||10} мин, озвучка через ${state.guardHomeAnnounceMinutes||30} мин.</p></div>`);
+}
 async function loadHomeTicker(){
  try{const data=await api('events?limit=1');if(state.view==='home'&&data.events?.length)paintHomeTicker(data.events[0])}
  catch{/* тикер не критичен */}
@@ -428,7 +469,7 @@ function home(){
  <div class="home-stage-wrap">${sceneStage(hero)}
  <div id="home-room-card" class="home-room-card" hidden></div>
  <aside class="home-rail" aria-label="Сводка дома">
- <div class="home-block" id="home-block-digest"><button class="home-block-head" data-block-toggle="digest" aria-expanded="true" aria-label="Свернуть дайджест"><span>Дайджест</span><span class="home-block-essence" id="home-digest-essence">…</span>${I('chevron-down')}</button><div id="home-digest" hidden></div></div>
+ <div class="home-block home-guard" id="home-guard"></div><div class="home-block" id="home-block-digest"><button class="home-block-head" data-block-toggle="digest" aria-expanded="true" aria-label="Свернуть дайджест"><span>Дайджест</span><span class="home-block-essence" id="home-digest-essence">…</span>${I('chevron-down')}</button><div id="home-digest" hidden></div></div>
  <div class="home-block" id="home-block-energy"><button class="home-block-head" data-block-toggle="energy" aria-expanded="false" aria-label="Развернуть электроэнергию"><span>Электроэнергия</span><span class="home-block-essence" id="home-energy-essence">…</span>${I('chevron-down')}</button><div id="home-energy" hidden></div></div>
  <div id="home-alarm" hidden></div>
  <div class="home-block" id="home-block-station"><button class="home-block-head" data-block-toggle="station" aria-expanded="false" aria-label="Развернуть станцию"><span>Станция</span><span class="home-block-essence" id="home-station-essence">…</span>${I('chevron-down')}</button><div id="home-station" hidden></div></div>
@@ -957,6 +998,7 @@ function render(animate=true){
  paintHeaderLeft();
  if(state.view==='home')applyBlocks();
  if(state.view==='home')loadHomeTicker();
+ if(state.view==='home')loadGuardChip();
  if(state.view==='weather')loadWeatherForecast();
  document.querySelectorAll('nav button').forEach(b=>{
   const active=b.dataset.view===state.view||(['room','model'].includes(state.view)&&b.dataset.view==='home');
@@ -1267,6 +1309,8 @@ function panelSettings(){
  <p class="setting-help" id="night-status">${nightLabel(new Date().getHours()*60+new Date().getMinutes(),state.nightStart||'23:00',state.nightEnd||'07:00',state.nightMode)}</p>
  <p class="setting-help">Приглушается оформление панели, не аппаратная яркость планшета. Свет в доме не переключается.</p>
  <div class="night-times"><label class="setting-field">Охрана ночью<select id="guard-setting">${[['auto','Автоматически · по расписанию'],['on','Всегда включена'],['off','Выключена']].map(([v,l])=>`<option value="${v}" ${(state.guardNight||'auto')===v?'selected':''}>${l}</option>`).join('')}</select></label><label class="setting-field">Дверь открыта дольше, мин<input id="guard-minutes" type="number" min="5" max="120" step="1" value="${state.guardDoorMinutes||15}"/></label></div>
+ <div class="night-times"><label class="setting-field">Сирена через, мин (вне дома)<input id="guard-away-minutes" type="number" min="1" max="30" step="1" value="${state.guardAwayMinutes||3}"/></label><label class="setting-field">Секунды на выход<input id="guard-exit-delay" type="number" min="0" max="600" step="1" value="${state.guardExitDelay??120}"/></label></div>
+ <div class="night-times"><label class="setting-field setting-check"><input id="guard-flash-setting" type="checkbox" ${state.guardFlash!==false?'checked':''}/>Мигание светом при сирене</label><label class="setting-field setting-check"><input id="guard-master-setting" type="checkbox" ${state.guardMasterArms!==false?'checked':''}/>Мастер-кнопка ставит/снимает охрану</label></div>
  <p class="setting-help">«Авто» — охрана активна в ночное окно из расписания выше. Если дверь открыта дольше указанного времени, в сводке появляется алерт; ночью открытая дверь и события двора помечаются как ночные.</p>
  </section><section class="settings-section"><h3>Оформление и обслуживание</h3><label class="setting-field">Постоянный экран<select id="kiosk-setting"><option value="off" ${!state.kiosk?'selected':''}>Обычная панель</option><option value="on" ${state.kiosk?'selected':''}>Компактный режим для экрана</option></select></label>
  <button class="secondary full-width" data-action="fullscreen">${I('maximize')}Полный экран</button>
@@ -1862,6 +1906,17 @@ async function dispatchAction(e){
  }
  if(a==='events-reload')return loadEvents(true);
  if(a==='events-open'){state.view='events';render();return}
+ if(a==='guard-sheet')return openGuardSheet();
+ if(a==='guard-arm'||a==='guard-disarm'||a==='guard-cancel'){
+  const action=a==='guard-arm'?'arm':a==='guard-disarm'?'disarm':'cancel-exit';
+  try{
+   await api('guard',{method:'POST',body:{action}});
+   if(action==='arm'){state.guardArmedAway=true;toast('Уход: охрана через '+(state.guardExitDelay||120)+' с')}
+   else{state.guardArmedAway=false;toast(action==='cancel-exit'?'Выход отменён':'Охрана снята')}
+   guardData=null;loadGuardChip();closeModal();
+  }catch(error){toast(error.message)}
+  return;
+ }
  if(a==='yard-open'){state.view='yard';render();return}
  if(a==='history-reload')return loadStatistics(true);
  if(a==='history-focus-clear'){historyState.focus=null;paintStatistics();return}
@@ -1997,6 +2052,15 @@ document.addEventListener('change',async e=>{
   }
  if(id==='night-setting'){state.nightMode=e.target.value;applyNight();persist()}
  if(id==='guard-setting'){state.guardNight=e.target.value;persist();refresh()}
+ if(id==='guard-away-minutes'||id==='guard-exit-delay'){
+  const v=Math.round(Number(e.target.value));
+  const ok=id==='guard-away-minutes'?(v>=1&&v<=30):(v>=0&&v<=600);
+  if(!ok){toast(id==='guard-away-minutes'?'Сирена через: от 1 до 30 минут.':'Секунды на выход: от 0 до 600.');return}
+  if(id==='guard-away-minutes')state.guardAwayMinutes=v;else state.guardExitDelay=v;
+  persist();
+ }
+ if(id==='guard-flash-setting'){state.guardFlash=e.target.checked;persist()}
+ if(id==='guard-master-setting'){state.guardMasterArms=e.target.checked;persist()}
  if(id==='guard-minutes'){
   const v=Math.round(Number(e.target.value));
   if(!Number.isInteger(v)||v<5||v>120){toast('Минуты открытия двери: от 5 до 120.');e.target.value=state.guardDoorMinutes||15;return}
@@ -2081,7 +2145,34 @@ document.addEventListener('keydown',e=>{
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&activeRoomCard&&state.view==='home'&&$('#overlay').hidden){activeRoomCard=null;paintRoomCard()}});
 let historyResizeTimer;
 window.addEventListener('resize',()=>{clearTimeout(historyResizeTimer);if(state.view==='statistics')historyResizeTimer=setTimeout(paintStatistics,150)});
-$('#master').onclick=master;$('#info').onclick=()=>openSettings();
+let guardPressTimer=null,guardLong=false;
+$('#master').addEventListener('pointerdown',()=>{
+ guardLong=false;
+ if(!(isLive()&&state.guardMasterArms!==false))return;
+ guardPressTimer=setTimeout(()=>{guardLong=true;toast(state.guardArmedAway?'Длинное нажатие: снимаем охрану…':'Длинное нажатие: охрана уже снята')},600);
+});
+$('#master').addEventListener('pointerup',()=>clearTimeout(guardPressTimer));
+$('#master').addEventListener('pointercancel',()=>clearTimeout(guardPressTimer));
+$('#master').addEventListener('click',async()=>{
+ if(isLive()&&state.guardMasterArms!==false){
+  if(guardLong){guardLong=false;await guardDisarm();return}
+  if(state.guardArmedAway){toast('Охрана активна · длинное нажатие — снять');return}
+  await guardArm();return;
+ }
+ master();
+});
+async function guardArm(){
+ try{
+  const r=await api('guard',{method:'POST',body:{action:'arm'}});
+  state.guardArmedAway=true;toast('Уход: охрана через '+r.exitDelay+' с');refresh();
+ }catch(error){toast(error.message)}
+}
+async function guardDisarm(){
+ try{
+  await api('guard',{method:'POST',body:{action:'disarm'}});
+  state.guardArmedAway=false;toast('Охрана снята');refresh();
+ }catch(error){toast(error.message)}
+}$('#info').onclick=()=>openSettings();
 $('#standby').onclick=enterIdle;$('#idle-screen').onclick=e=>{e.preventDefault();e.stopPropagation();wake()};
 $('#theme').onclick=()=>{
  if(state.autoTheme&&terraceLux()!==null){toast('Температура темы задаётся освещённостью террасы.');return}

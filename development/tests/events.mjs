@@ -104,7 +104,7 @@ try{
  assert.match(markup,/Сегодня/,'группа «Сегодня»');
  assert.match(markup,/data-action="yard-clip"/,'клип кликабелен');
  assert.match(eventsFilterMarkup('door',list.body.events),/is-active/,'активный фильтр');
- assert.equal(Object.keys(EVENT_TYPES).length,5,'пять типов');
+ assert.equal(Object.keys(EVENT_TYPES).length,6,'шесть типов (двор, двери, свет, показания, система, охрана)');
  console.log('events: ok');
 }finally{
  if(child&&child.exitCode===null){const end=new Promise(r=>child.once('exit',r));child.kill('SIGTERM');await end}

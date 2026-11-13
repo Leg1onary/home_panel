@@ -7,7 +7,8 @@ export const EVENT_TYPES={
  door:{icon:'door-open',label:'Двери'},
  light:{icon:'lightbulb',label:'Свет'},
  meter:{icon:'zap',label:'Показания'},
- system:{icon:'activity',label:'Система'}
+ system:{icon:'activity',label:'Система'},
+ guard:{icon:'shield',label:'Охрана'}
 };
 const dayKey=at=>new Date(at).toDateString();
 const dayLabel=(at,now=Date.now())=>{

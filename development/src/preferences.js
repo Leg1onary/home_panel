@@ -21,7 +21,13 @@ export const defaultPreferences=()=>({
  energy_readings:[],energy_tariff:null,
  // Ночная охрана (3.4.0): auto = активна по расписанию ночи; дверь открыта дольше
  // N минут → алерт в сводке. Отсутствие ключей в старых профилях = дефолты.
- guardNight:'auto',guardDoorMinutes:15
+ guardNight:'auto',guardDoorMinutes:15,
+ // 3.7.0: пилотная охранная система. guardArmedAway — режим «вне дома» (переживает
+ // рестарт); тайминги в минутах; guardFlash — мигание светом при сирене;
+ // guardMasterArms — мастер-кнопка: короткое = уход (без команд света, сцену
+ // выполняет Умный дом с Алисой), длинное = снятие.
+ guardArmedAway:false,guardExitDelay:120,guardAwayMinutes:3,
+ guardHomeAlertMinutes:10,guardHomeAnnounceMinutes:30,guardFlash:true,guardMasterArms:true
 });
 // Пользовательские сценарии: строгие лимиты, неизвестные поля отбрасываем,
 // целиком невалидные сценарии молча не сохраняем — остальной профиль не страдает.
@@ -157,6 +163,19 @@ export function validatePreferences(input,{importing=false}={}){
  p.guardNight=raw.guardNight===undefined?'auto':raw.guardNight;
  if(raw.guardDoorMinutes!==undefined&&(!Number.isInteger(raw.guardDoorMinutes)||raw.guardDoorMinutes<5||raw.guardDoorMinutes>120))throw new Error('Минуты открытия двери: целое число от 5 до 120.');
  p.guardDoorMinutes=raw.guardDoorMinutes===undefined?15:raw.guardDoorMinutes;
+ // 3.7.0: охранная система — значения и валидация.
+ if(raw.guardArmedAway!==undefined&&typeof raw.guardArmedAway!=='boolean')throw new Error('Неверный флаг охраны.');
+ p.guardArmedAway=raw.guardArmedAway===true;
+ if(raw.guardExitDelay!==undefined&&(!Number.isInteger(raw.guardExitDelay)||raw.guardExitDelay<0||raw.guardExitDelay>600))throw new Error('Задержка выхода: целое от 0 до 600 секунд.');
+ p.guardExitDelay=raw.guardExitDelay===undefined?120:raw.guardExitDelay;
+ if(raw.guardAwayMinutes!==undefined&&(!Number.isInteger(raw.guardAwayMinutes)||raw.guardAwayMinutes<1||raw.guardAwayMinutes>30))throw new Error('Минуты до сирены: целое от 1 до 30.');
+ p.guardAwayMinutes=raw.guardAwayMinutes===undefined?3:raw.guardAwayMinutes;
+ if(raw.guardHomeAlertMinutes!==undefined&&(!Number.isInteger(raw.guardHomeAlertMinutes)||raw.guardHomeAlertMinutes<5||raw.guardHomeAlertMinutes>120))throw new Error('Алерт дома: целое от 5 до 120 минут.');
+ p.guardHomeAlertMinutes=raw.guardHomeAlertMinutes===undefined?10:raw.guardHomeAlertMinutes;
+ if(raw.guardHomeAnnounceMinutes!==undefined&&(!Number.isInteger(raw.guardHomeAnnounceMinutes)||raw.guardHomeAnnounceMinutes<5||raw.guardHomeAnnounceMinutes>240))throw new Error('Озвучка дома: целое от 5 до 240 минут.');
+ p.guardHomeAnnounceMinutes=raw.guardHomeAnnounceMinutes===undefined?30:raw.guardHomeAnnounceMinutes;
+ p.guardFlash=raw.guardFlash!==false;
+ p.guardMasterArms=raw.guardMasterArms!==false;
 
  const used=new Set();p.bindings={};
  for(const definition of bindingDefinitions(p.devices)){

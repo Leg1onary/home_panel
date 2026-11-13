@@ -17,6 +17,7 @@ import {YardClips} from './yard-clips.js';
 import {journal,journalList} from './journal.js';
 import {meterValue,monthDelta,monthCost,monthForecast,monthComparison} from '../src/energy.js';
 import {computeAnalytics} from '../src/events.js';
+import {isNight} from '../src/night.js';
 import {energyDeltas} from './ha.js';
 
 import {deviceTypes,samePhysicalDevice,resolveAction} from '../src/catalog.js';
@@ -155,11 +156,117 @@ const yardClips=new YardClips({ha,db,getEntityId:()=>yardEntityHint,
     const eid=prefs.bindings[d.id].entityId,e=byId.get(eid);
     if(!e)continue;
     const open=e.state==='on',prev=doorTracker.get(eid);
-    if(prev===undefined){doorTracker.set(eid,open);continue}
-    if(prev!==open){doorTracker.set(eid,open);recordEvent('door',d.device.name+(open?' открыта':' закрыта'))}
+    if(prev===undefined){doorTracker.set(eid,{open,since:open?Date.now():0});continue}
+    if(prev.open!==open){
+     doorTracker.set(eid,{open,since:open?Date.now():0});
+     recordEvent('door',d.device.name+(open?' открыта':' закрыта'));
+    }
    }
   }catch(error){console.log('Door poll:',error?.message||error)}
  },Number(process.env.PANEL_DOOR_POLL_MS)||20000).unref();
+const GUARD_SCALE=Number(process.env.PANEL_GUARD_SCALE)||1;
+const guard={exitUntil:0,alarm:null,timers:[],alerted:new Map(),flashTimer:null,flashOn:false};
+const guardTimers=[];const gT=(fn,ms)=>{const t=setTimeout(fn,ms);guardTimers.push(t);return t};
+const guardClearTimers=()=>{for(const t of guardTimers.splice(0))clearTimeout(t);if(guard.flashTimer){clearInterval(guard.flashTimer);guard.flashTimer=null}};
+const guardPrefs=()=>getProfile(addon?'home':'local').preferences;
+async function guardDoors(){
+ const prefs=guardPrefs();
+ const defs=bindingDefinitions(prefs.devices).filter(d=>d.type==='door'&&d.device.status==='installed'
+  &&prefs.bindings[d.id]?.verified&&prefs.bindings[d.id]?.entityId);
+ // 3.7.0: для охраны состояния всегда свежие — кеш LiveFeed может отставать.
+ const byId=new Map(((await ha.states())||[]).map(s=>[s.entity_id,s]));
+ // since — из трекера, а если дверь открыта, но времени открытия мы не видели —
+ // считаем от текущего момента (честно для пилота).
+ const out=defs.map(d=>{
+  const eid=prefs.bindings[d.id].entityId,e=byId.get(eid);
+  const stateOpen=e?e.state==='on':false;
+  const tr=doorTracker.get(eid);
+  const since=stateOpen?(tr?.since&&tr.since>0?tr.since:Date.now()):0;
+  if(!tr||tr.open!==stateOpen)doorTracker.set(eid,{open:stateOpen,since});
+  return {id:d.id,name:d.device.name,entityId:eid,open:stateOpen,since,state:e?.state};
+ });
+ return out;
+}
+async function guardLights(on){
+ const prefs=guardPrefs();
+ for(const def of bindingDefinitions(prefs.devices).filter(d=>['light','rgb'].includes(d.type)&&d.device.status==='installed'&&prefs.bindings[d.id]?.verified&&prefs.bindings[d.id]?.entityId)){
+  try{await ha.command({id:def.id,value:on},prefs)}catch(error){journal('Охрана: свет '+def.name+' — '+(error?.message||error),'warn')}
+ }
+}
+async function guardSiren(){
+ // Пилот: интент станции «включи песню «Полицейская сирена»» через conversation;
+ // при неудаче — громкая TTS-озвучка (гарантированный запасной вариант).
+ try{
+  const r=await ha.converse('включи песню Полицейская сирена');
+  journal('Охрана: интент сирены — '+(r.speech||'без ответа'));
+ }catch(error){
+  journal('Охрана: интент не сработал ('+(error?.message||error)+') — TTS-сирена','warn');
+  try{await ha.announce('Внимание! Внимание! Откройте дверь и уберите руки!',guardPrefs())}catch(e2){journal('Охрана: TTS-сирена не удалась: '+(e2?.message||e2),'warn')}
+ }
+}
+async function guardSirenStop(){
+ try{await ha.command({id:'station:playing',value:false},guardPrefs())}catch(error){journal('Охрана: стоп сирены — '+(error?.message||error),'warn')}
+}
+function guardStopFlash(){if(guard.flashTimer){clearInterval(guard.flashTimer);guard.flashTimer=null}guard.flashOn=false}
+function guardStartAlarmCycle(doorName){
+ guard.alarm={startedAt:Date.now(),doorName};
+ recordEvent('guard','Сирена · '+doorName+' (цикл)');
+ guardLights(true).then(()=>{
+  if(guardPrefs().guardFlash){
+   guard.flashOn=true;
+   guard.flashTimer=setInterval(()=>{guardLights(guard.flashOn=!guard.flashOn)},2000);
+  }
+ });
+ guardSiren();
+ const play=3*60000*GUARD_SCALE,pause=2*60000*GUARD_SCALE;
+ gT(async()=>{guardStopFlash();await guardSirenStop()},play);
+ gT(async()=>{
+  if(!guardPrefs().guardArmedAway)return;
+  recordEvent('guard','Сирена · пауза 2 мин, ждём снятия');
+  gT(async()=>{if(guardPrefs().guardArmedAway)guardStartAlarmCycle(doorName)},pause);
+ },play+pause);
+}
+async function guardStopAlarm(silent=false){
+ guardClearTimers();guardStopFlash();guard.alarm=null;
+ if(!silent){await guardSirenStop().catch(()=>{});await guardLights(false).catch(()=>{})}
+}
+async function guardTick(){
+ let prefs;
+ try{prefs=guardPrefs()}catch{return}
+ const now=Date.now();
+ const armed=prefs.guardArmedAway===true;
+ if(!armed){
+  if(guard.alarm||guardTimers.length)await guardStopAlarm(true);
+  guard.exitUntil=0;guard.alerted.clear();
+  return;
+ }
+ const doors=await guardDoors();
+ // выход-отсчёт: двери игнорируем, пока не вышли
+ if(guard.exitUntil>now)return;
+ const open=doors.filter(d=>d.open&&Number.isFinite(d.since)&&d.since>0);
+ if(!guard.alarm){
+  const trigger=open.find(d=>now-d.since>=prefs.guardAwayMinutes*60000*GUARD_SCALE);
+  if(trigger){recordEvent('guard','Тревога: '+trigger.name+' открыта дольше '+prefs.guardAwayMinutes+' мин');await guardStartAlarmCycle(trigger.name);return}
+ }
+ // ночь = armed home: >alert минут → алерт-событие, >announce минут → озвучка
+ const d=new Date(now),minutes=d.getHours()*60+d.getMinutes();
+ const night=prefs.guardNight!=='off'&&isNight(minutes,prefs.nightStart,prefs.nightEnd,prefs.guardNight);
+ if(night&&!guard.alarm){
+  for(const door of open){
+   const openMin=(now-door.since)/60000;
+   const keyA=door.entityId+':a',keyN=door.entityId+':n';
+   if(openMin>=prefs.guardHomeAlertMinutes&&!guard.alerted.has(keyA)){
+    guard.alerted.set(keyA,now);recordEvent('door',door.name+' открыта дольше '+prefs.guardHomeAlertMinutes+' мин (ночь)');
+   }
+   if(openMin>=prefs.guardHomeAnnounceMinutes&&!guard.alerted.has(keyN)){
+    guard.alerted.set(keyN,now);recordEvent('door',door.name+' открыта дольше '+prefs.guardHomeAnnounceMinutes+' мин — озвучка');
+    try{await ha.announce('Внимание, открыта '+door.name,prefs)}catch(error){journal('Охрана: озвучка не удалась — '+(error?.message||error),'warn')}
+   }
+  }
+ }
+}
+setInterval(guardTick,Math.max(250,5000*GUARD_SCALE)).unref();
+
 const getProfile=id=>{
  let row=db.prepare('SELECT * FROM profiles WHERE id=?').get(id);
  if(!row){db.prepare('INSERT INTO profiles(id,preferences) VALUES(?,?)').run(id,JSON.stringify(defaultPreferences()));row=db.prepare('SELECT * FROM profiles WHERE id=?').get(id)}
@@ -290,6 +397,7 @@ const server=http.createServer(async(req,res)=>{
 
      if(input.energy_readings===undefined)input.energy_readings=p.preferences.energy_readings;
      if(input.energy_tariff===undefined)input.energy_tariff=p.preferences.energy_tariff;
+     if(input.guardArmedAway===undefined)input.guardArmedAway=p.preferences.guardArmedAway;
     }
     // A still-open older client does not know the additive layer. Its theme or
     // binding save must not erase newer groups. Legacy channel deletion detaches
@@ -385,7 +493,7 @@ const server=http.createServer(async(req,res)=>{
    if(route==='events'&&req.method==='GET'){
     const limit=Math.min(200,Math.max(1,Number(url.searchParams.get('limit'))||120));
     const type=url.searchParams.get('type');
-    const rows=type&&['yard','door','light','meter','system'].includes(type)
+    const rows=type&&['yard','door','light','meter','system','guard'].includes(type)
      ?db.prepare('SELECT * FROM events WHERE type=? ORDER BY id DESC LIMIT ?').all(type,limit)
      :db.prepare('SELECT * FROM events ORDER BY id DESC LIMIT ?').all(limit);
     // клипы двора: кадр-каунт для щитка (ref 'clip:<id>')
@@ -403,6 +511,46 @@ const server=http.createServer(async(req,res)=>{
    if(route==='analytics'&&req.method==='GET'){
     const rows=db.prepare('SELECT at,type,text FROM events WHERE at>? ORDER BY at ASC').all(Date.now()-14*86400000);
     return json(res,200,computeAnalytics(rows));
+   }
+   // 3.7.0: охрана — статус и команды взвода/снятия.
+   if(route==='guard'&&req.method==='GET'){
+    const prefs=p.preferences,doors=await guardDoors().catch(()=>[]);
+    return json(res,200,{armed:prefs.guardArmedAway===true,
+     exitRemaining:guard.exitUntil>Date.now()?Math.round((guard.exitUntil-Date.now())/1000):0,
+     alarm:guard.alarm?{doorName:guard.alarm.doorName,startedAt:guard.alarm.startedAt}:null,
+     flash:prefs.guardFlash,masterArms:prefs.guardMasterArms,
+     doors:doors.map(d=>({name:d.name,open:d.open}))});
+   }
+   if(route==='guard'&&req.method==='POST'){
+    const request=JSON.parse((await body(req)).toString());
+    const prefs=p.preferences;
+    if(request.action==='arm'){
+     const doors=await guardDoors();
+     const open=doors.find(d=>d.open);
+     if(open)return json(res,409,{error:'Нельзя поставить на охрану: '+open.name+' открыта.'});
+     prefs.guardArmedAway=true;
+     db.prepare('UPDATE profiles SET preferences=? WHERE id=?').run(JSON.stringify(prefs),id);
+     guard.exitUntil=Date.now()+prefs.guardExitDelay*1000*GUARD_SCALE;
+     await guardStopAlarm(true);
+     recordEvent('guard','Охрана: выход, '+prefs.guardExitDelay+' с на дверь');
+     return json(res,200,{armed:true,exitDelay:prefs.guardExitDelay});
+    }
+    if(request.action==='disarm'){
+     const was=guard.alarm!==null;
+     prefs.guardArmedAway=false;
+     db.prepare('UPDATE profiles SET preferences=? WHERE id=?').run(JSON.stringify(prefs),id);
+     guard.exitUntil=0;
+     await guardStopAlarm();
+     recordEvent('guard',was?'Охрана снята — сирена остановлена':'Охрана снята');
+     return json(res,200,{armed:false});
+    }
+    if(request.action==='cancel-exit'){
+     guard.exitUntil=0;prefs.guardArmedAway=false;
+     db.prepare('UPDATE profiles SET preferences=? WHERE id=?').run(JSON.stringify(prefs),id);
+     recordEvent('guard','Выход отменён — охрана не включена');
+     return json(res,200,{armed:false});
+    }
+    return json(res,400,{error:'Неизвестное действие охраны.'});
    }
    // 3.4.6: поиск ONVIF-камер в локальной сети (WS-Discovery) — для формы в тех.разделе.
    if(route==='onvif-discover'&&req.method==='POST'){
