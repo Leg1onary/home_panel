@@ -45,8 +45,9 @@ import {parseBrightness,scheduleWave} from './light-wave.js';
 import {loadShopping,paintShopping,shoppingMutate,shoppingState,shoppingCardMarkup} from './shopping.js';
 import {paintAlarm,alarmMarkup,alarmEntity,alarmAction} from './alarm.js';
 import {weatherViewArgs,weatherNowMarkup,weatherArcMarkup,weatherDailyMarkup,weatherHourlyMarkup,weatherMoonMarkup,weatherEntityOf} from './weather-page.js';
-import {eventsListMarkup,eventsFilterMarkup} from './events.js';
+import {eventsListMarkup,eventsFilterMarkup,activityMarkup} from './events.js';
 import {parseBlocks,serializeBlocks,digestEssence,energyEssence,stationEssence} from './home-blocks.js';
+import {setHomeEventHandler} from './live.js';
 
 import {esc,disabled,timeOf,clock,date,scheduleMinute,PANEL_TIMEZONE} from './dom.js';
 const $=s=>document.querySelector(s);
@@ -358,6 +359,25 @@ function updateYardClipsRegion(){
  }
 }
 setYardClipHandler(info=>yardClipsBus.notify({kind:'new',clip:info}));
+// 3.6.0: живой тикер хроники на главной — последнее событие поверх hero.
+let tickerFlash=0;
+function paintHomeTicker(ev){
+ const node=$('#home-ticker');
+ if(!node)return;
+ if(!ev||!Number.isFinite(ev.at)){node.hidden=true;return}
+ const meta={yard:['video','Двор'],door:['door-open','Дверь'],light:['lightbulb','Свет'],meter:['zap','Счётчик'],system:['activity','Система']}[ev.type]||['activity','Дом'];
+ const time=new Date(ev.at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+ node.hidden=false;
+ node.innerHTML=`<i data-lucide="${meta[0]}"></i><span>${esc(meta[1])} · ${esc(ev.text)}</span><time>${esc(time)}</time>`;
+ node.classList.add('is-flash');clearTimeout(tickerFlash);
+ tickerFlash=setTimeout(()=>node.classList.remove('is-flash'),2500);
+ icons();
+}
+async function loadHomeTicker(){
+ try{const data=await api('events?limit=1');if(state.view==='home'&&data.events?.length)paintHomeTicker(data.events[0])}
+ catch{/* тикер не критичен */}
+}
+setHomeEventHandler(ev=>{if(state.view==='home')paintHomeTicker(ev)});
 function quickArgs(){
  const camera=state.devices.find(d=>d.type==='camera'&&d.room==='yard'&&d.status==='installed');
  return {masterBlocked:masterBlocked(),cameraId:camera?.id||null};
@@ -401,7 +421,8 @@ async function loadYardFrame(force=false){
 function home(){
  const hero=`<div class="hero-overlay">
  <div class="hero-top"><div class="hero-clock" aria-label="Местное время дома"><div id="hero-clock">${clock()}</div><span id="hero-date">${date()}</span><span id="hero-greeting" class="hero-greeting" hidden></span></div></div>
- <div class="hero-facts" id="home-status">${WEATHER_SLOT}${FACTS_SLOT}</div></div>`;
+ <div class="hero-facts" id="home-status">${WEATHER_SLOT}${FACTS_SLOT}</div></div>
+ <div id="home-ticker" class="home-ticker" hidden data-action="events-open" role="button" aria-label="Открыть хронику"></div></div>`;
  return `<div class="view dashboard-view view-enter">
  <h1 class="visually-hidden">Мой дом</h1>
  <div class="home-stage-wrap">${sceneStage(hero)}
@@ -653,12 +674,21 @@ function lights(){
 }
 // 3.5.0: раздел «События» — хроника дома. Данные разом (≤200), фильтр на клиенте;
 // клипы двора открываются общим щитком (data-action=yard-clip).
-let eventsRows=[],eventsFilter='all',eventsBusy=false;
+let eventsRows=[],eventsFilter='all',eventsBusy=false,eventsQuery='';
 function eventsView(){
  return `<div class="view events-view"><div class="view-title"><div><div class="eyebrow">Хроника</div><h1>События</h1><p>Что происходило в доме: двор, двери, свет, показания.</p></div>
  <button class="icon-button" data-action="events-reload" ${disabled(eventsBusy)} aria-label="Обновить события"><i data-lucide="rotate-ccw"></i></button></div>
+ <input class="events-search" data-events-search type="search" placeholder="Поиск по событиям…" value="${esc(eventsQuery)}" aria-label="Поиск по событиям"/>
  <div data-events-filters>${eventsFilterMarkup(eventsFilter,eventsRows)}</div>
  <div class="events-list" data-events-list>${eventsListMarkup(eventsRows.filter(r=>eventsFilter==='all'||r.type===eventsFilter))}</div></div>`;
+}
+async function loadActivity(){
+ try{
+  const a=await api('analytics');
+  if(state.view!=='statistics')return;
+  const node=$('[data-activity]');
+  if(node){node.innerHTML=activityMarkup(a);icons()}
+ }catch{/* активность не критична */}
 }
 async function loadEvents(force=false){
  if(eventsBusy)return;
@@ -684,7 +714,7 @@ async function loadEvents(force=false){
  }
 }
 // 3.5.1: раздел «Двор» — камера, детектор, лента клипов и уличный климат в одном месте.
-let yardDetector=null,yardEvents=[];
+let yardDetector=null,yardEvents=[],yardToday=0;
 function yardView(){
  const camera=state.devices.find(d=>d.type==='camera'&&d.room==='yard'&&d.status==='installed');
  const motion=state.devices.find(d=>d.id==='terrace-motion'&&d.status==='installed');
@@ -712,10 +742,13 @@ function yardView(){
 async function loadYardView(){
  updateYardClipsRegion();
  try{
-  const [det,ev]=await Promise.all([api('yard-onvif').catch(()=>null),api('events?type=yard&limit=6').catch(()=>null)]);
+  const [det,ev]=await Promise.all([api('yard-onvif').catch(()=>null),api('events?type=yard&limit=50').catch(()=>null)]);
   if(state.view!=='yard')return;
   yardDetector=det;
-  yardEvents=ev&&Array.isArray(ev.events)?ev.events:[];
+  const all=ev&&Array.isArray(ev.events)?ev.events:[];
+  const dayStart=new Date();dayStart.setHours(0,0,0,0);
+  yardToday=all.filter(e=>e.at>=dayStart.getTime()).length;
+  yardEvents=all.slice(0,6);
  }catch{if(state.view==='yard')yardDetector=null}
  if(state.view!=='yard')return;
  // перерисовываем карточку статуса с живым ответом детектора
@@ -727,7 +760,7 @@ async function loadYardView(){
    :det&&det.configured?'События активны':'Не настроен';
   const motion=state.devices.find(d=>d.id==='terrace-motion'&&d.status==='installed');
   const outdoor=state.devices.filter(d=>['terrace','yard','well','attic'].includes(d.room)&&['temperature','humidity'].includes(d.type)&&d.status==='installed');
-  card.innerHTML=`<div class="status-line"><span>${I('scan-eye')}Детектор движения</span><strong>${esc(detText)}</strong></div>`
+  card.innerHTML=`<div class="status-line"><span>${I('scan-eye')}Детектор движения</span><strong>${esc(detText)}${yardToday?` · за сегодня ${yardToday}`:''}</strong></div>`
    +(motion?`<button class="status-line motion-detail" data-action="motion" data-motion-id="${esc(motion.id)}"><span>${I('trees')}Движение у террасы</span><strong>${esc(deviceReading(motion))}</strong></button>`:'')
    +outdoor.map(d=>`<div class="status-line"><span>${I(deviceTypes[d.type].icon)}${esc(areaName(d.room))} · ${deviceTypes[d.type].label}</span><strong>${esc(deviceReading(d))}</strong></div>`).join('');
  }
@@ -923,6 +956,7 @@ function render(animate=true){
  if(!animate&&$('#main .view'))$('#main .view').style.animation='none';
  paintHeaderLeft();
  if(state.view==='home')applyBlocks();
+ if(state.view==='home')loadHomeTicker();
  if(state.view==='weather')loadWeatherForecast();
  document.querySelectorAll('nav button').forEach(b=>{
   const active=b.dataset.view===state.view||(['room','model'].includes(state.view)&&b.dataset.view==='home');
@@ -932,6 +966,7 @@ function render(animate=true){
  if($('#sheet-content').dataset.station==='hub'&&!shoppingState.loaded&&!shoppingState.busy)loadShopping();
  if(state.view==='statistics')loadStatistics();
  if(state.view==='events')loadEvents();
+ if(state.view==='statistics')loadActivity();
  if(state.view==='yard')loadYardView();
  if($('#canvas')){
   modelPromise ||= import('./model.js');
@@ -953,6 +988,14 @@ function render(animate=true){
   });
  }
 }
+document.addEventListener('input',e=>{
+ const t=e.target;
+ if(!t||!t.matches?.('[data-events-search]'))return;
+ eventsQuery=t.value||'';
+ const node=$('[data-events-list]');
+ if(node)node.innerHTML=eventsListMarkup(eventsRows.filter(r=>(eventsFilter==='all'||r.type===eventsFilter)
+  &&(!eventsQuery||String(r.text||'').toLowerCase().includes(eventsQuery.toLowerCase()))));
+});
 function updateRegion(selector,markup){
  if(selector==='#home-energy')return; // энергокарточка на Preact — содержимым управляет виджет
  if(selector==='#home-quick'||selector==='#home-status')return; // рельса и факты на Preact — app.js монтирует узлы и шлёт deps по шинам

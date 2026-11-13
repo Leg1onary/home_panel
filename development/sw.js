@@ -22,6 +22,11 @@ self.addEventListener('fetch',event=>{
  const request=event.request,url=new URL(request.url);
  if(request.method!=='GET'||url.origin!==location.origin)return;
  const path=url.pathname;
+ // 3.6.0: офлайн-фолбэк для навигации — оболочка из кеша, честная пометка данных.
+ if(request.mode==='navigate'||path==='/'||path==='/index.html'){
+  event.respondWith(fetch(request).then(r=>put(request,r.clone())).catch(()=>caches.match('index.html').then(hit=>hit||caches.match('/'))));
+  return;
+ }
  if(path.startsWith('/api/'))return; // API responses are never cached.
  if(IMMUTABLE.test(path)){
   event.respondWith(caches.match(request).then(hit=>hit||fetch(request).then(r=>put(request,r.clone()))));

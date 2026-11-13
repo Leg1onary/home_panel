@@ -5,7 +5,7 @@ import http from 'node:http';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
-import {eventsListMarkup,eventsFilterMarkup,EVENT_TYPES} from '../src/events.js';
+import {eventsListMarkup,eventsFilterMarkup,EVENT_TYPES,activityMarkup} from '../src/events.js';
 
 // 3.5.0: хроника дома — события двора (клип-хук), дверей (поллинг), света (команда),
 // старт системы; лента с фильтром и кадр-каунтом.
@@ -84,6 +84,21 @@ try{
  // фильтр
  const filtered=await call('events?type=light');
  assert.equal(filtered.body.events.every(e=>e.type==='light'),true,'фильтр по типу');
+ // аналитика из хроники (3.6.0)
+ const a=await call('analytics');
+ assert.equal(a.body.lightDays.length,14,'14 дней');
+ assert.ok(a.body.totals.light>=1,'свет посчитан');
+ assert.ok(a.body.totals.yard>=1,'двор посчитан');
+ assert.ok(a.body.totals.door>=1,'двери посчитаны');
+ assert.equal(a.body.yardHours.length,24,'24 часа двора');
+ const lightDay=a.body.lightDays.at(-1);
+ assert.ok(lightDay.count>=1,'сегодняшний свет в последнем дне');
+ // разметка активности
+ const act=activityMarkup(a.body);
+ assert.match(act,/Свет · 14 дней/,'заголовок света');
+ assert.match(act,/Двор по часам/,'почасовой двор');
+ const empty=activityMarkup(null);
+ assert.match(empty,/Аналитика появится/,'пустое состояние');
  // разметка: группировка/фильтры/кликабельность
  const markup=eventsListMarkup(list.body.events);
  assert.match(markup,/Сегодня/,'группа «Сегодня»');

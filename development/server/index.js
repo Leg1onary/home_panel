@@ -16,6 +16,7 @@ import {onvifWatch,onvifSnapshots} from './yard-onvif.js';
 import {YardClips} from './yard-clips.js';
 import {journal,journalList} from './journal.js';
 import {meterValue,monthDelta,monthCost,monthForecast,monthComparison} from '../src/energy.js';
+import {computeAnalytics} from '../src/events.js';
 import {energyDeltas} from './ha.js';
 
 import {deviceTypes,samePhysicalDevice,resolveAction} from '../src/catalog.js';
@@ -49,6 +50,7 @@ const recordEvent=(type,text,ref=null)=>{
  const at=Date.now();
  eventInsert.run(at,String(type).slice(0,16),String(text).slice(0,160),ref!=null?String(ref).slice(0,40):null);
  eventPrune.run();
+ try{live?.broadcast?.('home-event',JSON.stringify({at,type,text:String(text).slice(0,160)}))}catch{}
  return at;
 };
 const ha=new HomeAssistant({url:process.env.HA_URL,token:process.env.HA_TOKEN,preview});
@@ -120,6 +122,24 @@ const yardClips=new YardClips({ha,db,getEntityId:()=>yardEntityHint,
   recordEvent('yard','Движение · '+String(info.source||'двор').replace(/^onvif:/,''),'clip:'+info.id);
  }});
  yardClips.start();
+ // 3.6.0: автоснимки профиля — раз в сутки около 03:00, хранить последние 7.
+ const autoPrune=db.prepare("DELETE FROM profile_backups WHERE reason LIKE 'auto-%' AND reason NOT IN (SELECT reason FROM profile_backups WHERE reason LIKE 'auto-%' ORDER BY reason DESC LIMIT 7)");
+ let lastAutoDate='';
+ setInterval(()=>{
+  const now=new Date();
+  const today=now.toISOString().slice(0,10);
+  if(now.getHours()!==3||lastAutoDate===today)return;
+  lastAutoDate=today;
+  try{
+   const reason='auto-'+today;
+   for(const {id} of db.prepare('SELECT id FROM profiles').all()){
+    const prefs=getProfile(id).preferences;
+    db.prepare('INSERT OR REPLACE INTO profile_backups(profile_id,reason,preferences) VALUES(?,?,?)').run(id,reason,JSON.stringify(prefs));
+   }
+   autoPrune.run();
+   journal('Автоснимки профилей сохранены ('+today+')');
+  }catch(error){journal('Автоснимок не удался: '+(error?.message||error),'warn')}
+ },30*60000).unref();
  // Хроника дверей (3.5.0): раз в 20 с сверяем состояния дверных привязок;
  // переход открыта↔закрыта → событие. Живой кеш LiveFeed — без лишних запросов в HA.
  const doorTracker=new Map();
@@ -379,6 +399,11 @@ const server=http.createServer(async(req,res)=>{
     });
     return json(res,200,{events});
    }
+   // 3.6.0: аналитика из хроники — свет/двери по дням, двор по часам (14 дней).
+   if(route==='analytics'&&req.method==='GET'){
+    const rows=db.prepare('SELECT at,type,text FROM events WHERE at>? ORDER BY at ASC').all(Date.now()-14*86400000);
+    return json(res,200,computeAnalytics(rows));
+   }
    // 3.4.6: поиск ONVIF-камер в локальной сети (WS-Discovery) — для формы в тех.разделе.
    if(route==='onvif-discover'&&req.method==='POST'){
     try{
@@ -627,10 +652,10 @@ const server=http.createServer(async(req,res)=>{
   if(req.method!=='GET'&&req.method!=='HEAD')return json(res,405,{error:'Метод запрещён.'});
   const relative=path==='/'?'index.html':path.slice(1);
   // Explicit allowlist: no SQLite database, secrets, server code or arbitrary file access.
-  if(!/^(index\.html|sw\.js|style\.css|app\.js|(?:model|chunk)-[A-Za-z0-9_-]+\.js|assets\/[A-Za-z0-9_./-]+\.(webp|woff2|ttf|txt|js))$/.test(relative)||relative.includes('..'))return json(res,404,{error:'Файл не найден.'});
+  if(!/^(index\.html|sw\.js|style\.css|app\.js|manifest\.json|(?:model|chunk)-[A-Za-z0-9_-]+\.js|assets\/[A-Za-z0-9_./-]+\.(webp|woff2|ttf|txt|js|svg|json))$/.test(relative)||relative.includes('..'))return json(res,404,{error:'Файл не найден.'});
   const file=resolve(root,relative);
   await stat(file);
-  const type={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.webp':'image/webp','.woff2':'font/woff2','.ttf':'font/ttf','.txt':'text/plain; charset=utf-8'}[extname(file)];
+  const type={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.webp':'image/webp','.woff2':'font/woff2','.ttf':'font/ttf','.txt':'text/plain; charset=utf-8','.json':'application/manifest+json','.svg':'image/svg+xml'}[extname(file)]||'application/octet-stream';
   res.writeHead(200,{'Content-Type':type,'Cache-Control':'no-cache','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin'});
   res.end(req.method==='HEAD'?undefined:await readFile(file));
  }catch(error){

@@ -4100,6 +4100,56 @@ function monthComparison(readings, month, now = Date.now()) {
   return { ratio: Math.round(delta / elapsedDays / avgRate * 100) / 100, avgRate: Math.round(avgRate * 100) / 100 };
 }
 
+// src/events.js
+var EVENT_TYPES = {
+  yard: { icon: "video", label: "\u0414\u0432\u043E\u0440" },
+  door: { icon: "door-open", label: "\u0414\u0432\u0435\u0440\u0438" },
+  light: { icon: "lightbulb", label: "\u0421\u0432\u0435\u0442" },
+  meter: { icon: "zap", label: "\u041F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u044F" },
+  system: { icon: "activity", label: "\u0421\u0438\u0441\u0442\u0435\u043C\u0430" }
+};
+var DAY_LABEL = (d) => `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}`;
+function computeAnalytics(rows, now = Date.now()) {
+  const valid = (Array.isArray(rows) ? rows : []).filter((r) => r && Number.isFinite(r.at) && EVENT_TYPES[r.type]);
+  const dayStart = (t) => {
+    const d = new Date(t);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  };
+  const days = [];
+  for (let i = 13; i >= 0; i--) {
+    const t = dayStart(now) - i * 864e5;
+    days.push({ start: t, label: DAY_LABEL(new Date(t)) });
+  }
+  const inDay = (t) => {
+    const k = dayStart(t);
+    return days.findIndex((d) => d.start === k);
+  };
+  const lightDays = days.map((d) => ({ ...d, count: 0 })), doorDays = days.map((d) => ({ ...d, count: 0 }));
+  const lightRooms = /* @__PURE__ */ new Map(), yardHours = Array.from({ length: 24 }, () => 0);
+  let lights = 0, doors = 0, yards = 0;
+  for (const r of valid) {
+    const idx = inDay(r.at);
+    if (idx < 0) continue;
+    if (r.type === "light") {
+      lightDays[idx].count++;
+      lights++;
+      const room = String(r.text || "").split(":")[0].trim();
+      if (room) lightRooms.set(room, (lightRooms.get(room) || 0) + 1);
+    }
+    if (r.type === "door") {
+      doorDays[idx].count++;
+      doors++;
+    }
+    if (r.type === "yard") {
+      yardHours[new Date(r.at).getHours()]++;
+      yards++;
+    }
+  }
+  const rooms = [...lightRooms.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count).slice(0, 5);
+  return { lightDays, doorDays, yardHours, rooms, totals: { light: lights, door: doors, yard: yards }, since: days[0].start };
+}
+
 // src/sensor-state.js
 function binaryValue(type, value) {
   const v = String(value ?? "").trim().toLowerCase();
@@ -4843,6 +4893,10 @@ var recordEvent = (type, text, ref = null) => {
   const at = Date.now();
   eventInsert.run(at, String(type).slice(0, 16), String(text).slice(0, 160), ref != null ? String(ref).slice(0, 40) : null);
   eventPrune.run();
+  try {
+    live?.broadcast?.("home-event", JSON.stringify({ at, type, text: String(text).slice(0, 160) }));
+  } catch {
+  }
   return at;
 };
 var ha = new HomeAssistant({ url: process.env.HA_URL, token: process.env.HA_TOKEN, preview });
@@ -4932,6 +4986,25 @@ var yardClips = new YardClips({
   }
 });
 yardClips.start();
+var autoPrune = db.prepare("DELETE FROM profile_backups WHERE reason LIKE 'auto-%' AND reason NOT IN (SELECT reason FROM profile_backups WHERE reason LIKE 'auto-%' ORDER BY reason DESC LIMIT 7)");
+var lastAutoDate = "";
+setInterval(() => {
+  const now = /* @__PURE__ */ new Date();
+  const today = now.toISOString().slice(0, 10);
+  if (now.getHours() !== 3 || lastAutoDate === today) return;
+  lastAutoDate = today;
+  try {
+    const reason = "auto-" + today;
+    for (const { id } of db.prepare("SELECT id FROM profiles").all()) {
+      const prefs = getProfile(id).preferences;
+      db.prepare("INSERT OR REPLACE INTO profile_backups(profile_id,reason,preferences) VALUES(?,?,?)").run(id, reason, JSON.stringify(prefs));
+    }
+    autoPrune.run();
+    journal("\u0410\u0432\u0442\u043E\u0441\u043D\u0438\u043C\u043A\u0438 \u043F\u0440\u043E\u0444\u0438\u043B\u0435\u0439 \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u044B (" + today + ")");
+  } catch (error) {
+    journal("\u0410\u0432\u0442\u043E\u0441\u043D\u0438\u043C\u043E\u043A \u043D\u0435 \u0443\u0434\u0430\u043B\u0441\u044F: " + (error?.message || error), "warn");
+  }
+}, 30 * 6e4).unref();
 var doorTracker = /* @__PURE__ */ new Map();
 setInterval(async () => {
   if (!ha.enabled) return;
@@ -5214,6 +5287,10 @@ var server = http.createServer(async (req, res) => {
         });
         return json(res, 200, { events });
       }
+      if (route === "analytics" && req.method === "GET") {
+        const rows = db.prepare("SELECT at,type,text FROM events WHERE at>? ORDER BY at ASC").all(Date.now() - 14 * 864e5);
+        return json(res, 200, computeAnalytics(rows));
+      }
       if (route === "onvif-discover" && req.method === "POST") {
         try {
           const found = await onvifDiscover({ timeoutMs: 3e3 });
@@ -5493,10 +5570,10 @@ var server = http.createServer(async (req, res) => {
     }
     if (req.method !== "GET" && req.method !== "HEAD") return json(res, 405, { error: "\u041C\u0435\u0442\u043E\u0434 \u0437\u0430\u043F\u0440\u0435\u0449\u0451\u043D." });
     const relative = path === "/" ? "index.html" : path.slice(1);
-    if (!/^(index\.html|sw\.js|style\.css|app\.js|(?:model|chunk)-[A-Za-z0-9_-]+\.js|assets\/[A-Za-z0-9_./-]+\.(webp|woff2|ttf|txt|js))$/.test(relative) || relative.includes("..")) return json(res, 404, { error: "\u0424\u0430\u0439\u043B \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D." });
+    if (!/^(index\.html|sw\.js|style\.css|app\.js|manifest\.json|(?:model|chunk)-[A-Za-z0-9_-]+\.js|assets\/[A-Za-z0-9_./-]+\.(webp|woff2|ttf|txt|js|svg|json))$/.test(relative) || relative.includes("..")) return json(res, 404, { error: "\u0424\u0430\u0439\u043B \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D." });
     const file = resolve(root, relative);
     await stat(file);
-    const type = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".webp": "image/webp", ".woff2": "font/woff2", ".ttf": "font/ttf", ".txt": "text/plain; charset=utf-8" }[extname(file)];
+    const type = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".webp": "image/webp", ".woff2": "font/woff2", ".ttf": "font/ttf", ".txt": "text/plain; charset=utf-8", ".json": "application/manifest+json", ".svg": "image/svg+xml" }[extname(file)] || "application/octet-stream";
     res.writeHead(200, { "Content-Type": type, "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "same-origin" });
     res.end(req.method === "HEAD" ? void 0 : await readFile(file));
   } catch (error) {

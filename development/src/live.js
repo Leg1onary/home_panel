@@ -46,6 +46,8 @@ function applySnapshot(list){
  }
 }
 let timer,busy=false,revision=0,sse=null,yardClipHandler=null;
+export const setHomeEventHandler=f=>{homeEventHandler=typeof f==='function'?f:null};
+let homeEventHandler=null;
 // Клипы двора: сервер шлёт 'yard-clip' по тому же SSE-каналу состояний.
 export const setYardClipHandler=f=>{yardClipHandler=typeof f==='function'?f:null};
 export async function pollLive(onChange=()=>{}){
@@ -83,6 +85,9 @@ function startSSE(onChange=()=>{}){
   });
   source.addEventListener('yard-clip',e=>{
    try{const clip=JSON.parse(e.data);if(clip&&yardClipHandler)yardClipHandler(clip)}catch{return}
+  });
+  source.addEventListener('home-event',e=>{
+   try{const ev=JSON.parse(e.data);if(ev&&homeEventHandler)homeEventHandler(ev)}catch{return}
   });
   source.addEventListener('error',e=>{
    if(e.data){try{state.liveError=JSON.parse(e.data).message}catch{}state.liveOnline=false;onChange()}

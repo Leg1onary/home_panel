@@ -9,6 +9,7 @@ await build({
 await copyFile('index.html','dist/index.html');
 await copyFile('style.css','dist/style.css');
 await copyFile('sw.js','dist/sw.js');
+await copyFile('manifest.json','dist/manifest.json');
 const pkg=JSON.parse(await readFile('package.json','utf8'));
 await writeFile('dist/sw.js',(await readFile('dist/sw.js','utf8')).replace('__PANEL_VERSION__',pkg.version));
 await cp('assets','dist/assets',{recursive:true});

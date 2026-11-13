@@ -98,6 +98,7 @@ export function statisticsView(s=historyState){
  const lineHours=lights.reduce((sum,e)=>sum+e.onMs/3600000,0),coverage=lights.length?lights.reduce((sum,e)=>sum+e.coverage,0)/lights.length:0;
  return `<div class="statistics-view"><div class="statistics-heading"><div><p class="eyebrow">ИСТОРИЯ ДОМА</p><h1>Статистика</h1><p>Показания и события из Home Assistant. Без выдуманных данных.</p></div><button class="secondary" data-action="history-reload" ${s.loading?'disabled':''}>${s.loading?'Загружаем…':'Обновить'}</button></div>
  ${energyChartBlock()}
+ <section class="activity-card"><div class="section-heading"><div><h2>Активность дома</h2><p>Из хроники панели: свет, двери, двор за 14 дней</p></div></div><div data-activity><p class="description">Загружаем…</p></div></section>
  <div class="history-toolbar"><div class="history-period" role="group" aria-label="Период">${[[6,'6 часов'],[24,'Сутки'],[168,'Неделя']].map(([v,label])=>`<button data-history-hours="${v}" aria-pressed="${s.hours===v}" ${s.loading?'disabled':''}>${label}</button>`).join('')}</div>
  <label class="history-room-label">Зона<select id="history-room"><option value="all">Весь дом</option>${roomIds.map(id=>`<option value="${esc(id)}" ${s.room===id?'selected':''}>${esc(areaName(id))}</option>`).join('')}</select></label></div>
  ${s.error?`<div class="history-notice" role="alert"><strong>Историю получить не удалось</strong><p>${esc(s.error)}</p><button class="text-button" data-action="history-reload">Повторить</button></div>`:''}
