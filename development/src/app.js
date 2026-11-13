@@ -44,7 +44,7 @@ import {YARD_REFRESH_MS} from './yard-card.js';
 import {parseBrightness,scheduleWave} from './light-wave.js';
 import {loadShopping,paintShopping,shoppingMutate,shoppingState,shoppingCardMarkup} from './shopping.js';
 import {paintAlarm,alarmMarkup,alarmEntity,alarmAction} from './alarm.js';
-import {weatherViewArgs,weatherNowMarkup,weatherArcMarkup,weatherDailyMarkup,weatherHourlyMarkup,weatherEntityOf} from './weather-page.js';
+import {weatherViewArgs,weatherNowMarkup,weatherArcMarkup,weatherDailyMarkup,weatherHourlyMarkup,weatherMoonMarkup,weatherEntityOf} from './weather-page.js';
 import {parseBlocks,serializeBlocks,digestEssence,energyEssence,stationEssence} from './home-blocks.js';
 
 import {esc,disabled,timeOf,clock,date,scheduleMinute,PANEL_TIMEZONE} from './dom.js';
@@ -649,17 +649,20 @@ function lights(){
  <span class="demo-badge">${state.demoOffline?'Нет связи · демо':lightCountLabel()}</span></div>
  <div class="room-list">${rooms.map(roomCard).join('')}</div><div class="wide-hint"><span>Инженерное оборудование не входит в мастер-свет.</span><button data-action="catalog">Каталог устройств ${I('arrow-right')}</button></div></div>`;
 }
-// 3.4.4: страница «Погода». Чистая разметка — src/weather-page.js; здесь только
-// сборка аргументов, кеш прогноза (fetchForecast, 10 мин) и живое обновление арки.
-let weatherForecast=[];
+// 3.4.5: страница «Погода». Чистая разметка — src/weather-page.js; здесь только
+// сборка аргументов, кеш прогноза (fetchForecast, 10 мин), «Обновлено HH:MM»
+// (время последнего успешного fetch) и живое обновление арки.
+let weatherForecast=[],weatherFetchedAt=0;
 function weatherPage(){
  trackSunrise();
  const args=weatherViewArgs(state.entityStates,weatherForecast);
  return `<div class="view weather-view"><div class="view-title"><div><div class="eyebrow">Среда</div><h1>Погода</h1><p>Сейчас, световой день и прогноз.</p></div></div>
  <section class="weather-now-card">${weatherNowMarkup(args)}</section>
  <section class="weather-arc-card"><div id="weather-arc">${args?.sun?weatherArcMarkup(args.sun):''}</div></section>
+ <section class="weather-moon-card"><h2>Луна</h2>${weatherMoonMarkup(Date.now())}</section>
  <section class="weather-forecast-card"><h2>Прогноз на дни</h2><div id="weather-daily">${args?weatherDailyMarkup(args.daily):'<p class="description forecast-error">Прогноз недоступен</p>'}</div></section>
  ${args?.hourly?.length?`<section class="weather-forecast-card"><h2>По часам</h2>${weatherHourlyMarkup(args.hourly)}</section>`:''}
+ <p class="weather-updated" id="weather-updated">${weatherFetchedAt?`Обновлено ${timeOf(weatherFetchedAt)}`:''}</p>
  </div>`;
 }
 function paintWeatherArc(){
@@ -673,9 +676,12 @@ async function loadWeatherForecast(){
  const forecast=await fetchForecast(e.entity_id)||[];
  if(state.view!=='weather'||!forecast.length)return;
  weatherForecast=forecast;
+ weatherFetchedAt=Date.now();
  const args=weatherViewArgs(state.entityStates,weatherForecast);
  if(!args)return;
- updateRegion('#weather-daily',weatherDailyMarkup(args.daily));icons();
+ updateRegion('#weather-daily',weatherDailyMarkup(args.daily));
+ updateRegion('#weather-updated',`Обновлено ${timeOf(weatherFetchedAt)}`);
+ icons();
  const tape=document.querySelector('.weather-view .weather-hourly-tape');
  if(!tape&&args.hourly?.length){
   const last=$('.weather-view')?.lastElementChild;

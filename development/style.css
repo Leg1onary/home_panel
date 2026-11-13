@@ -1527,6 +1527,28 @@ body.is-ambient .idle-place,body.is-ambient .idle-hint{opacity:0;pointer-events:
 .weather-hour b{color:var(--text);font-size:var(--text-sm);font-weight:500}
 .weather-hour.is-wet{background:rgba(120,170,220,.14);color:var(--text)}
 [data-theme=light] .weather-hour{background:rgba(20,24,44,.04)}
+/* 3.4.5: обогащённая страница погоды */
+.weather-now-main[data-weather=sunny]>svg{animation:weather-glow 4s ease-in-out infinite alternate}
+.weather-now-main[data-weather=cloudy]>svg,.weather-now-main[data-weather=rain]>svg,.weather-now-main[data-weather=snow]>svg,.weather-now-main[data-weather=fog]>svg{animation:weather-drift 8s ease-in-out infinite alternate}
+.weather-feels{display:block;color:var(--muted);font-size:var(--text-xs);margin-top:2px}
+.weather-arc-length{margin-top:var(--space-1);font-size:var(--text-xs);color:var(--muted);text-align:center}
+.forecast-range{flex:1 1 90px;max-width:180px;position:relative;height:8px;border-radius:4px;background:rgba(255,255,255,.07);overflow:hidden}
+[data-theme=light] .forecast-range{background:rgba(20,24,44,.08)}
+.forecast-range-bar{position:absolute;top:0;bottom:0;border-radius:4px}
+.forecast-mm{color:var(--muted);font-size:12px;min-width:44px;text-align:right;white-space:nowrap}
+.weather-moon-card{padding:var(--space-4) var(--space-6);background:linear-gradient(155deg,rgba(255,255,255,.07),rgba(255,255,255,.02)),var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg)}
+[data-theme=light] .weather-moon-card{background:linear-gradient(155deg,rgba(255,255,255,.9),rgba(255,255,255,.55)),var(--surface)}
+.weather-moon-card h2{font-size:var(--text-sm);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:var(--space-3)}
+.weather-moon{display:flex;align-items:center;gap:var(--space-4)}
+.weather-moon svg{width:40px;height:40px;flex:none}
+.moon-lit{fill:var(--lit)}
+.moon-shadow{fill:var(--surface);transition:transform .4s ease}
+.weather-moon strong{display:block;font-weight:500;font-size:var(--text-base)}
+.weather-moon span{color:var(--muted);font-size:var(--text-xs)}
+.hour-prec{position:relative;width:6px;height:26px;border-radius:3px;background:rgba(255,255,255,.09);overflow:hidden;flex:none}
+[data-theme=light] .hour-prec{background:rgba(20,24,44,.1)}
+.hour-prec>span{position:absolute;bottom:0;left:0;right:0;border-radius:3px;background:var(--accent-teal)}
+.weather-updated{align-self:flex-end;font-size:var(--text-xs);color:var(--muted)}
 /* 3.4.4: сворачиваемые блоки правой колонки главной. */
 .home-block{display:flex;flex-direction:column;align-items:stretch;width:min(300px,44vw);border:1px solid var(--border);border-radius:var(--radius-lg);background:linear-gradient(155deg,rgba(255,255,255,.06),rgba(255,255,255,.02)),var(--surface);overflow:hidden}
 [data-theme=light] .home-block{background:linear-gradient(155deg,rgba(255,255,255,.9),rgba(255,255,255,.55)),var(--surface)}
