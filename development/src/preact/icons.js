@@ -3,13 +3,13 @@
 // иначе в консоль сыплются «icon name was not found» о чужой разметке.
 import {ArrowRight,ArrowUpRight,Armchair,Archive,AudioLines,Bath,BedDouble,Blocks,ChevronRight,CircleCheck,
  CloudDrizzle,CloudFog,CloudHail,CloudLightning,CloudRain,CloudSnow,CloudSun,Cloudy,DoorOpen,
- Droplets,Download,Heater,Info,Lightbulb,LoaderCircle,MoveUpRight,Moon,Pause,Play,Plus,Power,Radio,
+ Droplets,Download,Heater,History,Info,Lightbulb,LoaderCircle,MoveUpRight,Moon,Pause,Play,Plus,Power,Radio,
  RotateCcw,Search,Shield,SkipBack,SkipForward,Sofa,Sun,Thermometer,Trees,TriangleAlert,Video,WifiOff,
  Wind,X,Zap} from 'lucide';
 import {createIcons} from 'lucide';
 export const ICONS={ArrowRight,ArrowUpRight,Armchair,Archive,AudioLines,Bath,BedDouble,Blocks,ChevronRight,
  CircleCheck,CloudDrizzle,CloudFog,CloudHail,CloudLightning,CloudRain,CloudSnow,CloudSun,Cloudy,
- DoorOpen,Droplets,Download,Heater,Info,Lightbulb,LoaderCircle,MoveUpRight,Moon,Pause,Play,Plus,Power,
+ DoorOpen,Droplets,Download,Heater,History,Info,Lightbulb,LoaderCircle,MoveUpRight,Moon,Pause,Play,Plus,Power,
  Radio,RotateCcw,Search,Shield,SkipBack,SkipForward,Sofa,Sun,Thermometer,Trees,TriangleAlert,Video,
  WifiOff,Wind,X,Zap};
 // Легаси-алиас: digest.js честно использует старое имя 'alert-triangle' (контракт-тест),

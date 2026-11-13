@@ -4068,7 +4068,7 @@ var monthCost = (delta, tariff) => Number.isFinite(delta) && Number.isFinite(tar
 function monthForecast(month, now = Date.now()) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(month?.prevDate ?? ""));
   const delta = Number(month?.delta);
-  if (!m || !Number.isFinite(delta) || delta < 0) return null;
+  if (!m || month?.delta == null || !Number.isFinite(delta) || delta < 0) return null;
   const prev = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   const elapsedDays = (now - prev) / 864e5;
   if (!(elapsedDays >= 1)) return null;
@@ -4080,7 +4080,7 @@ function monthForecast(month, now = Date.now()) {
 function monthComparison(readings, month, now = Date.now()) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(month?.prevDate ?? ""));
   const delta = Number(month?.delta);
-  if (!m || !Number.isFinite(delta) || delta < 0) return null;
+  if (!m || month?.delta == null || !Number.isFinite(delta) || delta < 0) return null;
   const prev = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   const elapsedDays = (now - prev) / 864e5;
   if (!(elapsedDays >= 1)) return null;
@@ -4836,6 +4836,15 @@ var db = new Database(resolve(data, "panel.sqlite"));
 db.pragma("journal_mode = WAL");
 db.exec("CREATE TABLE IF NOT EXISTS profiles (id TEXT PRIMARY KEY, preferences TEXT NOT NULL, photo BLOB);");
 db.exec("CREATE TABLE IF NOT EXISTS profile_backups (profile_id TEXT NOT NULL, reason TEXT NOT NULL, preferences TEXT NOT NULL, PRIMARY KEY(profile_id,reason));");
+db.exec("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, type TEXT NOT NULL, text TEXT NOT NULL, ref TEXT);");
+var eventInsert = db.prepare("INSERT INTO events(at,type,text,ref) VALUES(?,?,?,?)");
+var eventPrune = db.prepare("DELETE FROM events WHERE id NOT IN (SELECT id FROM events ORDER BY id DESC LIMIT 500)");
+var recordEvent = (type, text, ref = null) => {
+  const at = Date.now();
+  eventInsert.run(at, String(type).slice(0, 16), String(text).slice(0, 160), ref != null ? String(ref).slice(0, 40) : null);
+  eventPrune.run();
+  return at;
+};
 var ha = new HomeAssistant({ url: process.env.HA_URL, token: process.env.HA_TOKEN, preview });
 var streams = new CameraStreams(ha);
 var rtc = new CameraRTC(ha);
@@ -4917,9 +4926,37 @@ var yardClips = new YardClips({
   db,
   getEntityId: () => yardEntityHint,
   getSnaps: () => yardOnvifWatchers.map((w) => w.snapshots),
-  notify: (info) => live.broadcast("yard-clip", JSON.stringify(info))
+  notify: (info) => {
+    live.broadcast("yard-clip", JSON.stringify(info));
+    recordEvent("yard", "\u0414\u0432\u0438\u0436\u0435\u043D\u0438\u0435 \xB7 " + String(info.source || "\u0434\u0432\u043E\u0440").replace(/^onvif:/, ""), "clip:" + info.id);
+  }
 });
 yardClips.start();
+var doorTracker = /* @__PURE__ */ new Map();
+setInterval(async () => {
+  if (!ha.enabled) return;
+  try {
+    const prefs = getProfile(addon ? "home" : "local").preferences;
+    const defs = bindingDefinitions(prefs.devices).filter((d) => d.type === "door" && d.device.status === "installed" && prefs.bindings[d.id]?.verified && prefs.bindings[d.id]?.entityId);
+    if (!defs.length) return;
+    const byId = new Map(((live.states && live.states.length ? live.states : await ha.states()) || []).map((s) => [s.entity_id, s]));
+    for (const d of defs) {
+      const eid = prefs.bindings[d.id].entityId, e = byId.get(eid);
+      if (!e) continue;
+      const open = e.state === "on", prev = doorTracker.get(eid);
+      if (prev === void 0) {
+        doorTracker.set(eid, open);
+        continue;
+      }
+      if (prev !== open) {
+        doorTracker.set(eid, open);
+        recordEvent("door", d.device.name + (open ? " \u043E\u0442\u043A\u0440\u044B\u0442\u0430" : " \u0437\u0430\u043A\u0440\u044B\u0442\u0430"));
+      }
+    }
+  } catch (error) {
+    console.log("Door poll:", error?.message || error);
+  }
+}, Number(process.env.PANEL_DOOR_POLL_MS) || 2e4).unref();
 var getProfile = (id) => {
   let row = db.prepare("SELECT * FROM profiles WHERE id=?").get(id);
   if (!row) {
@@ -5160,6 +5197,23 @@ var server = http.createServer(async (req, res) => {
           cameras: cams.map(({ name, host, port: port2, alive, subscription, lastMotionAt: at, lastError, restarts: r }) => ({ name, host, port: port2, alive, subscription: subscription || null, lastMotionAt: at || null, lastError: lastError || null, restarts: r || 0 }))
         });
       }
+      if (route === "events" && req.method === "GET") {
+        const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 120));
+        const type2 = url.searchParams.get("type");
+        const rows = type2 && ["yard", "door", "light", "meter", "system"].includes(type2) ? db.prepare("SELECT * FROM events WHERE type=? ORDER BY id DESC LIMIT ?").all(type2, limit) : db.prepare("SELECT * FROM events ORDER BY id DESC LIMIT ?").all(limit);
+        const clipCount = db.prepare("SELECT frames FROM yard_clips WHERE id=?");
+        const events = rows.map((r) => {
+          const ref = typeof r.ref === "string" && r.ref.startsWith("clip:") ? Number(r.ref.slice(5)) : null;
+          if (ref === null || !Number.isInteger(ref)) return { ...r, frameCount: 0 };
+          let frameCount = 1;
+          try {
+            frameCount = JSON.parse(clipCount.get(ref)?.frames ?? "[]").length;
+          } catch {
+          }
+          return { ...r, frameCount };
+        });
+        return json(res, 200, { events });
+      }
       if (route === "onvif-discover" && req.method === "POST") {
         try {
           const found = await onvifDiscover({ timeoutMs: 3e3 });
@@ -5238,6 +5292,7 @@ var server = http.createServer(async (req, res) => {
               energyLastKnown = null;
               console.log("Energy: \u043F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u044F \u0422\u041D\u0421 " + autoDate + " = " + readingValue + " \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438 \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u044B \u0432 \u0438\u0441\u0442\u043E\u0440\u0438\u044E (" + nextReadings.length + " \u0437\u0430\u043F\u0438\u0441\u0435\u0439).");
               journal("\u0421\u0447\u0451\u0442\u0447\u0438\u043A \u0422\u041D\u0421: \u043F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u044F " + autoDate + " = " + readingValue + " \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u044B \u0432 \u0438\u0441\u0442\u043E\u0440\u0438\u044E \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438");
+              recordEvent("meter", "\u041F\u043E\u043A\u0430\u0437\u0430\u043D\u0438\u044F \u0422\u041D\u0421: " + readingValue + " \u043A\u0412\u0442\xB7\u0447");
             }
           } catch (error) {
             console.log("Energy: \u0430\u0432\u0442\u043E\u043F\u043E\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u0435 \u043E\u0442\u043A\u043B\u043E\u043D\u0435\u043D\u043E: " + (error?.message || error));
@@ -5378,7 +5433,17 @@ var server = http.createServer(async (req, res) => {
         const request = JSON.parse((await body(req)).toString());
         pendingScopes.set(id, (pendingScopes.get(id) || 0) + 1);
         try {
-          return json(res, 200, await ha.command(request, p.preferences));
+          const result = await ha.command(request, p.preferences);
+          try {
+            const { key, action } = resolveAction(String(request.id || ""), p.preferences.devices);
+            const def = bindingDefinitions(p.preferences.devices).find((d) => d.id === key);
+            if (def && ["light", "rgb"].includes(def.type)) {
+              const verb = action === "brightness" ? "\u044F\u0440\u043A\u043E\u0441\u0442\u044C " + Math.round(Number(request.value)) + " %" : Number(request.value) ? "\u0432\u043A\u043B\u044E\u0447\u0435\u043D\u043E" : "\u0432\u044B\u043A\u043B\u044E\u0447\u0435\u043D\u043E";
+              recordEvent("light", def.name + ": " + verb);
+            }
+          } catch {
+          }
+          return json(res, 200, result);
         } finally {
           const n = pendingScopes.get(id) - 1;
           if (n) pendingScopes.set(id, n);
@@ -5444,6 +5509,7 @@ server.requestTimeout = 25e3;
 server.listen(port, preview || addon ? "0.0.0.0" : "127.0.0.1", () => {
   console.log(`Panel ready: port ${port} \xB7 ${addon ? "Home Assistant add-on" : preview ? "private preview" : "local only"} \xB7 HA ${ha.enabled ? "configured" : "not configured"}`);
   journal("\u041F\u0430\u043D\u0435\u043B\u044C \u0437\u0430\u043F\u0443\u0449\u0435\u043D\u0430: \u043F\u043E\u0440\u0442 " + port + (addon ? " \xB7 add-on" : preview ? " \xB7 \u043F\u0440\u0435\u0432\u044C\u044E" : " \xB7 \u043B\u043E\u043A\u0430\u043B\u044C\u043D\u043E") + (ha.enabled ? " \xB7 Home Assistant \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D" : " \xB7 \u0434\u0435\u043C\u043E\u0440\u0435\u0436\u0438\u043C"));
+  recordEvent("system", "\u041F\u0430\u043D\u0435\u043B\u044C \u0437\u0430\u043F\u0443\u0449\u0435\u043D\u0430 \xB7 \u0432\u0435\u0440\u0441\u0438\u044F " + PANEL_VERSION);
   if (process.platform === "win32" && process.argv.includes("--open")) spawn("rundll32.exe", ["url.dll,FileProtocolHandler", `http://127.0.0.1:${port}`], { stdio: "ignore" }).on("error", () => {
   });
 });

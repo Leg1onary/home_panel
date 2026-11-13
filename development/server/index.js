@@ -18,7 +18,7 @@ import {journal,journalList} from './journal.js';
 import {meterValue,monthDelta,monthCost,monthForecast,monthComparison} from '../src/energy.js';
 import {energyDeltas} from './ha.js';
 
-import {deviceTypes,samePhysicalDevice} from '../src/catalog.js';
+import {deviceTypes,samePhysicalDevice,resolveAction} from '../src/catalog.js';
 import {migrateHouseProfile,activateHouseProfile,bindingProblem} from '../src/house-profile.js';
 import {seedDeviceModel,buildDeviceModel} from '../src/device-model.js';
 import {loadHistory} from './history.js';
@@ -40,6 +40,17 @@ const db=new Database(resolve(data,'panel.sqlite'));
 db.pragma('journal_mode = WAL');
 db.exec('CREATE TABLE IF NOT EXISTS profiles (id TEXT PRIMARY KEY, preferences TEXT NOT NULL, photo BLOB);');
 db.exec('CREATE TABLE IF NOT EXISTS profile_backups (profile_id TEXT NOT NULL, reason TEXT NOT NULL, preferences TEXT NOT NULL, PRIMARY KEY(profile_id,reason));');
+// Хроника дома (3.5.0): пользовательские события — двор/двери/свет/показания/система.
+// Отдельно от журнала «Здоровья»: здесь то, что интересно хозяину, а не диагностика.
+db.exec('CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, type TEXT NOT NULL, text TEXT NOT NULL, ref TEXT);');
+const eventInsert=db.prepare('INSERT INTO events(at,type,text,ref) VALUES(?,?,?,?)');
+const eventPrune=db.prepare('DELETE FROM events WHERE id NOT IN (SELECT id FROM events ORDER BY id DESC LIMIT 500)');
+const recordEvent=(type,text,ref=null)=>{
+ const at=Date.now();
+ eventInsert.run(at,String(type).slice(0,16),String(text).slice(0,160),ref!=null?String(ref).slice(0,40):null);
+ eventPrune.run();
+ return at;
+};
 const ha=new HomeAssistant({url:process.env.HA_URL,token:process.env.HA_TOKEN,preview});
 const streams=new CameraStreams(ha);
 const rtc=new CameraRTC(ha);
@@ -103,8 +114,32 @@ let forecastCache=null,forecastKey='',shoppingCache=null,energyCache=null,energy
 let yardEntityHint=null;
 const yardClips=new YardClips({ha,db,getEntityId:()=>yardEntityHint,
  getSnaps:()=>yardOnvifWatchers.map(w=>w.snapshots),
- notify:info=>live.broadcast('yard-clip',JSON.stringify(info))});
-yardClips.start();
+ notify:info=>{
+  live.broadcast('yard-clip',JSON.stringify(info));
+  // Хроника (3.5.0): каждый записанный клип — событие двора (любой детектор).
+  recordEvent('yard','Движение · '+String(info.source||'двор').replace(/^onvif:/,''),'clip:'+info.id);
+ }});
+ yardClips.start();
+ // Хроника дверей (3.5.0): раз в 20 с сверяем состояния дверных привязок;
+ // переход открыта↔закрыта → событие. Живой кеш LiveFeed — без лишних запросов в HA.
+ const doorTracker=new Map();
+ setInterval(async()=>{
+  if(!ha.enabled)return;
+  try{
+   const prefs=getProfile(addon?'home':'local').preferences;
+   const defs=bindingDefinitions(prefs.devices).filter(d=>d.type==='door'&&d.device.status==='installed'
+    &&prefs.bindings[d.id]?.verified&&prefs.bindings[d.id]?.entityId);
+   if(!defs.length)return;
+   const byId=new Map(((live.states&&live.states.length?live.states:await ha.states())||[]).map(s=>[s.entity_id,s]));
+   for(const d of defs){
+    const eid=prefs.bindings[d.id].entityId,e=byId.get(eid);
+    if(!e)continue;
+    const open=e.state==='on',prev=doorTracker.get(eid);
+    if(prev===undefined){doorTracker.set(eid,open);continue}
+    if(prev!==open){doorTracker.set(eid,open);recordEvent('door',d.device.name+(open?' открыта':' закрыта'))}
+   }
+  }catch(error){console.log('Door poll:',error?.message||error)}
+ },Number(process.env.PANEL_DOOR_POLL_MS)||20000).unref();
 const getProfile=id=>{
  let row=db.prepare('SELECT * FROM profiles WHERE id=?').get(id);
  if(!row){db.prepare('INSERT INTO profiles(id,preferences) VALUES(?,?)').run(id,JSON.stringify(defaultPreferences()));row=db.prepare('SELECT * FROM profiles WHERE id=?').get(id)}
@@ -326,6 +361,24 @@ const server=http.createServer(async(req,res)=>{
      fallback:!configured||!aliveCam.length,
      cameras:cams.map(({name,host,port,alive,subscription,lastMotionAt:at,lastError,restarts:r})=>({name,host,port,alive,subscription:subscription||null,lastMotionAt:at||null,lastError:lastError||null,restarts:r||0}))});
    }
+   // Хроника дома (3.5.0): лента пользовательских событий, фильтр по типу.
+   if(route==='events'&&req.method==='GET'){
+    const limit=Math.min(200,Math.max(1,Number(url.searchParams.get('limit'))||120));
+    const type=url.searchParams.get('type');
+    const rows=type&&['yard','door','light','meter','system'].includes(type)
+     ?db.prepare('SELECT * FROM events WHERE type=? ORDER BY id DESC LIMIT ?').all(type,limit)
+     :db.prepare('SELECT * FROM events ORDER BY id DESC LIMIT ?').all(limit);
+    // клипы двора: кадр-каунт для щитка (ref 'clip:<id>')
+    const clipCount=db.prepare('SELECT frames FROM yard_clips WHERE id=?');
+    const events=rows.map(r=>{
+     const ref=typeof r.ref==='string'&&r.ref.startsWith('clip:')?Number(r.ref.slice(5)):null;
+     if(ref===null||!Number.isInteger(ref))return {...r,frameCount:0};
+     let frameCount=1;
+     try{frameCount=JSON.parse(clipCount.get(ref)?.frames??'[]').length}catch{}
+     return {...r,frameCount};
+    });
+    return json(res,200,{events});
+   }
    // 3.4.6: поиск ONVIF-камер в локальной сети (WS-Discovery) — для формы в тех.разделе.
    if(route==='onvif-discover'&&req.method==='POST'){
     try{
@@ -406,6 +459,7 @@ const server=http.createServer(async(req,res)=>{
         energyCache=null;energyLastKnown=null;
         console.log('Energy: показания ТНС '+autoDate+' = '+readingValue+' автоматически добавлены в историю ('+nextReadings.length+' записей).');
         journal('Счётчик ТНС: показания '+autoDate+' = '+readingValue+' добавлены в историю автоматически');
+        recordEvent('meter','Показания ТНС: '+readingValue+' кВт·ч');
        }
       }catch(error){console.log('Energy: автопополнение отклонено: '+(error?.message||error))}
      }
@@ -518,7 +572,19 @@ const server=http.createServer(async(req,res)=>{
     if(assistantScopes.has(id))throw new Error('Дождись завершения действия станции.');
     const request=JSON.parse((await body(req)).toString());
     pendingScopes.set(id,(pendingScopes.get(id)||0)+1);
-    try{return json(res,200,await ha.command(request,p.preferences))}
+    try{
+     const result=await ha.command(request,p.preferences);
+     // Хроника (3.5.0): подтверждённая команда линии света → событие.
+     try{
+      const {key,action}=resolveAction(String(request.id||''),p.preferences.devices);
+      const def=bindingDefinitions(p.preferences.devices).find(d=>d.id===key);
+      if(def&&['light','rgb'].includes(def.type)){
+       const verb=action==='brightness'?'яркость '+Math.round(Number(request.value))+' %':Number(request.value)?'включено':'выключено';
+       recordEvent('light',def.name+': '+verb);
+      }
+     }catch{}
+     return json(res,200,result);
+    }
     finally{const n=pendingScopes.get(id)-1;if(n)pendingScopes.set(id,n);else pendingScopes.delete(id)}
    }
    // Код охраны валидируется в ha.alarmService и никогда не возвращается в ответах/ошибках.
@@ -577,6 +643,7 @@ server.requestTimeout=25000;
 server.listen(port,preview||addon?'0.0.0.0':'127.0.0.1',()=>{
  console.log(`Panel ready: port ${port} · ${addon?'Home Assistant add-on':preview?'private preview':'local only'} · HA ${ha.enabled?'configured':'not configured'}`);
   journal('Панель запущена: порт '+port+(addon?' · add-on':preview?' · превью':' · локально')+(ha.enabled?' · Home Assistant настроен':' · деморежим'));
+ recordEvent('system','Панель запущена · версия '+PANEL_VERSION);
  if(process.platform==='win32'&&process.argv.includes('--open'))spawn('rundll32.exe',['url.dll,FileProtocolHandler',`http://127.0.0.1:${port}`],{stdio:'ignore'}).on('error',()=>{});
 });
 server.on('error',error=>{console.error(error.code==='EADDRINUSE'?`Port ${port} is busy. Close the other panel server or set PORT in .env.`:'Panel server could not start.');process.exitCode=1});

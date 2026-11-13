@@ -3,7 +3,7 @@ import {
  createIcons,House,Box,Lightbulb,Power,ScanEye,SlidersHorizontal,Sun,Moon,X,ArrowRight,ArrowUpRight,Zap,Activity,
  AudioLines,Camera,ChevronRight,CircleCheck,DoorClosed,Droplets,Heater,Leaf,Radio,RotateCcw,Thermometer,Shield,
  Trees,Archive,Armchair,Bath,BedDouble,Blocks,DoorOpen,MoveUpRight,Sofa,MoonStar,Star,ChevronUp,
- ChevronDown,Check,LoaderCircle,TriangleAlert,WifiOff,Play,Pause,SkipBack,SkipForward,ChartNoAxesCombined,Volume2,ImagePlus,Settings2,Info,Maximize,Minimize,Download,Upload,Cloud,Cloudy,CloudSun,CloudRain,CloudSnow,CloudFog,CloudLightning,CloudDrizzle,CloudHail,Wind,LogOut,Film,Sparkles,Video,Plus,Search
+ ChevronDown,Check,LoaderCircle,TriangleAlert,WifiOff,Play,Pause,SkipBack,SkipForward,ChartNoAxesCombined,Volume2,ImagePlus,Settings2,Info,Maximize,Minimize,Download,Upload,Cloud,Cloudy,CloudSun,CloudRain,CloudSnow,CloudFog,CloudLightning,CloudDrizzle,CloudHail,Wind,LogOut,Film,Sparkles,Video,Plus,Search,History
 } from 'lucide';
 import {rooms,state,getRoom,countLights,channelsFor,sensors} from './schema.js';
 import {sendCommand,commandFor,hasPending} from './commands.js';
@@ -45,6 +45,7 @@ import {parseBrightness,scheduleWave} from './light-wave.js';
 import {loadShopping,paintShopping,shoppingMutate,shoppingState,shoppingCardMarkup} from './shopping.js';
 import {paintAlarm,alarmMarkup,alarmEntity,alarmAction} from './alarm.js';
 import {weatherViewArgs,weatherNowMarkup,weatherArcMarkup,weatherDailyMarkup,weatherHourlyMarkup,weatherMoonMarkup,weatherEntityOf} from './weather-page.js';
+import {eventsListMarkup,eventsFilterMarkup} from './events.js';
 import {parseBlocks,serializeBlocks,digestEssence,energyEssence,stationEssence} from './home-blocks.js';
 
 import {esc,disabled,timeOf,clock,date,scheduleMinute,PANEL_TIMEZONE} from './dom.js';
@@ -650,6 +651,38 @@ function lights(){
  <div id="lights-scenarios" class="lights-scenarios">${scenarioChipsRow()}</div>
  <div class="room-list">${rooms.map(roomCard).join('')}</div><div class="wide-hint"><span>Инженерное оборудование не входит в мастер-свет.</span><button data-action="catalog">Каталог устройств ${I('arrow-right')}</button></div></div>`;
 }
+// 3.5.0: раздел «События» — хроника дома. Данные разом (≤200), фильтр на клиенте;
+// клипы двора открываются общим щитком (data-action=yard-clip).
+let eventsRows=[],eventsFilter='all',eventsBusy=false;
+function eventsView(){
+ return `<div class="view events-view"><div class="view-title"><div><div class="eyebrow">Хроника</div><h1>События</h1><p>Что происходило в доме: двор, двери, свет, показания.</p></div>
+ <button class="icon-button" data-action="events-reload" ${disabled(eventsBusy)} aria-label="Обновить события"><i data-lucide="rotate-ccw"></i></button></div>
+ <div data-events-filters>${eventsFilterMarkup(eventsFilter,eventsRows)}</div>
+ <div class="events-list" data-events-list>${eventsListMarkup(eventsRows.filter(r=>eventsFilter==='all'||r.type===eventsFilter))}</div></div>`;
+}
+async function loadEvents(force=false){
+ if(eventsBusy)return;
+ eventsBusy=true;
+ const list=$('[data-events-list]'),btn=$('[data-action="events-reload"]');
+ if(btn)btn.disabled=true;
+ if(force&&list)list.style.opacity='.5';
+ try{
+  const data=await api('events?limit=200');
+  if(state.view!=='events')return;
+  eventsRows=Array.isArray(data.events)?data.events:[];
+  const node=$('[data-events-list]');
+  if(node)node.innerHTML=eventsListMarkup(eventsRows.filter(r=>eventsFilter==='all'||r.type===eventsFilter));
+  const filters=$('[data-events-filters]');
+  if(filters)filters.innerHTML=eventsFilterMarkup(eventsFilter,eventsRows);
+  icons();
+ }catch(error){
+  if(state.view==='events'&&list)list.innerHTML=`<p class="description">События сейчас не получить: ${esc(error.message)}</p>`;
+ }finally{
+  eventsBusy=false;
+  if(btn)btn.disabled=false;
+  const list2=$('[data-events-list]');if(list2)list2.style.opacity='';
+ }
+}
 // 3.4.5: страница «Погода». Чистая разметка — src/weather-page.js; здесь только
 // сборка аргументов, кеш прогноза (fetchForecast, 10 мин), «Обновлено HH:MM»
 // (время последнего успешного fetch) и живое обновление арки.
@@ -831,7 +864,7 @@ async function cameraFrame(id,button){
 }
 function render(animate=true){
  const revision=++viewRevision;modelAPI?.disposeModel();if(state.view!=='home')activeRoomCard=null;
- $('#main').innerHTML=state.view==='home'?home():state.view==='room'?roomPage():state.view==='model'?model():state.view==='rooms'?lights():state.view==='engineering'?engineering():state.view==='statistics'?statisticsView():state.view==='weather'?weatherPage():watch();
+ $('#main').innerHTML=state.view==='home'?home():state.view==='room'?roomPage():state.view==='model'?model():state.view==='rooms'?lights():state.view==='engineering'?engineering():state.view==='statistics'?statisticsView():state.view==='weather'?weatherPage():state.view==='events'?eventsView():watch();
  document.documentElement.dataset.view=state.view;
  if(!animate&&$('#main .view'))$('#main .view').style.animation='none';
  paintHeaderLeft();
@@ -844,6 +877,7 @@ function render(animate=true){
  $('#master').disabled=masterBlocked();updateHeader();storageStatus();icons();
  if($('#sheet-content').dataset.station==='hub'&&!shoppingState.loaded&&!shoppingState.busy)loadShopping();
  if(state.view==='statistics')loadStatistics();
+ if(state.view==='events')loadEvents();
  if($('#canvas')){
   modelPromise ||= import('./model.js');
   modelPromise.then(api=>{
@@ -1719,6 +1753,18 @@ async function dispatchAction(e){
    updateTechnical({keepForm:false});return;
   }
 
+ if(a==='events-filter'){
+  const f=b.dataset.filter;
+  if(f===eventsFilter)return;
+  eventsFilter=f;
+  const node=$('[data-events-list]');
+  if(node)node.innerHTML=eventsListMarkup(eventsRows.filter(r=>eventsFilter==='all'||r.type===eventsFilter));
+  const filters=$('[data-events-filters]');
+  if(filters)filters.innerHTML=eventsFilterMarkup(eventsFilter,eventsRows);
+  icons();
+  return;
+ }
+ if(a==='events-reload')return loadEvents(true);
  if(a==='history-reload')return loadStatistics(true);
  if(a==='history-focus-clear'){historyState.focus=null;paintStatistics();return}
  if(a==='active-lights'){simpleSheet(`<div data-lights-overview>${lightOverviewSheet()}</div>`);return}
