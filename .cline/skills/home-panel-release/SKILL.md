@@ -36,8 +36,17 @@ description: Release cycle for the Home Panel HA add-on (repo Leg1onary/home_pan
    commit message format: `<version>: <short summary of changes>`
    push: `cmd /c "git -C C:\Users\ssholokhov\home_panel push origin main 2>&1"`
    Verify with `git log --oneline -1` showing the new commit and `git status -sb` showing `## main...origin/main` in sync.
+   NEVER commit router/camera dumps with credentials (keen_full.txt incident 3.4.6 — file was
+   force-purged from history).
 
-6. **Report to user** (always in Russian):
+6. **Self-update (3.4.6+)**: after push, `POST /api/panel/addon-update` on the live panel
+   (http://192.168.8.182:8090/api/panel/addon-update, proof from GET /session) triggers
+   Supervisor self-update from inside the add-on. If Supervisor denies (token scope),
+   fall back to asking the user for one click. Verify via sw.js VERSION afterwards.
+   NOTE: the endpoint exists only when the RUNNING panel is already 3.4.6+; older
+   running versions cannot self-update (chicken-and-egg) — first update is manual.
+
+7. **Report to user** (always in Russian):
    - new version and commit hash,
    - tests N/N,
    - exact user update steps: «Репозитории → Обновить → Home Panel → Обновить аддон → Ctrl+F5»,
