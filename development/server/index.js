@@ -136,7 +136,9 @@ function identify(req){
   const hostname=new URL('http://'+(req.headers.host||'')).hostname.replace(/^\[|\]$/g,'');
   const privateAddress=ip=>ip==='::1'||/^f[cd][0-9a-f]*:/i.test(ip)||/^fe80:/i.test(ip)||(isIP(ip)===4&&(
    ip.startsWith('10.')||ip.startsWith('192.168.')||ip.startsWith('127.')||
-   /^172\.(1[6-9]|2\d|3[01])\./.test(ip)));
+   /^172\.(1[6-9]|2\d|3[01])\./.test(ip)||
+   // Tailscale/CGNAT 100.64.0.0/10 (3.4.7): удалённое управление через tailnet.
+   /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(ip)));
   if(!privateAddress(address))throw new Error('Home Panel доступна только из локальной сети.');
   if(!privateAddress(hostname)&&hostname!=='localhost'&&!/^[a-z0-9-]+\.local$/i.test(hostname))throw new Error('Открой панель по локальному IP или имени .local.');
   return 'home';

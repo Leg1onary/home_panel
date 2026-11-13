@@ -68,6 +68,8 @@ try{
  assert.equal(boot.body.preview,false);assert.equal(boot.body.haConfigured,true);
  let p=boot.body.preferences;assert.equal(p.mode,'demo');assert.equal(p.devices.some(d=>d.id==='rgb'),false);
  assert.equal((await call('bootstrap',{headers:{Host:'evil.example'}})).status,400);
+ // Tailscale/CGNAT-хост легален (3.4.7): удалённое управление через tailnet.
+ assert.equal((await call('bootstrap',{headers:{Host:'100.85.127.56:8090'}})).status,200);
  assert.equal((await call('preferences',{method:'PUT',data:p,headers:{Origin:'http://evil.example'}})).status,400);
  assert.equal((await call('preferences',{method:'PUT',data:p,headers:{'X-Panel-Proof':'bad'}})).status,400);
  p.theme='light';p.favorites=['hall'];p.mode='live';

@@ -4925,7 +4925,8 @@ function identify(req) {
   if (addon) {
     const address = (req.socket.remoteAddress || "").replace(/^::ffff:/, "");
     const hostname = new URL("http://" + (req.headers.host || "")).hostname.replace(/^\[|\]$/g, "");
-    const privateAddress = (ip) => ip === "::1" || /^f[cd][0-9a-f]*:/i.test(ip) || /^fe80:/i.test(ip) || isIP(ip) === 4 && (ip.startsWith("10.") || ip.startsWith("192.168.") || ip.startsWith("127.") || /^172\.(1[6-9]|2\d|3[01])\./.test(ip));
+    const privateAddress = (ip) => ip === "::1" || /^f[cd][0-9a-f]*:/i.test(ip) || /^fe80:/i.test(ip) || isIP(ip) === 4 && (ip.startsWith("10.") || ip.startsWith("192.168.") || ip.startsWith("127.") || /^172\.(1[6-9]|2\d|3[01])\./.test(ip) || // Tailscale/CGNAT 100.64.0.0/10 (3.4.7): удалённое управление через tailnet.
+    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(ip));
     if (!privateAddress(address)) throw new Error("Home Panel \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430 \u0442\u043E\u043B\u044C\u043A\u043E \u0438\u0437 \u043B\u043E\u043A\u0430\u043B\u044C\u043D\u043E\u0439 \u0441\u0435\u0442\u0438.");
     if (!privateAddress(hostname) && hostname !== "localhost" && !/^[a-z0-9-]+\.local$/i.test(hostname)) throw new Error("\u041E\u0442\u043A\u0440\u043E\u0439 \u043F\u0430\u043D\u0435\u043B\u044C \u043F\u043E \u043B\u043E\u043A\u0430\u043B\u044C\u043D\u043E\u043C\u0443 IP \u0438\u043B\u0438 \u0438\u043C\u0435\u043D\u0438 .local.");
     return "home";
