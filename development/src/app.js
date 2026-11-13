@@ -683,6 +683,57 @@ async function loadEvents(force=false){
   const list2=$('[data-events-list]');if(list2)list2.style.opacity='';
  }
 }
+// 3.5.1: раздел «Двор» — камера, детектор, лента клипов и уличный климат в одном месте.
+let yardDetector=null,yardEvents=[];
+function yardView(){
+ const camera=state.devices.find(d=>d.type==='camera'&&d.room==='yard'&&d.status==='installed');
+ const motion=state.devices.find(d=>d.id==='terrace-motion'&&d.status==='installed');
+ const outdoor=state.devices.filter(d=>['terrace','yard','well','attic'].includes(d.room)
+  &&['temperature','humidity'].includes(d.type)&&d.status==='installed');
+ const det=yardDetector;
+ const detText=!isLive()?'Демо · события не пишутся':det===null?'Статус запрашивается…':det&&det.enabled===false?'Выключено · резерв по кадрам'
+  :det&&det.cameras?.length?det.cameras.map(c=>`${c.name}: ${c.alive?'активна':'недоступна'}`).join(' · ')
+  :det&&det.configured?'События активны':'Не настроен';
+ return `<div class="view yard-view"><div class="view-title"><div><div class="eyebrow">Улица</div><h1>Двор</h1><p>Камера, движение и погода за окном.</p></div>
+ <button class="icon-button" data-action="events-open" aria-label="События двора"><i data-lucide="history"></i></button></div>
+ <section class="yard-live-card">${camera
+  ?`<button type="button" class="yard-live" data-camera="${esc(camera.id)}">${I('video')}<div><h2>Прямой эфир</h2><p>${esc(camera.name)} · нажми, чтобы открыть</p></div>${I('chevron-right')}</button>`
+  :`<div class="yard-live is-empty">${I('camera')}<div><h2>Камера не привязана</h2><p>Добавь камеру двора в каталоге и привяжи сущность camera.*</p></div></div>`}</section>
+ <div class="yard-columns">
+  <section class="yard-status-card"><div class="status-line"><span>${I('scan-eye')}Детектор движения</span><strong>${esc(detText)}</strong></div>
+  ${motion?`<button class="status-line motion-detail" data-action="motion" data-motion-id="${esc(motion.id)}"><span>${I('trees')}Движение у террасы</span><strong>${esc(deviceReading(motion))}</strong></button>`:''}
+  ${outdoor.map(d=>`<div class="status-line"><span>${I(deviceTypes[d.type].icon)}${esc(areaName(d.room))} · ${deviceTypes[d.type].label}</span><strong>${esc(deviceReading(d))}</strong></div>`).join('')}
+  </section>
+  <section class="yard-clips-card"><h2>События камеры</h2>${isLive()?'<span id="yard-clips-slot"></span>':'<p class="description">В деморежиме лента недоступна.</p>'}</section>
+ </div>
+ <section class="yard-events-card"><h2>Последние события двора</h2><div data-yard-events>${yardEvents.length?eventsListMarkup(yardEvents):'<p class="description">Пока тихо — движения не было.</p>'}</div>
+ <button class="secondary" data-action="events-open">${I('history')}Вся хроника дома</button></section></div>`;
+}
+async function loadYardView(){
+ updateYardClipsRegion();
+ try{
+  const [det,ev]=await Promise.all([api('yard-onvif').catch(()=>null),api('events?type=yard&limit=6').catch(()=>null)]);
+  if(state.view!=='yard')return;
+  yardDetector=det;
+  yardEvents=ev&&Array.isArray(ev.events)?ev.events:[];
+ }catch{if(state.view==='yard')yardDetector=null}
+ if(state.view!=='yard')return;
+ // перерисовываем карточку статуса с живым ответом детектора
+ const card=$('.yard-status-card');
+ if(card){
+  const det=yardDetector;
+  const detText=!isLive()?'Демо · события не пишутся':det===null?'Статус запрашивается…':det&&det.enabled===false?'Выключено · резерв по кадрам'
+   :det&&det.cameras?.length?det.cameras.map(c=>`${c.name}: ${c.alive?'активна':'недоступна'}`).join(' · ')
+   :det&&det.configured?'События активны':'Не настроен';
+  const motion=state.devices.find(d=>d.id==='terrace-motion'&&d.status==='installed');
+  const outdoor=state.devices.filter(d=>['terrace','yard','well','attic'].includes(d.room)&&['temperature','humidity'].includes(d.type)&&d.status==='installed');
+  card.innerHTML=`<div class="status-line"><span>${I('scan-eye')}Детектор движения</span><strong>${esc(detText)}</strong></div>`
+   +(motion?`<button class="status-line motion-detail" data-action="motion" data-motion-id="${esc(motion.id)}"><span>${I('trees')}Движение у террасы</span><strong>${esc(deviceReading(motion))}</strong></button>`:'')
+   +outdoor.map(d=>`<div class="status-line"><span>${I(deviceTypes[d.type].icon)}${esc(areaName(d.room))} · ${deviceTypes[d.type].label}</span><strong>${esc(deviceReading(d))}</strong></div>`).join('');
+ }
+ const evNode=$('[data-yard-events]');
+ if(evNode){evNode.innerHTML=yardEvents.length?eventsListMarkup(yardEvents):'<p class="description">Пока тихо — движения не было.</p>';icons()}
+}
 // 3.4.5: страница «Погода». Чистая разметка — src/weather-page.js; здесь только
 // сборка аргументов, кеш прогноза (fetchForecast, 10 мин), «Обновлено HH:MM»
 // (время последнего успешного fetch) и живое обновление арки.
@@ -723,28 +774,30 @@ async function loadWeatherForecast(){
  }
 }
 function watch(){
- const motion=state.devices.find(d=>d.id==='terrace-motion'&&d.status==='installed');
  const terraceDoor=state.devices.find(d=>d.id==='terrace-door'&&d.status==='installed');
  const leaks=state.devices.filter(d=>d.type==='leak'&&d.status==='installed');
- return `<div class="view"><div class="view-title"><div><div class="eyebrow">Наблюдение</div><h1>Климат и датчики</h1><p>Всё, что сообщает твой дом.</p></div></div>
- <div class="watch-grid"><section class="camera-empty">${I('camera')}<h2>Двор под присмотром</h2>
- <p>Нажми на камеру для прямого эфира. Видео работает только в открытом окне просмотра.</p>
- <div class="module-list">${state.devices.filter(d=>d.type==='camera'&&d.status==='installed').map(d=>`<button class="quiet-card" data-camera="${d.id}"><div class="quiet-info">${I('camera')}<div><h3>${esc(d.name)}</h3><p>${isLive()&&observed(d.id)?'Подключена · прямой эфир':'Установлена · подключение не проверено'}</p></div></div>${I('chevron-right')}</button>`).join('')||'<p>Камеры добавляются через каталог.</p>'}</div></section>
+ // 3.5.1: уличные датчики (терраса/двор/скважина/чердак) — отдельной секцией,
+ // двор с камерой переехал в собственный раздел.
+ const OUTSIDE=['terrace','yard','well','attic'];
+ return `<div class="view"><div class="view-title"><div><div class="eyebrow">Наблюдение</div><h1>Датчики и климат</h1><p>Всё, что сообщает твой дом.</p></div></div>
+ <div class="watch-grid"><section class="yard-link-card"><button type="button" class="yard-live" data-action="yard-open">${I('video')}<div><h2>Двор</h2><p>Камера, лента клипов и детектор — теперь живут в отдельном разделе</p></div>${I('chevron-right')}</button></section>
  <aside class="side-stack"><section class="overview-status">
  <div class="status-line"><span>${I('door-closed')}Входная дверь</span><strong>${binaryLabel('door','Открыта','Закрыта')}</strong></div>
  ${terraceDoor?`<div class="status-line"><span>${I('door-open')}Дверь на террасу</span><strong>${binaryLabel('terrace-door','Открыта','Закрыта')}</strong></div>`:''}
  ${leaks.map(d=>`<div class="status-line"><span>${I('droplets')}${esc(d.name)}</span><strong>${binaryLabel(d.id,'Тревога','Сухо')}</strong></div>`).join('')}
  ${state.devices.some(d=>d.id==='smoke'&&d.status==='installed')?`<div class="status-line"><span>${I('radio')}Дым</span><strong>${binaryLabel('smoke','Тревога','Нет тревоги')}</strong></div>`:''}
- ${motion?`<button class="status-line motion-detail" data-action="motion" data-motion-id="${esc(motion.id)}"><span>${I('trees')}Терраса</span><strong>${esc(deviceReading(motion))}</strong></button>`:''}
- ${state.devices.some(d=>d.id==='rgb')?`<div class="status-line"><span>${I('lightbulb')}RGB прихожей</span><strong>${noConnection()?'Нет связи':isLive()&&!observed('hall:0')?'Нет данных':hallPowered()?'Есть питание':'Без питания'}</strong></div>`:''}</section>
- ${climate()}</aside></div>${deviceHealth()}<section class="sensor-catalog"><div class="section-heading"><div><h2>Датчики дома</h2><p>Логические устройства: показания и батарейка вместе</p></div></div><div class="module-grid">${logicalSensorCards()||'<p>Датчики пока не добавлены.</p>'}</div></section>
- ${state.devices.some(d=>['curtain','vacuum'].includes(d.type))?`<section class="sensor-catalog"><div class="section-heading"><div><h2>Новые категории</h2><p>Карнизы и пылесосы: пока только наблюдение, без команд</p></div></div><div class="module-grid">${state.devices.filter(d=>['curtain','vacuum'].includes(d.type)).map(sensorCard).join('')}</div></section>`:''}</div>`;
+ </section>
+ ${climate()}</aside></div>${deviceHealth()}<section class="sensor-catalog"><div class="section-heading"><div><h2>Датчики дома</h2><p>Логические устройства: показания и батарейка вместе</p></div></div><div class="module-grid">${logicalSensorCards({exclude:OUTSIDE})||'<p>Датчики пока не добавлены.</p>'}</div></section>
+ <section class="sensor-catalog"><div class="section-heading"><div><h2>Вне дома</h2><p>Терраса, двор, скважина и чердак</p></div></div><div class="module-grid">${logicalSensorCards({only:OUTSIDE})||'<p>Уличных датчиков пока нет.</p>'}</div></section></div>`;
 }
-function logicalSensorCards(roomId){
+function logicalSensorCards(opts={}){
+ const roomId=typeof opts==='string'?opts:opts.room;
+ const only=Array.isArray(opts.only)?opts.only:null,exclude=Array.isArray(opts.exclude)?opts.exclude:null;
  const byId=new Map(state.devices.map(d=>[d.id,d]));
  return buildDeviceModel(preferences(),state.entityStates,isLive()&&state.liveOnline)
   .map(g=>({...g,components:g.components.filter(c=>sensorTypes.includes(c.type)&&c.installed&&(!roomId||c.room===roomId))}))
   .filter(g=>g.components.some(c=>c.type!=='battery'))
+  .filter(g=>(!only||only.includes(g.room))&&(!exclude||!exclude.includes(g.room)))
   .map(g=>`<article class="module-card sensor-card"><div class="title-line"><span>${esc(areaName(g.room))}</span>${I(g.icon)}</div><h3>${esc(g.name)}</h3>
    ${g.components.map(c=>{const text=deviceReading(byId.get(c.id));return `<div class="status-line"><span>${esc(deviceTypes[c.type].label)}</span><strong${text==='Нет данных'?' class="is-unavailable"':''}>${esc(text)}</strong></div>`}).join('')}
    <p>${isLive()?'Только проверенные данные HA':'Демонстрационный режим'}</p></article>`).join('');
@@ -864,7 +917,7 @@ async function cameraFrame(id,button){
 }
 function render(animate=true){
  const revision=++viewRevision;modelAPI?.disposeModel();if(state.view!=='home')activeRoomCard=null;
- $('#main').innerHTML=state.view==='home'?home():state.view==='room'?roomPage():state.view==='model'?model():state.view==='rooms'?lights():state.view==='engineering'?engineering():state.view==='statistics'?statisticsView():state.view==='weather'?weatherPage():state.view==='events'?eventsView():watch();
+ $('#main').innerHTML=state.view==='home'?home():state.view==='room'?roomPage():state.view==='model'?model():state.view==='rooms'?lights():state.view==='yard'?yardView():state.view==='engineering'?engineering():state.view==='statistics'?statisticsView():state.view==='weather'?weatherPage():state.view==='events'?eventsView():watch();
  document.documentElement.dataset.view=state.view;
  if(!animate&&$('#main .view'))$('#main .view').style.animation='none';
  paintHeaderLeft();
@@ -878,6 +931,7 @@ function render(animate=true){
  if($('#sheet-content').dataset.station==='hub'&&!shoppingState.loaded&&!shoppingState.busy)loadShopping();
  if(state.view==='statistics')loadStatistics();
  if(state.view==='events')loadEvents();
+ if(state.view==='yard')loadYardView();
  if($('#canvas')){
   modelPromise ||= import('./model.js');
   modelPromise.then(api=>{
@@ -1765,6 +1819,8 @@ async function dispatchAction(e){
   return;
  }
  if(a==='events-reload')return loadEvents(true);
+ if(a==='events-open'){state.view='events';render();return}
+ if(a==='yard-open'){state.view='yard';render();return}
  if(a==='history-reload')return loadStatistics(true);
  if(a==='history-focus-clear'){historyState.focus=null;paintStatistics();return}
  if(a==='active-lights'){simpleSheet(`<div data-lights-overview>${lightOverviewSheet()}</div>`);return}
