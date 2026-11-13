@@ -45,7 +45,7 @@ import {parseBrightness,scheduleWave} from './light-wave.js';
 import {loadShopping,paintShopping,shoppingMutate,shoppingState,shoppingCardMarkup} from './shopping.js';
 import {paintAlarm,alarmMarkup,alarmEntity,alarmAction} from './alarm.js';
 import {weatherViewArgs,weatherNowMarkup,weatherArcMarkup,weatherDailyMarkup,weatherHourlyMarkup,weatherMoonMarkup,weatherEntityOf} from './weather-page.js';
-import {eventsListMarkup,eventsFilterMarkup,activityMarkup} from './events.js';
+import {eventsListMarkup,eventsFilterMarkup,activityMarkup,lightTodayMarkup} from './events.js';
 import {parseBlocks,serializeBlocks,digestEssence,energyEssence,stationEssence} from './home-blocks.js';
 import {setHomeEventHandler} from './live.js';
 
@@ -711,6 +711,7 @@ function lights(){
  return `<div class="view"><div class="view-title"><div><div class="eyebrow">Управление</div><h1>Свет в доме</h1><p>Выбери комнату. Все линии доступны независимо.</p></div>
  <span class="demo-badge">${state.demoOffline?'Нет связи · демо':lightCountLabel()}</span></div>
  <div id="lights-scenarios" class="lights-scenarios">${scenarioChipsRow()}</div>
+ <div id="lights-today"></div>
  <div class="room-list">${rooms.map(roomCard).join('')}</div><div class="wide-hint"><span>Инженерное оборудование не входит в мастер-свет.</span><button data-action="catalog">Каталог устройств ${I('arrow-right')}</button></div></div>`;
 }
 // 3.5.0: раздел «События» — хроника дома. Данные разом (≤200), фильтр на клиенте;
@@ -722,6 +723,20 @@ function eventsView(){
  <input class="events-search" data-events-search type="search" placeholder="Поиск по событиям…" value="${esc(eventsQuery)}" aria-label="Поиск по событиям"/>
  <div data-events-filters>${eventsFilterMarkup(eventsFilter,eventsRows)}</div>
  <div class="events-list" data-events-list>${eventsListMarkup(eventsRows.filter(r=>eventsFilter==='all'||r.type===eventsFilter))}</div></div>`;
+}
+let lightsTodayData=null;
+function paintLightsToday(){
+ const node=$('#lights-today');
+ if(!node)return;
+ node.innerHTML=lightsTodayData?lightTodayMarkup(lightsTodayData.lightDays,lightsTodayData.rooms):'';
+ icons();
+}
+async function loadLightsToday(){
+ try{
+  const a=await api('analytics');
+  if(state.view!=='rooms')return;
+  lightsTodayData=a;paintLightsToday();
+ }catch{/* агрегат не критичен */}
 }
 async function loadActivity(){
  try{
@@ -1010,6 +1025,7 @@ function render(animate=true){
  if(state.view==='events')loadEvents();
  if(state.view==='statistics')loadActivity();
  if(state.view==='yard')loadYardView();
+ if(state.view==='rooms')loadLightsToday();
  if($('#canvas')){
   modelPromise ||= import('./model.js');
   modelPromise.then(api=>{

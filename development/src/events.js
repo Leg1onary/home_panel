@@ -73,6 +73,15 @@ export function activityMarkup(a,now=Date.now()){
   <div class="activity-item activity-hours"><h3>Двор по часам <small>${a.totals.yard} событий</small></h3>${barRow(yardBars,maxYard)}<div class="activity-hours-axis">${Array.from({length:24},(_,h)=>`<span>${h%6===0?hourLabel(h):''}</span>`).join('')}</div></div>
  </div>${a.rooms.length?`<p class="activity-rooms">${a.rooms.map(r=>`${esc(r.name)} — ${r.count}`).join(' · ')}</p>`:''}`;
 }
+// 3.7.2: «Свет сегодня» — агрегат из хроники для раздела «Свет».
+export function lightTodayMarkup(lightDays,rooms){
+ if(!Array.isArray(lightDays)||!lightDays.length)return '';
+ const today=lightDays.at(-1);
+ const week=lightDays.slice(-7).reduce((s,d)=>s+d.count,0);
+ const top=Array.isArray(rooms)?rooms[0]:null;
+ const topText=top&&top.count>0?` · чаще всего: ${esc(top.name)} (${top.count})`:'';
+ return `<p class="lights-today">💡 Сегодня: <strong>${today.count} включений</strong> · за неделю ${week}${topText}</p>`;
+}
 export function eventsFilterMarkup(filter,rows,now=Date.now()){
  const valid=(Array.isArray(rows)?rows:[]).filter(r=>r&&EVENT_TYPES[r.type]);
  const counts={all:valid.length};
