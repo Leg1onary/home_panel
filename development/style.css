@@ -1681,6 +1681,13 @@ body.is-ambient .idle-time{font-weight:150;font-variation-settings:'wght' 150;fo
 body.is-ambient .idle-date{opacity:.55;letter-spacing:.12em}
 body.is-ambient .idle-climate{opacity:.4}
 body.is-ambient .aurora-blob{opacity:.25;filter:blur(90px) saturate(.6)}
+/* 3.7.3 «Ночная заставка»: ночью ambient уходит в чёрный OLED-вариант —
+   без hero-картинки и авроры, часы приглушённее и компактнее (меньше выгорания). */
+html[data-night="true"] body.is-ambient .idle-screen{background:#000}
+html[data-night="true"] body.is-ambient .idle-time{font-size:clamp(64px,11vw,160px);color:#6b7a6e}
+html[data-night="true"] body.is-ambient .idle-date{opacity:.3}
+html[data-night="true"] body.is-ambient .idle-climate{opacity:.22}
+html[data-night="true"] body.is-ambient .aurora-blob{opacity:0}
 @media(prefers-reduced-motion:reduce){.idle-screen,.idle-screen>*,.aurora-blob{transition:none}}
 
 

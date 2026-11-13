@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {isNight,isTime,nightLabel} from '../src/night.js';
+import {isNight,isTime,nightLabel,ambientSkinClass} from '../src/night.js';
 import {defaultPreferences,validatePreferences} from '../src/preferences.js';
 const hm=h=>h*60;
 // Расписание 23:00 → 07:00 пересекает полночь.
@@ -28,6 +28,11 @@ assert.equal(isNight(3*60,S,'x'),false);
 // старт = конец: вычислитель считает днём, валидация отвергает пару.
 assert.equal(isNight(3*60,'07:00','07:00'),false);
 assert.throws(()=>validatePreferences({...defaultPreferences(),nightStart:'07:00',nightEnd:'07:00'}),/совпадать/);
+// 3.7.3 «Ночная заставка»: ночью — кожа is-night, днём — нет; уважает on/off.
+assert.equal(ambientSkinClass(3*60,S,E),'is-night');
+assert.equal(ambientSkinClass(12*60,S,E),'');
+assert.equal(ambientSkinClass(12*60,S,E,'on'),'is-night');
+assert.equal(ambientSkinClass(3*60,S,E,'off'),'');
 // Валидация preferences: плохие строки отклоняются.
 for(const bad of ['24:00','7:00','23:0','abc','','23:60','-1:00'])
  assert.throws(()=>validatePreferences({...defaultPreferences(),nightStart:bad}),/ноч|ЧЧ:ММ/,'nightStart='+bad);

@@ -48,7 +48,6 @@ REJECTED: [] OFFLINE: []
 GUARDTICK swOn= false armed= false ge= input_boolean.ohrana
 GUARDTICK swOn= false armed= false ge= input_boolean.ohrana
 DEBUG blocked: {"error":"Нельзя поставить на охрану: Входная дверь открыта."}
-GUARDSTATES n= 4 ib= off
 GUARDTICK swOn= false armed= false ge= input_boolean.ohrana
 GUARDTICK swOn= false armed= false ge= input_boolean.ohrana
 GUARDSTATES n= 4 ib= off
@@ -56,6 +55,7 @@ GUARDTICK swOn= false armed= false ge= input_boolean.ohrana
 GUARDTICK swOn= true armed= true ge= input_boolean.ohrana
 GUARDTICK swOn= true armed= true ge= input_boolean.ohrana
 GUARDTICK swOn= true armed= true ge= input_boolean.ohrana
+GUARDSTATES n= 4 ib= on
 GUARDTICK swOn= true armed= true ge= input_boolean.ohrana
 GUARDTICK swOn= true armed= true ge= input_boolean.ohrana
 GUARDTICK swOn= true armed= true ge= input_boolean.ohrana
@@ -63,18 +63,19 @@ GUARDTICK swOn= true armed= true ge= input_boolean.ohrana
 GUARDTICK swOn= true armed= true ge= input_boolean.ohrana
 GUARDTICK swOn= true armed= true ge= input_boolean.ohrana
 GUARDTICK swOn= true armed= true ge= input_boolean.ohrana
-GUARDTICK swOn= false armed= false ge= input_boolean.ohrana
 ST after disarm: {"armed":false,"exitRemaining":0,"alarm":null,"flash":true,"masterArms":true,"doors":[{"name":"Входная дверь","open":true}]}
-JOURNAL: Охрана: интент сирены — Включаю Полицейская сирена | Охрана: интент сирены — Включаю Полицейская сирена | Профиль сохранён (все привязки подтверждены) | Панель запущена: порт 3062 · локально · Home Assistant настроен
+JOURNAL: Охрана: интент сирены — Включаю Полицейская сирена | Профиль сохранён (все привязки подтверждены) | Панель запущена: порт 3062 · локально · Home Assistant настроен
 GUARDTICK swOn= true armed= false ge= input_boolean.ohrana
-J2: Охрана: взвод от помощника input_boolean.ohrana | Охрана: интент сирены — Включаю Полицейская сирена | Охрана: интент сирены — Включаю Полицейская сирена | Профиль сохранён (все привязки подтверждены) | Панель запущена: порт 3062 · локально · Home Assistant настроен
+GUARDTICK swOn= true armed= true ge= input_boolean.ohrana
+J2: Охрана: взвод от помощника input_boolean.ohrana | Охрана: интент сирены — Включаю Полицейская сирена | Профиль сохранён (все привязки подтверждены) | Панель запущена: порт 3062 · локально · Home Assistant настроен
 GUARDTICK swOn= true armed= false ge= input_boolean.ohrana
+GUARDSTATES n= 4 ib= off
 GUARDTICK swOn= false armed= true ge= input_boolean.ohrana
 security: ok
 PASS: clean v3 initialization, no migration schema, old formats rejected, persistence, CSRF, verified mappings, stable reorder, move resets verification, HA command/readback, locked engineering, camera images, secret filtering, unknown format leaves database unchanged, preview isolation.
 PASS: local manifest, Supervisor token, correct /core/api routes, LAN Host/Origin/CSRF, shared SQLite profile, saved theme/favorites/mode/bindings after restart, light command/readback, camera frame, secret filtering, HA auth error, health.
 PASS: WS auth/stream command, verified camera only, CSRF, HLS rewrites incl init/parts, progressive first bytes before upstream completion, secret filtering, query/file allowlists, SSRF rejection, stop invalidates session, mode change blocks existing stream.
-(node:16508) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/ssholokhov/home_panel/development/server/live-stream.js is not specified and it doesn't parse as CommonJS.
+(node:20048) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/ssholokhov/home_panel/development/server/live-stream.js is not specified and it doesn't parse as CommonJS.
 Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
 To eliminate this warning, add "type": "module" to \\?\C:\Users\ssholokhov\home_panel\development\package.json.
 (Use `node --trace-warnings ...` to show where the warning was created)

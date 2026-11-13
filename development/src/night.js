@@ -34,3 +34,9 @@ export function nightDim(minute,start,end,mode='auto'){
  const ramp=Math.min(1,sinceStart/60,untilEnd/60);
  return Math.max(0,Math.min(1,ramp));
 }
+// 3.7.3 «Ночная заставка»: класс-кожа для ambient-экрана. Ночью (по обычному
+// расписанию ночи) заставка уходит в чёрный OLED-вариант — CSS ключуется
+// от html[data-night] + body.is-ambient, класс здесь для тестов и единообразия.
+export function ambientSkinClass(minute,start,end,mode='auto'){
+ return isNight(minute,start,end,mode)?'is-night':'';
+}
