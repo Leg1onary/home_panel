@@ -3,7 +3,7 @@ import {
  createIcons,House,Box,Lightbulb,Power,ScanEye,SlidersHorizontal,Sun,Moon,X,ArrowRight,ArrowUpRight,Zap,Activity,
  AudioLines,Camera,ChevronRight,CircleCheck,DoorClosed,Droplets,Heater,Leaf,Radio,RotateCcw,Thermometer,Shield,
  Trees,Archive,Armchair,Bath,BedDouble,Blocks,DoorOpen,MoveUpRight,Sofa,MoonStar,Star,ChevronUp,
- ChevronDown,Check,LoaderCircle,TriangleAlert,WifiOff,Play,Pause,SkipBack,SkipForward,ChartNoAxesCombined,Volume2,ImagePlus,Settings2,Info,Maximize,Minimize,Download,Upload,Cloud,Cloudy,CloudSun,CloudRain,CloudSnow,CloudFog,CloudLightning,CloudDrizzle,CloudHail,Wind,LogOut,Film,Sparkles,Video
+ ChevronDown,Check,LoaderCircle,TriangleAlert,WifiOff,Play,Pause,SkipBack,SkipForward,ChartNoAxesCombined,Volume2,ImagePlus,Settings2,Info,Maximize,Minimize,Download,Upload,Cloud,Cloudy,CloudSun,CloudRain,CloudSnow,CloudFog,CloudLightning,CloudDrizzle,CloudHail,Wind,LogOut,Film,Sparkles,Video,Plus,Search
 } from 'lucide';
 import {rooms,state,getRoom,countLights,channelsFor,sensors} from './schema.js';
 import {sendCommand,commandFor,hasPending} from './commands.js';
@@ -1227,10 +1227,49 @@ function loadTechOnvif(){
 }
 function yardOnvifLine(){
  if(state.yard_onvif_enabled===false)return 'Выключено. Резерв: детект по кадрам камеры.';
- if(!techOnvif)return 'Статус запрашивается…';
- if(techOnvif.configured&&techOnvif.alive)return `В системе · подписка активна${techOnvif.lastMotionAt?' · движение: '+timeOf(new Date(techOnvif.lastMotionAt)):''}`;
- if(techOnvif.configured)return 'События недоступны — работает резерв: детект по кадрам.';
- return 'Не настроен: укажи логин камеры. Резерв: детект по кадрам.';
+ const cams=(techOnvif&&techOnvif.cameras)||[];
+ if(!cams.length)return techOnvif?'Камер не добавлено. Резерв: детект по кадрам камеры.':'Статус запрашивается…';
+ return cams.map(c=>{
+  const st=c.alive?'активна':c.lastError?'недоступна':'подключается…';
+  return `${c.name} (${c.host}) — ${st}`;
+ }).join(' · ');
+}
+// 3.4.6: редактор списка ONVIF-камер. Черновик полей живёт в camDraft —
+// перерисовки (обновление статусов) не стирают недописанные строки.
+let camDraft=[];
+function captureCamDraft(){
+ const rows=$('.sheet')?.querySelectorAll('[data-cam-row]')||[];
+ camDraft=[];
+ rows.forEach(row=>{
+  const i=+row.dataset.camRow,o={};
+  row.querySelectorAll('[data-cam-field]').forEach(el=>{o[el.dataset.camField]=el.type==='checkbox'?el.checked:el.value});
+  camDraft[i]=o;
+ });
+}
+const camValue=(c,i,f)=>camDraft[i]&&camDraft[i][f]!==undefined?camDraft[i][f]:(f==='pass'?'':(c[f]??''));
+function camEditor(){
+ const cams=Array.isArray(state.yardCameras)?state.yardCameras:[];
+ const statuses=(techOnvif&&techOnvif.cameras)||[];
+ const rows=cams.map((c,i)=>{
+  const st=statuses[i];
+  const line=st?st.alive?'активна':st.lastError?'недоступна':'подключается…':'';
+  return `<fieldset class="cam-edit-row" data-cam-row="${i}">
+   <legend>${esc(c.name||('Камера '+(i+1)))}${line?` · <span data-cam-status>${esc(line)}</span>`:''}</legend>
+   <label class="setting-field compact">Имя<input data-cam-field="name" data-cam-idx="${i}" value="${esc(camValue(c,i,'name'))}" maxlength="24"/></label>
+   <label class="setting-field compact">Адрес<input data-cam-field="host" data-cam-idx="${i}" value="${esc(camValue(c,i,'host'))}" placeholder="192.168.8.x" spellcheck="false"/></label>
+   <label class="setting-field compact">Порт<input data-cam-field="port" data-cam-idx="${i}" type="number" min="1" max="65535" value="${esc(String(camValue(c,i,'port')||2020))}"/></label>
+   <label class="setting-field compact">Логин<input data-cam-field="user" data-cam-idx="${i}" value="${esc(camValue(c,i,'user'))}" spellcheck="false"/></label>
+   <label class="setting-field compact">Пароль<input data-cam-field="pass" data-cam-idx="${i}" type="password" value="${esc(camValue(c,i,'pass'))}" placeholder="${c.pass?'хранится':'не задан'}" autocomplete="new-password"/></label>
+   <label class="setting-field setting-check"><input data-cam-field="enabled" data-cam-idx="${i}" type="checkbox" ${camValue(c,i,'enabled')!==false?'checked':''}/>Включена</label>
+   <button class="text-button" data-action="camera-del" data-cam-del="${i}">Удалить</button>
+  </fieldset>`;
+ }).join('');
+ return `${rows||'<p class="setting-help">Камер пока нет — добавь вручную или найди в сети.</p>'}
+  <div class="cam-edit-actions">
+   <button class="secondary" data-action="camera-add" ${disabled(cams.length>=4)}>${I('plus')}Добавить камеру</button>
+   <button class="secondary" data-action="camera-discover" ${disabled(hasPending())}>${I('search')}Найти в сети</button>
+  </div>
+  <p class="setting-help">Пустой пароль = хранится прежний. «Найти в сети» шлёт WS-Discovery: камеры ONVIF отвечают своим адресом.</p>`;
 }
 function healthRow(name,status,detail,tone){
  return `<div class="health-row"><span class="health-dot is-${tone}"></span><div class="health-text"><strong>${esc(name)}</strong><span>${esc(status)}</span></div><small>${esc(detail)}</small></div>`;
@@ -1242,12 +1281,17 @@ function healthMarkup(h,error){
  const haStatus=ha.connected?'Состояния поступают':ha.enabled?(ha.lastError?'Нет связи: '+ha.lastError:'Ждём первое обновление'):'Не настроен · деморежим';
  const haDetail=ha.latencyMs!=null?`задержка ${ha.latencyMs} мс`:'—';
  const onTone=on.configured&&on.alive?'ok':'warn';
- const onStatus=!on.enabled?'Выключено · резерв по кадрам':on.configured&&on.alive?'События ONVIF активны':on.configured?'События недоступны · резерв по кадрам':'Не настроен · резерв по кадрам';
- const onDetail=on.configured&&on.alive?(on.subscription?on.subscription.slice(0,60):'—'):(on.lastError?on.lastError.slice(0,120):on.subscription?on.subscription.slice(0,60):'—');
- const sse=(h.sse&&h.sse.clients)||0,disk=h.disk||{},up=(h.uptime&&h.uptime.seconds)||0;
+  // 3.4.6: по строке на каждую камеру; если сервер старый — одна агрегированная строка.
+  const onRows=(Array.isArray(on.cameras)&&on.cameras.length?on.cameras:[]).map(c=>{
+   const tone=c.alive?'ok':'warn';
+   const status=!on.enabled?'Выключено · резерв по кадрам':c.alive?'События ONVIF активны':'События недоступны · резерв по кадрам';
+   const detail=c.alive?(c.subscription?String(c.subscription).slice(0,60):'—'):(c.lastError?String(c.lastError).slice(0,120):'—');
+   return healthRow('Камера '+c.name+' ('+c.host+')',status,detail,tone);
+  }).join('')||healthRow('Датчик двора (ONVIF)',onStatus,onDetail,onTone);
+  const sse=(h.sse&&h.sse.clients)||0,disk=h.disk||{},up=(h.uptime&&h.uptime.seconds)||0;
  return `<div class="health-list">
   ${healthRow('Home Assistant',haStatus,haDetail,haTone)}
-  ${healthRow('Датчик двора (ONVIF)',onStatus,onDetail,onTone)}
+  ${onRows}
   ${healthRow('Прямая трансляция (SSE)','Клиентов: '+sse,'канал состояний',sse>=0?'ok':'warn')}
   ${healthRow('Данные',`SQLite: ${disk.sqliteKB||0} КБ`,`резервных копий: ${disk.backups||0}`,'ok')}
   ${healthRow('Время работы','с старта сервера: '+up+' с','процесс панели','ok')}
@@ -1309,9 +1353,10 @@ function technical(){
   <p class="setting-help">${terraceLux()!==null?`Освещённость террасы сейчас ${Math.round(terraceLux())} лк: от ${AUTO_THEME_UP} лк — светлая тема, ниже ${AUTO_THEME_DOWN} лк — тёмная. Пока авто-тема работает, ручной переключатель темы заблокирован.`:'Нужна проверенная привязка «Освещённость террасы» и число лк из Home Assistant — без данных опция недоступна.'}</p>
   <div class="inline-note">В рабочем режиме нет подстановки демоданных: до получения состояния линии и датчики недоступны.</div>
    <div class="setting-block onvif-block">
-    <label class="setting-field setting-check"><input id="yard-onvif-setting" type="checkbox" ${state.yard_onvif_enabled!==false?'checked':''} ${disabled(hasPending())}/>Датчик движения камеры (ONVIF)</label>
+    <label class="setting-field setting-check"><input id="yard-onvif-setting" type="checkbox" ${state.yard_onvif_enabled!==false?'checked':''} ${disabled(hasPending())}/>Датчики движения камер (ONVIF)</label>
     <p class="setting-help" data-yard-onvif-status>${esc(yardOnvifLine())}</p>
-    <p class="setting-help">При выключении движение двора определяется по кадрам камеры (jpeg-диффер) — резерв без событий железа.</p>
+    <p class="setting-help">При выключении движение определяется по кадрам камер (jpeg-диффер) — резерв без событий железа.</p>
+    ${camEditor()}
    </div>
    <button class="secondary full-width" data-action="health-sheet">${I('activity')}Здоровье системы</button>
    <div class="setting-block onvif-block" id="energy-meter-block">
@@ -1372,6 +1417,7 @@ function updateTechnical({keepForm=true}={}){
  if(!state.techOpen)return;
  // Any re-render (other actions, profile check) keeps what the owner typed but has not saved.
  if(keepForm&&techTab==='bindings')captureBindingDraft();
+ if(keepForm&&techTab==='connection')captureCamDraft();
  $('#sheet-content').innerHTML=technical();icons();
 }
 async function fullscreen(){
@@ -1635,6 +1681,34 @@ async function dispatchAction(e){
    state.energy_readings=state.energy_readings.filter(r=>r.date!==b.dataset.energyReadingDel);
    techMessage='Показание удалено.';persist();updateTechnical({keepForm:false});return;
   }
+  if(a==='camera-add'){
+   const list=Array.isArray(state.yardCameras)?state.yardCameras:[];
+   state.yardCameras=[...list,{name:'Камера '+(list.length+1),host:'',port:2020,user:'',pass:'',enabled:true}];
+   camDraft=[];persist();updateTechnical({keepForm:false});return;
+  }
+  if(a==='camera-del'){
+   const i=Number(b.dataset.camDel);
+   state.yardCameras=(Array.isArray(state.yardCameras)?state.yardCameras:[]).filter((_,x)=>x!==i);
+   camDraft=[];techMessage='Камера удалена.';persist();updateTechnical({keepForm:false});return;
+  }
+  if(a==='camera-discover'){
+   const btn=b;btn.disabled=true;btn.textContent='Ищем…';
+   (async()=>{
+    try{
+     const r=await api('onvif-discover',{method:'POST'});
+     const known=new Set((state.yardCameras||[]).map(c=>c.host+':'+(c.port||2020)));
+     const fresh=(r.cameras||[]).filter(c=>!known.has(c.host+':'+c.port));
+     if(!fresh.length){toast((r.cameras||[]).length?'Новые камеры не найдены — найденные уже в списке.':'Камеры не найдены'+(r.error?': '+r.error:'.'))}
+     else{
+      const list=Array.isArray(state.yardCameras)?state.yardCameras:[];
+      state.yardCameras=[...list,...fresh.map((c,x)=>({name:'Камера '+(list.length+x+1),host:c.host,port:c.port,user:'',pass:'',enabled:true}))];
+      camDraft=[];techMessage='Найдено камер: '+fresh.length+'.';persist();
+     }
+    }catch(error){toast('Поиск не удался: '+error.message)}
+    updateTechnical({keepForm:false});
+   })();
+   return;
+  }
   if(a==='energy-reading-add'){
    const date=$('#energy-reading-date')?.value||'',value=Number($('#energy-reading-value')?.value);
    try{
@@ -1761,6 +1835,16 @@ document.addEventListener('change',async e=>{
  if(id==='ambient-setting'){state.ambientMode=e.target.checked;if(state.idle&&!state.ambientMode)exitAmbient();persist()}
  if(id==='auto-theme-setting'){state.autoTheme=e.target.checked;autoThemeZone=null;persist();applyAutoTheme();updateThemeButton();updateTechnical();return}
   if(id==='yard-onvif-setting'){state.yard_onvif_enabled=e.target.checked;persist();updateTechnical();return}
+ if(e.target.dataset.camField){
+  const i=+e.target.dataset.camIdx,c=(state.yardCameras||[])[i];
+  if(!c)return;
+  const f=e.target.dataset.camField;
+  if(f==='enabled')c.enabled=e.target.checked;
+  else if(f==='port')c.port=Number(e.target.value)||2020;
+  else c[f]=e.target.value;
+  if(f==='enabled'){persist();updateTechnical()}
+  return;
+ }
   if(id==='energy-tariff'){
    try{state.energy_tariff=sanitizeEnergyTariff(e.target.value===''?null:Number(e.target.value));persist()}
    catch(error){e.target.value=state.energy_tariff==null?'':state.energy_tariff;toast(error.message)}

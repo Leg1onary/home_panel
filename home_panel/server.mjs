@@ -2518,6 +2518,9 @@ var defaultPreferences = () => ({
   yard_onvif_pass: "",
   yard_onvif_host: "192.168.8.204",
   yard_onvif_enabled: true,
+  // Камеры ONVIF (3.4.6, мультикамерный каркас): пароли хранятся серверно,
+  // клиенту не отдаются (clientPreferences вырезает pass из каждого элемента).
+  yardCameras: [],
   // Показания счётчика ТНС (снимаются раз в месяц) и тариф. Отсутствие ключей
   // в старых профилях = пусто (обратная совместимость).
   energy_readings: [],
@@ -2528,6 +2531,50 @@ var defaultPreferences = () => ({
   guardDoorMinutes: 15
 });
 var USER_SCENARIO_LIMITS = { max: 8, maxSteps: 12, minBrightness: 30, maxBrightness: 100 };
+var MAX_YARD_CAMERAS = 4;
+function sanitizeYardCameras(raw) {
+  if (raw === void 0 || raw === null) return [];
+  if (!Array.isArray(raw)) throw new Error("\u041A\u0430\u043C\u0435\u0440\u044B ONVIF: \u043D\u0443\u0436\u0435\u043D \u043C\u0430\u0441\u0441\u0438\u0432.");
+  const seen = /* @__PURE__ */ new Set(), out = [];
+  for (const c of raw) {
+    if (!c || typeof c !== "object" || Array.isArray(c)) throw new Error("\u041A\u0430\u043C\u0435\u0440\u0430 ONVIF: \u043D\u0443\u0436\u0435\u043D \u043E\u0431\u044A\u0435\u043A\u0442.");
+    const rawHost = typeof c.host === "string" ? c.host.trim().slice(0, 120) : "";
+    const colon = rawHost.match(/^([\w.\-]+):(\d+)$/);
+    const host = colon ? colon[1] : rawHost;
+    if (!host && !String(c.user || "").trim()) continue;
+    if (!host || !/^[\w.\-]+$/.test(host)) throw new Error("\u041A\u0430\u043C\u0435\u0440\u0430 ONVIF: \u043D\u0443\u0436\u0435\u043D \u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u0430\u0434\u0440\u0435\u0441 (IP \u0438\u043B\u0438 \u0438\u043C\u044F).");
+    const port2 = Number.isInteger(c.port) && c.port > 0 && c.port < 65536 ? c.port : colon ? Number(colon[2]) : 2020;
+    const key = host + ":" + port2;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const name = typeof c.name === "string" ? c.name.trim().slice(0, 24) : "";
+    out.push({
+      name: name || "\u041A\u0430\u043C\u0435\u0440\u0430 " + (out.length + 1),
+      host,
+      port: port2,
+      user: typeof c.user === "string" ? c.user.trim().slice(0, 64) : "",
+      pass: typeof c.pass === "string" ? c.pass.slice(0, 120) : "",
+      enabled: c.enabled !== false
+    });
+    if (out.length >= MAX_YARD_CAMERAS) break;
+  }
+  return out;
+}
+function migrateYardCameras(preferences, raw) {
+  if (!raw || raw.yardCameras !== void 0) return preferences;
+  if (Array.isArray(preferences.yardCameras) && preferences.yardCameras.length) return preferences;
+  const host = String(raw.yard_onvif_host || "").trim();
+  if (!host) return preferences;
+  const colon = host.match(/^([\w.\-]+):(\d+)$/);
+  return { ...preferences, yardCameras: [{
+    name: "\u0414\u0432\u043E\u0440",
+    host: (colon ? colon[1] : host).slice(0, 120),
+    port: colon ? Number(colon[2]) : 2020,
+    user: String(raw.yard_onvif_user || "").trim().slice(0, 64),
+    pass: String(raw.yard_onvif_pass || "").slice(0, 120),
+    enabled: raw.yard_onvif_enabled !== false
+  }] };
+}
 var scenarioIdOk = (id) => typeof id === "string" && /^[a-z0-9-]{1,40}$/.test(id);
 function sanitizeUserScenarios(raw, devices) {
   if (!Array.isArray(raw)) return [];
@@ -2606,6 +2653,7 @@ function validatePreferences(input, { importing = false } = {}) {
   p.yard_onvif_pass = typeof raw.yard_onvif_pass === "string" ? raw.yard_onvif_pass.slice(0, 120) : "";
   p.yard_onvif_host = typeof raw.yard_onvif_host === "string" && raw.yard_onvif_host.trim() ? raw.yard_onvif_host.trim().slice(0, 120) : "192.168.8.204";
   p.yard_onvif_enabled = raw.yard_onvif_enabled !== false;
+  p.yardCameras = sanitizeYardCameras(raw.yardCameras);
   p.energy_readings = sanitizeEnergyReadings(raw.energy_readings);
   p.energy_tariff = sanitizeEnergyTariff(raw.energy_tariff);
   if (raw.guardNight !== void 0 && !["auto", "on", "off"].includes(raw.guardNight)) throw new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u0440\u0435\u0436\u0438\u043C \u043E\u0445\u0440\u0430\u043D\u044B.");
@@ -2624,6 +2672,57 @@ function validatePreferences(input, { importing = false } = {}) {
   }
   p.userScenarios = sanitizeUserScenarios(raw.userScenarios, p.devices);
   return p;
+}
+
+// server/onvif-discover.js
+import dgram from "node:dgram";
+var PROBE = '<?xml version="1.0" encoding="UTF-8"?><s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing"><s:Header><a:MessageID>urn:uuid:home-panel-probe</a:MessageID><a:To>urn:schemas-xmlsoap-org:ws:2005:04:discovery</a:To><a:Action>http://schemas.xmlsoap.org/ws/2005/04/discovery/Probe</a:Action></s:Header><s:Body><Probe xmlns="http://schemas.xmlsoap.org/ws/2005/04/discovery"><Types xmlns:dn="http://www.onvif.org/ver10/network/wsdl">dn:NetworkVideoTransmitter</Types></Probe></s:Body></s:Envelope>';
+function parseDiscoveryAddrs(text) {
+  const out = [];
+  for (const m of String(text).matchAll(/XAddrs[^>]*>([^<]+)</g)) {
+    for (const token of m[1].split(/\s+/)) {
+      const u = /^(https?):\/\/([\w.\-]+):(\d+)/.exec(token);
+      if (u) out.push({ host: u[2], port: Number(u[3]), url: token });
+    }
+  }
+  return out;
+}
+async function onvifDiscover({ timeoutMs = 3e3, multicast = "239.255.255.250", port: port2 = 3702 } = {}) {
+  return new Promise((resolve2, reject) => {
+    const sock = dgram.createSocket("udp4");
+    const found = /* @__PURE__ */ new Map();
+    let bound2 = false;
+    const finish = () => {
+      try {
+        sock.close();
+      } catch {
+      }
+      resolve2([...found.values()].sort((a, b) => a.host.localeCompare(b.host, void 0, { numeric: true })));
+    };
+    sock.on("error", (error) => {
+      try {
+        sock.close();
+      } catch {
+      }
+      reject(new Error("\u041F\u043E\u0438\u0441\u043A \u043A\u0430\u043C\u0435\u0440 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u0432 \u044D\u0442\u043E\u0439 \u0441\u0435\u0442\u0438: " + (error.code || error.message)));
+    });
+    sock.on("message", (msg) => {
+      for (const a of parseDiscoveryAddrs(String(msg))) {
+        if (!found.has(a.host + ":" + a.port)) found.set(a.host + ":" + a.port, a);
+      }
+    });
+    sock.bind({ port: 0 }, () => {
+      bound2 = true;
+      try {
+        sock.addMembership(multicast);
+      } catch (error) {
+        sock.emit("error", error);
+        return;
+      }
+      sock.send(Buffer.from(PROBE), port2, multicast);
+      setTimeout(finish, timeoutMs).unref?.();
+    });
+  });
 }
 
 // server/ha.js
@@ -3673,7 +3772,7 @@ function isMotionMessage(text) {
   if (MOTION_FALSE.test(text)) return false;
   return MOTION_TRUE.test(text);
 }
-function onvifWatch({ host, port: port2 = 2020, user, pass, onMotion, onError, onReady, log = () => {
+function onvifWatch({ host, port: port2 = 2020, user, pass, label = "\u0414\u0432\u043E\u0440", onMotion, onError, onReady, log = () => {
 }, ...timing } = {}) {
   const t = { ...DIGEST_DEFAULTS, ...timing };
   let stopped = false, restarts = 0, pullFailures = 0;
@@ -3756,7 +3855,7 @@ function onvifWatch({ host, port: port2 = 2020, user, pass, onMotion, onError, o
             }
             if (/Topic/.test(n) && now - lastUnrecognized >= 6e4) {
               lastUnrecognized = now;
-              journal("\u0414\u0432\u043E\u0440 ONVIF: \u043D\u0435\u0440\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u043D\u043E: " + n.replace(/\s+/g, " ").slice(0, 150), "warn");
+              journal(label + " ONVIF: \u043D\u0435\u0440\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u043D\u043E: " + n.replace(/\s+/g, " ").slice(0, 150), "warn");
             }
           }
           if (motion) {
@@ -3812,11 +3911,12 @@ var POST_DELAYS = [3e3, 9e3];
 var KEEP = 30;
 var BLANK = import_jpeg_js2.default.encode({ data: Buffer.alloc(4, 255), width: 1, height: 1 }, 80).data.toString("base64");
 var YardClips = class {
-  constructor({ ha: ha2, db: db2, notify = null, getEntityId = () => null, yardOnvif = null } = {}) {
+  constructor({ ha: ha2, db: db2, notify = null, getEntityId = () => null, yardOnvif = null, getSnaps = null } = {}) {
     this.ha = ha2;
     this.notify = notify;
     this.getEntityId = getEntityId;
     this.yardOnvif = yardOnvif;
+    this.getSnaps = getSnaps;
     this.ring = [];
     this.timer = null;
     this.busy = false;
@@ -3849,34 +3949,56 @@ var YardClips = class {
     }
   }
   // Один кадр камеры тем же путём, что yard-motion: base64 jpeg или null.
-  async capture() {
-    let raw = null;
-    const onvif = this.yardOnvif?.();
-    if (onvif?.getSnapshot) {
+  // preferred — конкретный снимочник (кадр от камеры, вызвавшей событие).
+  // Идентичный последнему кадр не останавливает перебор: пробуем следующую камеру.
+  async capture(preferred = null) {
+    const snaps = [];
+    if (preferred?.getSnapshot) snaps.push(preferred);
+    if (this.getSnaps) {
       try {
-        raw = await onvif.getSnapshot();
+        snaps.push(...(this.getSnaps() || []).filter((s) => s?.getSnapshot));
       } catch {
       }
+    } else if (this.yardOnvif?.()) {
+      const s = this.yardOnvif();
+      if (s?.getSnapshot) snaps.push(s);
     }
-    if (!raw || raw.type !== "image/jpeg" || !raw.bytes?.length) {
-      const entityId = this.getEntityId();
-      if (!entityId || !this.ha?.enabled) return null;
+    let identicalB64 = null;
+    for (const s of snaps) {
+      let raw = null;
       try {
-        raw = await this.ha.requestRaw("/api/camera_proxy/" + entityId + "?width=320&height=180");
+        raw = await s.getSnapshot();
       } catch {
-        return null;
       }
+      if (!raw || raw.type !== "image/jpeg" || !raw.bytes?.length) continue;
+      const b64 = Buffer.from(raw.bytes).toString("base64");
+      if (this.ring.length && this.ring[this.ring.length - 1] === b64) {
+        identicalB64 = b64;
+        continue;
+      }
+      this.ring.push(b64);
+      if (this.ring.length > RING) this.ring = this.ring.slice(-RING);
+      return b64;
     }
-    if (!raw || raw.type !== "image/jpeg" || !raw.bytes?.length) return null;
-    const b64 = Buffer.from(raw.bytes).toString("base64");
-    if (this.ring.length && this.ring[this.ring.length - 1] === b64) return b64;
-    this.ring.push(b64);
-    if (this.ring.length > RING) this.ring = this.ring.slice(-RING);
-    return b64;
+    if (identicalB64) return identicalB64;
+    const entityId = this.getEntityId();
+    if (!entityId || !this.ha?.enabled) return null;
+    try {
+      const raw = await this.ha.requestRaw("/api/camera_proxy/" + entityId + "?width=320&height=180");
+      if (!raw || raw.type !== "image/jpeg" || !raw.bytes?.length) return null;
+      const b64 = Buffer.from(raw.bytes).toString("base64");
+      if (this.ring.length && this.ring[this.ring.length - 1] === b64) return b64;
+      this.ring.push(b64);
+      if (this.ring.length > RING) this.ring = this.ring.slice(-RING);
+      return b64;
+    } catch {
+      return null;
+    }
   }
   // Событие движения → клип. Дедуп: <15с от последнего клипа — окно продлевается,
   // новый клип не создаётся. pre-кадры из кольца, пост-кадры через POST_DELAYS.
-  async record({ at = Date.now(), source = "onvif", dedup = true, posts = true } = {}) {
+  // snap — снимочник камеры-источника события (3.4.6).
+  async record({ at = Date.now(), source = "onvif", dedup = true, posts = true, snap = null } = {}) {
     if (dedup && this.lastClipAt && at - this.lastClipAt < DEDUP_MS) {
       this.lastClipAt = at;
       return null;
@@ -3884,7 +4006,7 @@ var YardClips = class {
     this.lastClipAt = at;
     const frames = [...this.ring];
     if (!frames.length) {
-      const f = await this.capture();
+      const f = await this.capture(snap);
       if (f) frames.push(f);
     }
     if (!frames.length) frames.push(BLANK);
@@ -3892,7 +4014,7 @@ var YardClips = class {
       for (const ms of POST_DELAYS) {
         const timer = setTimeout(async () => {
           try {
-            const f = await this.capture();
+            const f = await this.capture(snap);
             if (f) frames.push(f);
           } catch {
           }
@@ -4690,62 +4812,61 @@ var yardCameraEntity = (p) => {
   return p?.mode === "live" && b?.verified && /^camera\.[a-z0-9_]+$/.test(b.entityId || "") ? b.entityId : null;
 };
 var yardMotion = new YardMotion({ ha });
-var yardOnvifWatch = null;
+var yardOnvifWatchers = [];
 var yardOnvifConfigKey = "";
-var yardOnvifSnapshots = null;
 var clientPreferences = (prefs) => {
   const c = { ...prefs };
   delete c.yard_onvif_pass;
+  c.yardCameras = (c.yardCameras || []).map(({ pass, ...rest }) => ({ ...rest, pass: "" }));
   return c;
 };
-var yardOnvifStatus = () => yardOnvifWatch?.status?.() || null;
-var yardOnvifEnsure = (prefs) => {
-  if (prefs.yard_onvif_enabled === false) {
-    if (yardOnvifWatch) {
-      yardOnvifWatch.stop();
-      yardOnvifWatch = null;
-      yardOnvifConfigKey = "";
-      yardOnvifSnapshots = null;
-    }
-    return false;
-  }
+var yardOnvifConfigOf = (prefs) => {
+  if (prefs.yard_onvif_enabled === false) return [];
+  const list = (Array.isArray(prefs.yardCameras) ? prefs.yardCameras : []).filter((c) => c && c.enabled !== false && c.host && String(c.user || "").trim()).map((c) => ({ name: c.name, host: c.host, port: c.port || 2020, user: c.user, pass: c.pass }));
+  if (list.length) return list;
+  const user = String(prefs.yard_onvif_user || "").trim();
+  if (!user) return [];
   let host = String(prefs.yard_onvif_host || "").trim() || "192.168.8.204", port2;
-  const colon = host.match(/^([\w.\[\]:-]+):(\d+)$/);
+  const colon = host.match(/^([\w.\-]+):(\d+)$/);
   if (colon) {
-    host = colon[1].replace(/^\[|\]$/g, "");
+    host = colon[1];
     port2 = Number(colon[2]);
   }
-  const user = String(prefs.yard_onvif_user || "").trim(), pass = String(prefs.yard_onvif_pass || "");
-  if (!user) {
-    if (yardOnvifWatch) {
-      yardOnvifWatch.stop();
-      yardOnvifWatch = null;
-      yardOnvifConfigKey = "";
-      yardOnvifSnapshots = null;
+  return [{ name: "\u0414\u0432\u043E\u0440", host, port: port2 || 2020, user, pass: String(prefs.yard_onvif_pass || "") }];
+};
+var yardOnvifStatuses = () => yardOnvifWatchers.map((w) => ({ name: w.name, host: w.host, port: w.port, ...w.watch.status() }));
+var yardOnvifEnsure = (prefs) => {
+  const list = yardOnvifConfigOf(prefs);
+  const sig = JSON.stringify(list);
+  if (sig === yardOnvifConfigKey) return yardOnvifWatchers.length > 0;
+  yardOnvifConfigKey = sig;
+  for (const w of yardOnvifWatchers) {
+    try {
+      w.watch.stop();
+    } catch {
     }
-    return false;
   }
-  const key = host + "|" + port2 + "|" + user + "|" + pass;
-  if (yardOnvifWatch && key === yardOnvifConfigKey) return true;
-  if (yardOnvifWatch) yardOnvifWatch.stop();
-  yardOnvifConfigKey = key;
-  yardOnvifSnapshots = onvifSnapshots({ host, ...port2 ? { port: port2 } : {}, user, pass, log: (...a) => console.log("Yard ONVIF snapshot:", ...a) });
-  yardOnvifWatch = onvifWatch({
-    host,
-    ...port2 ? { port: port2 } : {},
-    user,
-    pass,
-    onMotion: () => {
-      yardMotion.externalMotion();
-      yardClips.record().catch((error) => journal("\u041A\u043B\u0438\u043F \u0434\u0432\u043E\u0440\u0430 \u043D\u0435 \u0437\u0430\u043F\u0438\u0441\u0430\u043D: " + (error?.message || error), "warn"));
-    },
-    onError: (error) => {
-      console.log("Yard ONVIF fallback to jpeg diff:", error?.message || error);
-      journal("ONVIF-\u0441\u043E\u0431\u044B\u0442\u0438\u044F \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B: " + (error?.message || error) + " \u2014 \u0440\u0430\u0431\u043E\u0442\u0430\u0435\u0442 \u0440\u0435\u0437\u0435\u0440\u0432 \u043F\u043E \u043A\u0430\u0434\u0440\u0430\u043C", "warn");
-    }
+  yardOnvifWatchers = list.map((cam) => {
+    const snapshots = onvifSnapshots({ host: cam.host, port: cam.port, user: cam.user, pass: cam.pass, log: (...a) => console.log("ONVIF snapshot[" + cam.name + "]:", ...a) });
+    const watch = onvifWatch({
+      host: cam.host,
+      port: cam.port,
+      user: cam.user,
+      pass: cam.pass,
+      label: cam.name,
+      onMotion: () => {
+        yardMotion.externalMotion();
+        yardClips.record({ source: "onvif:" + cam.name, snap: snapshots }).catch((error) => journal("\u041A\u043B\u0438\u043F " + cam.name + " \u043D\u0435 \u0437\u0430\u043F\u0438\u0441\u0430\u043D: " + (error?.message || error), "warn"));
+      },
+      onError: (error) => {
+        console.log("ONVIF[" + cam.name + "] fallback to jpeg diff:", error?.message || error);
+        journal("ONVIF-\u0441\u043E\u0431\u044B\u0442\u0438\u044F \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B (" + cam.name + "): " + (error?.message || error) + " \u2014 \u0440\u0430\u0431\u043E\u0442\u0430\u0435\u0442 \u0440\u0435\u0437\u0435\u0440\u0432 \u043F\u043E \u043A\u0430\u0434\u0440\u0430\u043C", "warn");
+      }
+    });
+    return { name: cam.name, host: cam.host, port: cam.port, watch, snapshots };
   });
-  journal("ONVIF-\u0434\u0435\u0442\u0435\u043A\u0442\u043E\u0440 \u0434\u0432\u043E\u0440\u0430 \u0437\u0430\u043F\u0443\u0449\u0435\u043D: " + host + (port2 ? ":" + port2 : ""));
-  return true;
+  if (yardOnvifWatchers.length) journal("ONVIF-\u0434\u0435\u0442\u0435\u043A\u0442\u043E\u0440\u044B \u0437\u0430\u043F\u0443\u0449\u0435\u043D\u044B: " + yardOnvifWatchers.map((w) => w.name + " (" + w.host + ":" + w.port + ")").join(", "));
+  return yardOnvifWatchers.length > 0;
 };
 var proofs = /* @__PURE__ */ new Map();
 var pendingScopes = /* @__PURE__ */ new Map();
@@ -4761,7 +4882,7 @@ var yardClips = new YardClips({
   ha,
   db,
   getEntityId: () => yardEntityHint,
-  yardOnvif: () => yardOnvifSnapshots,
+  getSnaps: () => yardOnvifWatchers.map((w) => w.snapshots),
   notify: (info) => live.broadcast("yard-clip", JSON.stringify(info))
 });
 yardClips.start();
@@ -4772,7 +4893,7 @@ var getProfile = (id) => {
     row = db.prepare("SELECT * FROM profiles WHERE id=?").get(id);
   }
   const raw = JSON.parse(row.preferences), stored = validatePreferences(raw);
-  let preferences = migrateHouseProfile(stored);
+  let preferences = migrateHouseProfile(migrateYardCameras(stored, raw));
   if (raw.deviceModel === void 0) preferences = validatePreferences({ ...preferences, deviceModel: seedDeviceModel(preferences.devices) });
   const normalized = JSON.stringify(preferences);
   if (normalized !== row.preferences) db.transaction(() => {
@@ -4888,6 +5009,17 @@ var server = http.createServer(async (req, res) => {
           if (input.yard_onvif_user === void 0) input.yard_onvif_user = p.preferences.yard_onvif_user;
           if (input.yard_onvif_host === void 0) input.yard_onvif_host = p.preferences.yard_onvif_host;
           if (input.yard_onvif_enabled === void 0) input.yard_onvif_enabled = p.preferences.yard_onvif_enabled;
+          if (input.yardCameras === void 0) input.yardCameras = p.preferences.yardCameras;
+          if (Array.isArray(input.yardCameras)) {
+            const stored = p.preferences.yardCameras || [];
+            input.yardCameras = input.yardCameras.map((c, i) => {
+              if (c && typeof c === "object" && (c.pass === void 0 || c.pass === "")) {
+                const match = stored.find((s) => s.host === c?.host && s.port === (c?.port || 2020) && s.user === c?.user) || stored[i];
+                if (match?.pass) return { ...c, pass: match.pass };
+              }
+              return c;
+            });
+          }
           if (input.energy_readings === void 0) input.energy_readings = p.preferences.energy_readings;
           if (input.energy_tariff === void 0) input.energy_tariff = p.preferences.energy_tariff;
         }
@@ -4978,21 +5110,34 @@ var server = http.createServer(async (req, res) => {
       if (route === "yard-onvif" && req.method === "GET") {
         const enabled = p.preferences.yard_onvif_enabled !== false;
         const configured = yardOnvifEnsure(p.preferences);
-        const s = yardOnvifStatus() || {};
+        const cams = yardOnvifStatuses();
+        const aliveCam = cams.filter((c) => c.alive);
+        const lastMotionAt = cams.reduce((m, c) => Math.max(m, c.lastMotionAt || 0), 0);
         return json(res, 200, {
           enabled,
           configured,
-          alive: !!s.alive,
-          eventService: s.eventService || null,
-          subscription: s.subscription || null,
-          lastMotionAt: s.lastMotionAt || null,
-          lastError: s.lastError || null,
-          restarts: s.restarts || 0,
-          fallback: !configured || !s.alive
+          alive: aliveCam.length > 0,
+          subscription: aliveCam[0]?.subscription || null,
+          lastMotionAt: lastMotionAt || null,
+          lastError: cams.find((c) => c.lastError)?.lastError || null,
+          restarts: cams.reduce((m, c) => Math.max(m, c.restarts || 0), 0),
+          fallback: !configured || !aliveCam.length,
+          cameras: cams.map(({ name, host, port: port2, alive, subscription, lastMotionAt: at, lastError, restarts: r }) => ({ name, host, port: port2, alive, subscription: subscription || null, lastMotionAt: at || null, lastError: lastError || null, restarts: r || 0 }))
         });
       }
+      if (route === "onvif-discover" && req.method === "POST") {
+        try {
+          const found = await onvifDiscover({ timeoutMs: 3e3 });
+          return json(res, 200, { cameras: found });
+        } catch (error) {
+          return json(res, 200, { cameras: [], error: error.message });
+        }
+      }
       if (route === "health" && req.method === "GET") {
-        const onvifOk = yardOnvifEnsure(p.preferences), onvifStatus = yardOnvifStatus() || {};
+        const onvifOk = yardOnvifEnsure(p.preferences);
+        const cams = yardOnvifStatuses();
+        const aliveCam = cams.filter((c) => c.alive);
+        const lastMotionAt = cams.reduce((m, c) => Math.max(m, c.lastMotionAt || 0), 0);
         let sqliteKB = 0;
         try {
           sqliteKB = Math.round((await stat(resolve(data, "panel.sqlite"))).size / 1024);
@@ -5003,11 +5148,12 @@ var server = http.createServer(async (req, res) => {
           onvif: {
             enabled: p.preferences.yard_onvif_enabled !== false,
             configured: onvifOk,
-            alive: !!onvifStatus.alive,
-            subscription: onvifStatus.subscription || null,
-            lastMotionAt: onvifStatus.lastMotionAt || null,
-            lastError: onvifStatus.lastError || null,
-            fallback: !onvifOk || !onvifStatus.alive
+            alive: aliveCam.length > 0,
+            subscription: aliveCam[0]?.subscription || null,
+            lastMotionAt: lastMotionAt || null,
+            lastError: cams.find((c) => c.lastError)?.lastError || null,
+            fallback: !onvifOk || !aliveCam.length,
+            cameras: cams.map(({ name, host, port: port2, alive, subscription, lastMotionAt: at, lastError, restarts: r }) => ({ name, host, port: port2, alive, subscription: subscription || null, lastMotionAt: at || null, lastError: lastError || null, restarts: r || 0 }))
           },
           sse: { clients: live.clients.size },
           disk: { sqliteKB, backups: db.prepare("SELECT COUNT(*) c FROM profile_backups").get().c },
@@ -5160,6 +5306,32 @@ var server = http.createServer(async (req, res) => {
         const request = JSON.parse((await body(req)).toString()), image = await ha.camera(request.id, p.preferences);
         res.writeHead(200, { "Content-Type": image.type, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
         return res.end(image.bytes);
+      }
+      if (route === "addon-info" && req.method === "GET") {
+        if (!addon) throw new Error("\u0414\u043E\u0441\u0442\u0443\u043F\u043D\u043E \u0442\u043E\u043B\u044C\u043A\u043E \u0432\u043D\u0443\u0442\u0440\u0438 Home Assistant.");
+        let slug = null, version = null, source = "supervisor";
+        try {
+          const r = await fetch("http://supervisor/addons/self/info", { headers: { Authorization: "Bearer " + process.env.SUPERVISOR_TOKEN } });
+          if (r.ok) {
+            const info = await r.json();
+            slug = info.data?.slug || null;
+            version = info.data?.version || null;
+          }
+        } catch {
+        }
+        if (!slug) {
+          slug = process.env.HOSTNAME || null;
+          source = "hostname";
+        }
+        return json(res, 200, { addon: true, slug, version, source });
+      }
+      if (route === "addon-update" && req.method === "POST") {
+        if (!addon) throw new Error("\u0414\u043E\u0441\u0442\u0443\u043F\u043D\u043E \u0442\u043E\u043B\u044C\u043A\u043E \u0432\u043D\u0443\u0442\u0440\u0438 Home Assistant.");
+        fetch("http://supervisor/addons/self/update", { method: "POST", headers: { Authorization: "Bearer " + process.env.SUPERVISOR_TOKEN } }).then(async (r) => {
+          const text = await r.text().catch(() => "");
+          journal(r.ok ? "\u041E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u0435 \u0430\u0434\u0434\u043E\u043D\u0430 \u0437\u0430\u043F\u0443\u0449\u0435\u043D\u043E (Supervisor)" : "Supervisor \u043E\u0442\u043A\u043B\u043E\u043D\u0438\u043B \u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u0435: " + text.slice(0, 200), r.ok ? "info" : "warn");
+        }).catch((e) => journal("\u041E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u0435 \u0430\u0434\u0434\u043E\u043D\u0430 \u043D\u0435 \u0437\u0430\u043F\u0443\u0449\u0435\u043D\u043E: " + (e?.message || e), "warn"));
+        return json(res, 202, { started: true });
       }
       if (route === "ha/command" && req.method === "POST") {
         if (assistantScopes.has(id)) throw new Error("\u0414\u043E\u0436\u0434\u0438\u0441\u044C \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u044F \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F \u0441\u0442\u0430\u043D\u0446\u0438\u0438.");

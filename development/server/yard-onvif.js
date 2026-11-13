@@ -111,7 +111,7 @@ export function isMotionMessage(text){
  if(MOTION_FALSE.test(text))return false;
  return MOTION_TRUE.test(text);
 }
-export function onvifWatch({host,port=2020,user,pass,onMotion,onError,onReady,log=()=>{},...timing}={}){
+export function onvifWatch({host,port=2020,user,pass,label='Двор',onMotion,onError,onReady,log=()=>{},...timing}={}){
  const t={...DIGEST_DEFAULTS,...timing};
  let stopped=false,restarts=0,pullFailures=0;
  let status={alive:false,eventService:null,subscription:null,lastMotionAt:0,lastError:null};
@@ -175,7 +175,7 @@ export function onvifWatch({host,port=2020,user,pass,onMotion,onError,onReady,lo
       if(isMotionMessage(n)){motion=true;continue}
       if(/Topic/.test(n)&&now-lastUnrecognized>=60000){
        lastUnrecognized=now;
-       journal('Двор ONVIF: нераспознано: '+n.replace(/\s+/g,' ').slice(0,150),'warn');
+       journal(label+' ONVIF: нераспознано: '+n.replace(/\s+/g,' ').slice(0,150),'warn');
       }
      }
      if(motion){

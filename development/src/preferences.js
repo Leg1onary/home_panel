@@ -12,6 +12,10 @@ export const defaultPreferences=()=>({
  // ONVIF-события движения двора: creds хранятся серверно (в профиле SQLite),
  // пароль не отдаётся клиенту — index.js вырезает его из ответов API.
  yard_onvif_user:'',yard_onvif_pass:'',yard_onvif_host:'192.168.8.204',yard_onvif_enabled:true,
+ // Камеры ONVIF (3.4.6, мультикамерный каркас): пароли хранятся серверно,
+ // клиенту не отдаются (clientPreferences вырезает pass из каждого элемента).
+ yardCameras:[],
+
  // Показания счётчика ТНС (снимаются раз в месяц) и тариф. Отсутствие ключей
  // в старых профилях = пусто (обратная совместимость).
  energy_readings:[],energy_tariff:null,
@@ -22,6 +26,47 @@ export const defaultPreferences=()=>({
 // Пользовательские сценарии: строгие лимиты, неизвестные поля отбрасываем,
 // целиком невалидные сценарии молча не сохраняем — остальной профиль не страдает.
 export const USER_SCENARIO_LIMITS={max:8,maxSteps:12,minBrightness:30,maxBrightness:100};
+// Камеры ONVIF (3.4.6): {name,host,port,user,pass,enabled}. Пароль — серверный секрет.
+export const MAX_YARD_CAMERAS=4;
+export function sanitizeYardCameras(raw){
+ if(raw===undefined||raw===null)return [];
+ if(!Array.isArray(raw))throw new Error('Камеры ONVIF: нужен массив.');
+ const seen=new Set(),out=[];
+ for(const c of raw){
+  if(!c||typeof c!=='object'||Array.isArray(c))throw new Error('Камера ONVIF: нужен объект.');
+  const rawHost=typeof c.host==='string'?c.host.trim().slice(0,120):'';
+  // 'ip:port' в поле адреса — легальный формат: разделяем (порт имеет приоритет ниже).
+  const colon=rawHost.match(/^([\w.\-]+):(\d+)$/);
+  const host=colon?colon[1]:rawHost;
+  // Строка без адреса и логина — недописанный черновик в форме: пропускаем молча.
+  if(!host&&!String(c.user||'').trim())continue;
+  if(!host||!/^[\w.\-]+$/.test(host))throw new Error('Камера ONVIF: нужен корректный адрес (IP или имя).');
+  const port=Number.isInteger(c.port)&&c.port>0&&c.port<65536?c.port:colon?Number(colon[2]):2020;
+  const key=host+':'+port;
+  if(seen.has(key))continue;
+  seen.add(key);
+  const name=typeof c.name==='string'?c.name.trim().slice(0,24):'';
+  out.push({name:name||'Камера '+(out.length+1),host,port,
+   user:typeof c.user==='string'?c.user.trim().slice(0,64):'',
+   pass:typeof c.pass==='string'?c.pass.slice(0,120):'',
+   enabled:c.enabled!==false});
+  if(out.length>=MAX_YARD_CAMERAS)break;
+ }
+ return out;
+}
+// Миграция легаси-полей (yard_onvif_host/user/pass) в список камер — ровно один раз:
+// только когда в сохранённом профиле ключа yardCameras вообще не было.
+export function migrateYardCameras(preferences,raw){
+ if(!raw||raw.yardCameras!==undefined)return preferences;
+ if(Array.isArray(preferences.yardCameras)&&preferences.yardCameras.length)return preferences;
+ const host=String(raw.yard_onvif_host||'').trim();if(!host)return preferences;
+ // host может быть 'ip:port' (старый формат): разделяем, иначе порт 2020.
+ const colon=host.match(/^([\w.\-]+):(\d+)$/);
+ return {...preferences,yardCameras:[{name:'Двор',host:(colon?colon[1]:host).slice(0,120),port:colon?Number(colon[2]):2020,
+  user:String(raw.yard_onvif_user||'').trim().slice(0,64),pass:String(raw.yard_onvif_pass||'').slice(0,120),
+  enabled:raw.yard_onvif_enabled!==false}]};
+}
+
 const scenarioIdOk=id=>typeof id==='string'&&/^[a-z0-9-]{1,40}$/.test(id);
 export function sanitizeUserScenarios(raw,devices){
  if(!Array.isArray(raw))return [];
@@ -100,6 +145,10 @@ export function validatePreferences(input,{importing=false}={}){
  p.yard_onvif_host=typeof raw.yard_onvif_host==='string'&&raw.yard_onvif_host.trim()?raw.yard_onvif_host.trim().slice(0,120):'192.168.8.204';
  // Тумблер ONVIF-датчика: отсутствие ключа = включено (обратная совместимость со старыми профилями).
  p.yard_onvif_enabled=raw.yard_onvif_enabled!==false;
+ // Камеры ONVIF (3.4.6): до 4 штук, dedup по host:port. Отсутствие ключа = пустой
+ // список (легаси-поля продолжают работать через серверную миграцию migrateYardCameras).
+ p.yardCameras=sanitizeYardCameras(raw.yardCameras);
+
  // Показания счётчика и тариф: отсутствие ключей = пусто (старые профили без изменений).
  p.energy_readings=sanitizeEnergyReadings(raw.energy_readings);
  p.energy_tariff=sanitizeEnergyTariff(raw.energy_tariff);

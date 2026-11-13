@@ -5,7 +5,8 @@ import {spawn} from 'node:child_process';
 import {isIP} from 'node:net';
 import {randomBytes,createHash,timingSafeEqual} from 'node:crypto';
 import Database from 'better-sqlite3';
-import {defaultPreferences,validatePreferences,bindingDefinitions,sanitizeEnergyReadings} from '../src/preferences.js';
+import {defaultPreferences,validatePreferences,bindingDefinitions,sanitizeEnergyReadings,migrateYardCameras} from '../src/preferences.js';
+import {onvifDiscover} from './onvif-discover.js';
 import {HomeAssistant} from './ha.js';
 import {CameraStreams} from './stream.js';
 import {CameraRTC} from './rtc.js';
@@ -51,30 +52,46 @@ const yardCameraEntity=p=>{const b=p?.bindings['camera-yard'];return p?.mode==='
 const yardMotion=new YardMotion({ha});
 // ONVIF-события движения двора (события железа вместо jpeg-диффа). Creds — из
 // preferences-профиля (серверно), ошибки → jpeg-диффер остаётся fallback-ом.
-let yardOnvifWatch=null,yardOnvifConfigKey='',yardOnvifSnapshots=null;
-const clientPreferences=prefs=>{const c={...prefs};delete c.yard_onvif_pass;return c};
-const yardOnvifStatus=()=>yardOnvifWatch?.status?.()||null;
-const yardOnvifEnsure=prefs=>{
- // Тумблер ONVIF-датчика (preferences.yard_onvif_enabled, по умолчанию включено):
- // выключен → watcher останавливается, движение двора ловит jpeg-диффер (резерв).
- if(prefs.yard_onvif_enabled===false){if(yardOnvifWatch){yardOnvifWatch.stop();yardOnvifWatch=null;yardOnvifConfigKey='';yardOnvifSnapshots=null}return false}
+// 3.4.6: watcher'ов может быть несколько — по одному на камеру из yardCameras.
+let yardOnvifWatchers=[],yardOnvifConfigKey='';
+const clientPreferences=prefs=>{
+ const c={...prefs};
+ delete c.yard_onvif_pass;
+ c.yardCameras=(c.yardCameras||[]).map(({pass,...rest})=>({...rest,pass:''}));
+ return c;
+};
+// Активные камеры: тумблер yard_onvif_enabled выключен → пусто (jpeg-диффер — резерв).
+// Список yardCameras приоритетен; если он пуст — легаси-поля yard_onvif_* (старые профили).
+const yardOnvifConfigOf=prefs=>{
+ if(prefs.yard_onvif_enabled===false)return [];
+ const list=(Array.isArray(prefs.yardCameras)?prefs.yardCameras:[])
+  .filter(c=>c&&c.enabled!==false&&c.host&&String(c.user||'').trim())
+  .map(c=>({name:c.name,host:c.host,port:c.port||2020,user:c.user,pass:c.pass}));
+ if(list.length)return list;
+ const user=String(prefs.yard_onvif_user||'').trim();
+ if(!user)return [];
  let host=String(prefs.yard_onvif_host||'').trim()||'192.168.8.204',port;
- // host может быть 'ip:port' (как в статусе живой камеры): разделяем, иначе порт 2020.
- const colon=host.match(/^([\w.\[\]:-]+):(\d+)$/);
- if(colon){host=colon[1].replace(/^\[|\]$/g,'');port=Number(colon[2])}
- const user=String(prefs.yard_onvif_user||'').trim(),pass=String(prefs.yard_onvif_pass||'');
- if(!user){if(yardOnvifWatch){yardOnvifWatch.stop();yardOnvifWatch=null;yardOnvifConfigKey='';yardOnvifSnapshots=null}return false}
- const key=host+'|'+port+'|'+user+'|'+pass;
- if(yardOnvifWatch&&key===yardOnvifConfigKey)return true;
- if(yardOnvifWatch)yardOnvifWatch.stop();
- yardOnvifConfigKey=key;
- // Живые снимки двора (3.3.9): тот же creds/host, отдельный клиент GetSnapshotUri+GET.
- yardOnvifSnapshots=onvifSnapshots({host,...(port?{port}:{}),user,pass,log:(...a)=>console.log('Yard ONVIF snapshot:',...a)});
- yardOnvifWatch=onvifWatch({host,...(port?{port}:{}) ,user,pass,
-  onMotion:()=>{yardMotion.externalMotion();yardClips.record().catch(error=>journal('Клип двора не записан: '+(error?.message||error),'warn'))},
-  onError:error=>{console.log('Yard ONVIF fallback to jpeg diff:',error?.message||error);journal('ONVIF-события недоступны: '+(error?.message||error)+' — работает резерв по кадрам','warn')}});
- journal('ONVIF-детектор двора запущен: '+host+(port?':'+port:''));
- return true;
+ const colon=host.match(/^([\w.\-]+):(\d+)$/);
+ if(colon){host=colon[1];port=Number(colon[2])}
+ return [{name:'Двор',host,port:port||2020,user,pass:String(prefs.yard_onvif_pass||'')}];
+};
+const yardOnvifStatuses=()=>yardOnvifWatchers.map(w=>({name:w.name,host:w.host,port:w.port,...w.watch.status()}));
+const yardOnvifEnsure=prefs=>{
+ const list=yardOnvifConfigOf(prefs);
+ const sig=JSON.stringify(list);
+ if(sig===yardOnvifConfigKey)return yardOnvifWatchers.length>0;
+ yardOnvifConfigKey=sig;
+ for(const w of yardOnvifWatchers){try{w.watch.stop()}catch{}}
+ yardOnvifWatchers=list.map(cam=>{
+  // Живые снимки (3.3.9): тот же creds/host, отдельный клиент GetSnapshotUri+GET.
+  const snapshots=onvifSnapshots({host:cam.host,port:cam.port,user:cam.user,pass:cam.pass,log:(...a)=>console.log('ONVIF snapshot['+cam.name+']:',...a)});
+  const watch=onvifWatch({host:cam.host,port:cam.port,user:cam.user,pass:cam.pass,label:cam.name,
+   onMotion:()=>{yardMotion.externalMotion();yardClips.record({source:'onvif:'+cam.name,snap:snapshots}).catch(error=>journal('Клип '+cam.name+' не записан: '+(error?.message||error),'warn'))},
+   onError:error=>{console.log('ONVIF['+cam.name+'] fallback to jpeg diff:',error?.message||error);journal('ONVIF-события недоступны ('+cam.name+'): '+(error?.message||error)+' — работает резерв по кадрам','warn')}});
+  return {name:cam.name,host:cam.host,port:cam.port,watch,snapshots};
+ });
+ if(yardOnvifWatchers.length)journal('ONVIF-детекторы запущены: '+yardOnvifWatchers.map(w=>w.name+' ('+w.host+':'+w.port+')').join(', '));
+ return yardOnvifWatchers.length>0;
 };
 
 const proofs=new Map(),pendingScopes=new Map();
@@ -85,14 +102,15 @@ let forecastCache=null,forecastKey='',shoppingCache=null,energyCache=null,energy
 // проверенного биндинга camera-yard профиля на каждый вызов ha/yard-motion).
 let yardEntityHint=null;
 const yardClips=new YardClips({ha,db,getEntityId:()=>yardEntityHint,
- yardOnvif:()=>yardOnvifSnapshots,
+ getSnaps:()=>yardOnvifWatchers.map(w=>w.snapshots),
  notify:info=>live.broadcast('yard-clip',JSON.stringify(info))});
 yardClips.start();
 const getProfile=id=>{
  let row=db.prepare('SELECT * FROM profiles WHERE id=?').get(id);
  if(!row){db.prepare('INSERT INTO profiles(id,preferences) VALUES(?,?)').run(id,JSON.stringify(defaultPreferences()));row=db.prepare('SELECT * FROM profiles WHERE id=?').get(id)}
  const raw=JSON.parse(row.preferences),stored=validatePreferences(raw);
- let preferences=migrateHouseProfile(stored);
+ // Миграция легаси-ONVIF (yard_onvif_*) в список камер — до сохранения/использования.
+ let preferences=migrateHouseProfile(migrateYardCameras(stored,raw));
  if(raw.deviceModel===undefined)preferences=validatePreferences({...preferences,deviceModel:seedDeviceModel(preferences.devices)});
  const normalized=JSON.stringify(preferences);
  if(normalized!==row.preferences)db.transaction(()=>{
@@ -199,6 +217,20 @@ const server=http.createServer(async(req,res)=>{
      if(input.yard_onvif_user===undefined)input.yard_onvif_user=p.preferences.yard_onvif_user;
      if(input.yard_onvif_host===undefined)input.yard_onvif_host=p.preferences.yard_onvif_host;
      if(input.yard_onvif_enabled===undefined)input.yard_onvif_enabled=p.preferences.yard_onvif_enabled;
+     // Камеры ONVIF: ключа нет у старого клиента → храним список; пароль внутри
+     // элемента пустой → подставляем хранящийся (по host:port+user, иначе по позиции).
+     if(input.yardCameras===undefined)input.yardCameras=p.preferences.yardCameras;
+     if(Array.isArray(input.yardCameras)){
+      const stored=p.preferences.yardCameras||[];
+      input.yardCameras=input.yardCameras.map((c,i)=>{
+       if(c&&typeof c==='object'&&((c.pass===undefined)||(c.pass===''))){
+        const match=stored.find(s=>s.host===c?.host&&s.port===(c?.port||2020)&&s.user===c?.user)||stored[i];
+        if(match?.pass)return {...c,pass:match.pass};
+       }
+       return c;
+      });
+     }
+
      if(input.energy_readings===undefined)input.energy_readings=p.preferences.energy_readings;
      if(input.energy_tariff===undefined)input.energy_tariff=p.preferences.energy_tariff;
     }
@@ -278,25 +310,41 @@ const server=http.createServer(async(req,res)=>{
     const clip=await yardClips.testCapture({...(!Number.isFinite(request?.at)?{}:{at:request.at}),...(request?.dedup===false?{dedup:false}:{})});
     return json(res,200,clip?{id:clip.id,at:clip.at,source:clip.source,frameCount:clip.frameCount}:{created:false});
    }
-   // Диагностика ONVIF-детектора двора: статус для живой панели (без пароля).
+   // Диагностика ONVIF-детекторов: статус по каждой камере + агрегат (без паролей).
    if(route==='yard-onvif'&&req.method==='GET'){
     const enabled=p.preferences.yard_onvif_enabled!==false;
     const configured=yardOnvifEnsure(p.preferences);
-    const s=yardOnvifStatus()||{};
-    return json(res,200,{enabled,configured,alive:!!s.alive,eventService:s.eventService||null,
-     subscription:s.subscription||null,lastMotionAt:s.lastMotionAt||null,lastError:s.lastError||null,
-     restarts:s.restarts||0,fallback:!configured||!s.alive});
+    const cams=yardOnvifStatuses();
+    const aliveCam=cams.filter(c=>c.alive);
+    const lastMotionAt=cams.reduce((m,c)=>Math.max(m,c.lastMotionAt||0),0);
+    return json(res,200,{enabled,configured,alive:aliveCam.length>0,
+     subscription:aliveCam[0]?.subscription||null,lastMotionAt:lastMotionAt||null,
+     lastError:cams.find(c=>c.lastError)?.lastError||null,
+     restarts:cams.reduce((m,c)=>Math.max(m,c.restarts||0),0),
+     fallback:!configured||!aliveCam.length,
+     cameras:cams.map(({name,host,port,alive,subscription,lastMotionAt:at,lastError,restarts:r})=>({name,host,port,alive,subscription:subscription||null,lastMotionAt:at||null,lastError:lastError||null,restarts:r||0}))});
+   }
+   // 3.4.6: поиск ONVIF-камер в локальной сети (WS-Discovery) — для формы в тех.разделе.
+   if(route==='onvif-discover'&&req.method==='POST'){
+    try{
+     const found=await onvifDiscover({timeoutMs:3000});
+     return json(res,200,{cameras:found});
+    }catch(error){return json(res,200,{cameras:[],error:error.message})}
    }
    // Агрегированное здоровье системы: один GET, те же права, что у остальных API.
    if(route==='health'&&req.method==='GET'){
-    const onvifOk=yardOnvifEnsure(p.preferences),onvifStatus=yardOnvifStatus()||{};
+    const onvifOk=yardOnvifEnsure(p.preferences);
+    const cams=yardOnvifStatuses();
+    const aliveCam=cams.filter(c=>c.alive);
+    const lastMotionAt=cams.reduce((m,c)=>Math.max(m,c.lastMotionAt||0),0);
     let sqliteKB=0;
     try{sqliteKB=Math.round((await stat(resolve(data,'panel.sqlite'))).size/1024)}catch{}
     return json(res,200,{
      ha:{enabled:ha.enabled,connected:ha.enabled&&live.states.length>0,lastError:live.lastError||null,latencyMs:live.lastLatencyMs},
-     onvif:{enabled:p.preferences.yard_onvif_enabled!==false,configured:onvifOk,alive:!!onvifStatus.alive,
-      subscription:onvifStatus.subscription||null,lastMotionAt:onvifStatus.lastMotionAt||null,
-      lastError:onvifStatus.lastError||null,fallback:!onvifOk||!onvifStatus.alive},
+     onvif:{enabled:p.preferences.yard_onvif_enabled!==false,configured:onvifOk,alive:aliveCam.length>0,
+      subscription:aliveCam[0]?.subscription||null,lastMotionAt:lastMotionAt||null,
+      lastError:cams.find(c=>c.lastError)?.lastError||null,fallback:!onvifOk||!aliveCam.length,
+      cameras:cams.map(({name,host,port,alive,subscription,lastMotionAt:at,lastError,restarts:r})=>({name,host,port,alive,subscription:subscription||null,lastMotionAt:at||null,lastError:lastError||null,restarts:r||0}))},
      sse:{clients:live.clients.size},
      disk:{sqliteKB,backups:db.prepare('SELECT COUNT(*) c FROM profile_backups').get().c},
      uptime:{seconds:Math.floor((Date.now()-startedAt)/1000)},
@@ -438,6 +486,30 @@ const server=http.createServer(async(req,res)=>{
    if(route==='ha/camera'&&req.method==='POST'){
     const request=JSON.parse((await body(req)).toString()),image=await ha.camera(request.id,p.preferences);
     res.writeHead(200,{'Content-Type':image.type,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});return res.end(image.bytes);
+   }
+   // 3.4.6: самообновление аддона — только из локальной сети и только в режиме add-on.
+   // addon-info: slug/версия через Supervisor (fallback — hostname контейнера).
+   if(route==='addon-info'&&req.method==='GET'){
+    if(!addon)throw new Error('Доступно только внутри Home Assistant.');
+    let slug=null,version=null,source='supervisor';
+    try{
+     const r=await fetch('http://supervisor/addons/self/info',{headers:{Authorization:'Bearer '+process.env.SUPERVISOR_TOKEN}});
+     if(r.ok){const info=await r.json();slug=info.data?.slug||null;version=info.data?.version||null}
+    }catch{}
+    if(!slug){slug=process.env.HOSTNAME||null;source='hostname'}
+    return json(res,200,{addon:true,slug,version,source});
+   }
+   // addon-update: POST Supervisor /addons/self/update в фоне — контейнер
+   // пересобирается и перезапускается, поэтому ответ уходит до завершения.
+   if(route==='addon-update'&&req.method==='POST'){
+    if(!addon)throw new Error('Доступно только внутри Home Assistant.');
+    fetch('http://supervisor/addons/self/update',{method:'POST',headers:{Authorization:'Bearer '+process.env.SUPERVISOR_TOKEN}})
+     .then(async r=>{
+      const text=await r.text().catch(()=>'');
+      journal(r.ok?'Обновление аддона запущено (Supervisor)':'Supervisor отклонил обновление: '+text.slice(0,200),r.ok?'info':'warn');
+     })
+     .catch(e=>journal('Обновление аддона не запущено: '+(e?.message||e),'warn'));
+    return json(res,202,{started:true});
    }
    if(route==='ha/command'&&req.method==='POST'){
     if(assistantScopes.has(id))throw new Error('Дождись завершения действия станции.');

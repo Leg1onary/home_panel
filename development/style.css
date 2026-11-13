@@ -1564,6 +1564,22 @@ body.is-ambient .idle-place,body.is-ambient .idle-hint{opacity:0;pointer-events:
 .home-block:not(.collapsed) .home-block-head{border-bottom-color:var(--border)}
 #home-block-digest:has(#home-digest:empty){display:none}
 @media(max-width:900px){.home-block{width:100%}}
+/* 3.4.6: редактор камер ONVIF в тех.разделе. */
+.cam-edit-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-2) var(--space-3);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-3) var(--space-3) var(--space-2);margin:0 0 var(--space-3)}
+.cam-edit-row legend{font-size:var(--text-xs);color:var(--muted);padding:0 var(--space-2)}
+.cam-edit-row .setting-field.compact{display:flex;flex-direction:column;gap:2px;font-size:var(--text-xs);color:var(--muted)}
+.cam-edit-row .setting-field.compact input{min-height:38px;padding:var(--space-1) var(--space-2)}
+.cam-edit-actions{display:flex;gap:var(--space-2);flex-wrap:wrap;margin-top:var(--space-2)}
+/* 3.4.6: планшетная компоновка — рельса больше не наезжает на 3D-дом,
+   чипы-факты переносятся сеткой, а не вылезают за край. */
+@media(max-width:1310px) and (min-width:901px){
+ .home-rail{position:static;max-width:none;width:100%;flex-direction:column;align-items:stretch;margin-top:var(--space-3);pointer-events:auto}
+ .home-rail .digest-card,.home-rail .profile-invite,.home-rail .home-block{width:100%}
+ .home-stage-wrap .spatial-stage{height:min(62vh,640px)}
+ .house-status.home-facts{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+ .home-quick-rail{position:static;display:flex;gap:var(--space-3);margin:var(--space-3) 0 0;align-items:flex-end}
+ .home-quick-rail .quick-devices{align-items:center}
+}
 
 body.is-ambient .idle-time{font-weight:150;font-variation-settings:'wght' 150;font-size:clamp(88px,16vw,240px);letter-spacing:-.06em}
 body.is-ambient .idle-date{opacity:.55;letter-spacing:.12em}
