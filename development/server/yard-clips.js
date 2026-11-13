@@ -2,10 +2,11 @@
 // Механизм кадров тот же, что у панельного детектора: ha.requestRaw('/api/camera_proxy/…').
 // Низкочастотный фон: каждые TICK_MS кадр в кольцо последних RING (pre-event кадры).
 // Событие (ONVIF или jpeg-диффер — общий путь через index.js) → клип: pre-кадры из
-// кольца + пост-кадры через POST_DELAYS. Хранение — SQLite, ретеншен KEEP последних.
+// кольца + пост-кадры через POST_DELAYS (0/6/12 с — событие «происходит сейчас»,
+// разброс минутами бессмыслен). Хранение — SQLite, ретеншен KEEP последних.
 // Ошибки камеры/HA — тихий пропуск тика, без спама в лог.
 import jpeg from 'jpeg-js';
-const RING=3,TICK_MS=8000,DEDUP_MS=15000,POST_DELAYS=[3000,9000],KEEP=30;
+const RING=3,TICK_MS=8000,DEDUP_MS=15000,POST_DELAYS=[6000,12000],KEEP=30;
 const BLANK=jpeg.encode({data:Buffer.alloc(4,255),width:1,height:1},80).data.toString('base64');
 export {RING as YARD_CLIPS_RING,TICK_MS as YARD_CLIPS_TICK_MS,DEDUP_MS as YARD_CLIPS_DEDUP_MS,KEEP as YARD_CLIPS_KEEP};
 export class YardClips{

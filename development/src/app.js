@@ -1711,8 +1711,6 @@ function wake(){
 function simpleSheet(content){settingsOpen=false;$('#sheet-content').dataset.station='';modal(content)}
 
 async function dispatchAction(e){
- const li=e.target.closest('.history-timeline li[data-history-event-id]');
- if(li){const f=historyState.focus,id=li.dataset.historyEventId,at=Number(li.dataset.historyEventAt);historyState.focus=f&&f.id===id&&f.at===at?null:{id,at};paintStatistics();return}
  const b=e.target.closest('button');if(!b){
   // Клик мимо мини-карточки закрывает её; тап по сцене мог только что открыть/сменить карточку.
   if(activeRoomCard&&state.view==='home'&&!e.target.closest('#home-room-card')&&(!e.target.closest('#canvas')||Date.now()-cardGuard>80)){activeRoomCard=null;paintRoomCard()}
@@ -1965,7 +1963,7 @@ async function dispatchAction(e){
 }
 document.addEventListener('change',async e=>{
  if(e.target.id==='history-room'){historyState.room=e.target.value;paintStatistics();return}
- if(e.target.id==='history-event-type'){historyState.eventType=e.target.value;paintStatistics();return}
+ // селектор типа событий удалён вместе со старым блоком «События» (3.6.1)
  const id=e.target.id;
  if(id==='brightness')return command('rgb:brightness',+e.target.value);
  // Мини-слайдер яркости линии (3.3.0): data-bright = `${id}/brightness`.
@@ -2078,13 +2076,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target?.id==='shop
 $('.brand').onclick=e=>{e.preventDefault();navigate('home')};
 document.addEventListener('pointermove',e=>{if(state.view==='statistics')inspectHistoryChart(e)});
 document.addEventListener('keydown',e=>{
- if(state.view==='statistics'){
-  inspectHistoryChart(e);
-  if(['Enter',' '].includes(e.key)){
-   const li=document.activeElement?.closest?.('.history-timeline li[data-history-event-id]');
-   if(li){e.preventDefault();const f=historyState.focus,id=li.dataset.historyEventId,at=Number(li.dataset.historyEventAt);historyState.focus=f&&f.id===id&&f.at===at?null:{id,at};paintStatistics()}
-  }
- }
+ if(state.view==='statistics')inspectHistoryChart(e);
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&activeRoomCard&&state.view==='home'&&$('#overlay').hidden){activeRoomCard=null;paintRoomCard()}});
 let historyResizeTimer;
