@@ -36,7 +36,11 @@ const clips=[
  {id:'old',at:now-13*3600000}
 ];
 assert.equal(nightYardEvents(clips,now,wS,wE),2,'два ночных события из четырёх');
-assert.equal(nightYardEvents(clips,now,'12:00','12:01'),0,'не наше окно — ноль');
+// «не наше окно»: старт ровно через 2 минуты после клипов — гарантированно мимо
+// при любой ветке (полночь или полдень), иначе тест флапает в полдень.
+const offStart=new Date(clipAt+2*60000),offEnd=new Date(clipAt+3*60000);
+const hhmm=d=>`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+assert.equal(nightYardEvents(clips,now,hhmm(offStart),hhmm(offEnd)),0,'не наше окно — ноль');
 assert.equal(nightYardEvents([],now,S,E),0,'пустой список');
 assert.equal(nightYardEvents([{at:'x'}],now,wS,wE),0,'мусорный at');
 // yardAnomaly: упрощённый порог 10 событий за 24 ч.

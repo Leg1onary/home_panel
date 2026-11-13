@@ -1609,7 +1609,14 @@ body.is-ambient .idle-place,body.is-ambient .idle-hint{opacity:0;pointer-events:
 .yard-events-card .event-row{padding-left:0;padding-right:0}
 @media(max-width:900px){.yard-columns{grid-template-columns:minmax(0,1fr)}}
 .yard-link-card{display:flex}
-.watch-grid .yard-link-card{padding:0;border:0;background:none}
+.watch-view .watch-grid{grid-template-columns:336px minmax(0,1fr)}
+.watch-yard-chip{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 var(--space-4);border:1px solid var(--border);border-radius:var(--radius-full);background:var(--surface);color:var(--text);font:inherit;font-size:var(--text-sm);cursor:pointer;transition:border-color .2s,background .2s;white-space:nowrap}
+.watch-yard-chip svg{width:18px;height:18px;color:var(--lit)}
+.watch-yard-chip svg:last-child{width:15px;height:15px;color:var(--muted)}
+.watch-yard-chip:hover{border-color:var(--accent);background:rgba(120,170,220,.08)}
+.watch-yard-row span,.watch-yard-row strong{display:inline-flex;align-items:center;gap:6px}
+.watch-yard-row strong{color:var(--accent)}
+.watch-yard-row svg{width:16px;height:16px}
 /* 3.4.6: редактор камер ONVIF в тех.разделе. */
 .cam-edit-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-2) var(--space-3);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-3) var(--space-3) var(--space-2);margin:0 0 var(--space-3)}
 .cam-edit-row legend{font-size:var(--text-xs);color:var(--muted);padding:0 var(--space-2)}

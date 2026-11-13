@@ -776,18 +776,19 @@ async function loadWeatherForecast(){
 function watch(){
  const terraceDoor=state.devices.find(d=>d.id==='terrace-door'&&d.status==='installed');
  const leaks=state.devices.filter(d=>d.type==='leak'&&d.status==='installed');
- // 3.5.1: уличные датчики (терраса/двор/скважина/чердак) — отдельной секцией,
- // двор с камерой переехал в собственный раздел.
+ // 3.5.2: уличные датчики — отдельной секцией; «Двор» — компактный чип в шапке.
  const OUTSIDE=['terrace','yard','well','attic'];
- return `<div class="view"><div class="view-title"><div><div class="eyebrow">Наблюдение</div><h1>Датчики и климат</h1><p>Всё, что сообщает твой дом.</p></div></div>
- <div class="watch-grid"><section class="yard-link-card"><button type="button" class="yard-live" data-action="yard-open">${I('video')}<div><h2>Двор</h2><p>Камера, лента клипов и детектор — теперь живут в отдельном разделе</p></div>${I('chevron-right')}</button></section>
- <aside class="side-stack"><section class="overview-status">
+ return `<div class="view watch-view"><div class="view-title"><div><div class="eyebrow">Наблюдение</div><h1>Датчики и климат</h1><p>Всё, что сообщает твой дом.</p></div>
+ <button type="button" class="watch-yard-chip" data-action="yard-open" aria-label="Открыть раздел Двор">${I('video')}Двор ${I('chevron-right')}</button></div>
+ <div class="watch-grid"><section class="overview-status">
  <div class="status-line"><span>${I('door-closed')}Входная дверь</span><strong>${binaryLabel('door','Открыта','Закрыта')}</strong></div>
  ${terraceDoor?`<div class="status-line"><span>${I('door-open')}Дверь на террасу</span><strong>${binaryLabel('terrace-door','Открыта','Закрыта')}</strong></div>`:''}
  ${leaks.map(d=>`<div class="status-line"><span>${I('droplets')}${esc(d.name)}</span><strong>${binaryLabel(d.id,'Тревога','Сухо')}</strong></div>`).join('')}
  ${state.devices.some(d=>d.id==='smoke'&&d.status==='installed')?`<div class="status-line"><span>${I('radio')}Дым</span><strong>${binaryLabel('smoke','Тревога','Нет тревоги')}</strong></div>`:''}
+ <button type="button" class="status-line watch-yard-row" data-action="yard-open"><span>${I('video')}Двор: камера и клипы</span><strong>Раздел ${I('chevron-right')}</strong></button>
  </section>
- ${climate()}</aside></div>${deviceHealth()}<section class="sensor-catalog"><div class="section-heading"><div><h2>Датчики дома</h2><p>Логические устройства: показания и батарейка вместе</p></div></div><div class="module-grid">${logicalSensorCards({exclude:OUTSIDE})||'<p>Датчики пока не добавлены.</p>'}</div></section>
+ <aside class="side-stack">${climate()}</aside></div>${deviceHealth()}
+ <section class="sensor-catalog"><div class="section-heading"><div><h2>Датчики дома</h2><p>Логические устройства: показания и батарейка вместе</p></div></div><div class="module-grid">${logicalSensorCards({exclude:OUTSIDE})||'<p>Датчики пока не добавлены.</p>'}</div></section>
  <section class="sensor-catalog"><div class="section-heading"><div><h2>Вне дома</h2><p>Терраса, двор, скважина и чердак</p></div></div><div class="module-grid">${logicalSensorCards({only:OUTSIDE})||'<p>Уличных датчиков пока нет.</p>'}</div></section></div>`;
 }
 function logicalSensorCards(opts={}){
