@@ -165,26 +165,31 @@ const yardClips=new YardClips({ha,db,getEntityId:()=>yardEntityHint,
   }catch(error){console.log('Door poll:',error?.message||error)}
  },Number(process.env.PANEL_DOOR_POLL_MS)||20000).unref();
 const GUARD_SCALE=Number(process.env.PANEL_GUARD_SCALE)||1;
-const guard={exitUntil:0,alarm:null,timers:[],alerted:new Map(),flashTimer:null,flashOn:false};
+const guard={exitUntil:0,alarm:null,timers:[],alerted:new Map(),flashTimer:null,flashOn:false,armedBy:null};
 const guardTimers=[];const gT=(fn,ms)=>{const t=setTimeout(fn,ms);guardTimers.push(t);return t};
 const guardClearTimers=()=>{for(const t of guardTimers.splice(0))clearTimeout(t);if(guard.flashTimer){clearInterval(guard.flashTimer);guard.flashTimer=null}};
-const guardPrefs=()=>getProfile(addon?'home':'local').preferences;
+const guardProfileId=()=>addon?'home':'local';
+const guardPrefs=()=>getProfile(guardProfileId()).preferences;
 async function guardDoors(){
  const prefs=guardPrefs();
  const defs=bindingDefinitions(prefs.devices).filter(d=>d.type==='door'&&d.device.status==='installed'
   &&prefs.bindings[d.id]?.verified&&prefs.bindings[d.id]?.entityId);
  // 3.7.0: для охраны состояния всегда свежие — кеш LiveFeed может отставать.
  const byId=new Map(((await ha.states())||[]).map(s=>[s.entity_id,s]));
- // since — из трекера, а если дверь открыта, но времени открытия мы не видели —
- // считаем от текущего момента (честно для пилота).
+ // 3.7.1: единый писатель трекера дверей — здесь же фиксируются переходы
+ // открыта↔закрыта в хронику (бывший поллер объединён, без гонок).
  const out=defs.map(d=>{
   const eid=prefs.bindings[d.id].entityId,e=byId.get(eid);
   const stateOpen=e?e.state==='on':false;
   const tr=doorTracker.get(eid);
   const since=stateOpen?(tr?.since&&tr.since>0?tr.since:Date.now()):0;
-  if(!tr||tr.open!==stateOpen)doorTracker.set(eid,{open:stateOpen,since});
+  if(!tr){doorTracker.set(eid,{open:stateOpen,since})}
+  else if(tr.open!==stateOpen){doorTracker.set(eid,{open:stateOpen,since});recordEvent('door',d.device.name+(stateOpen?' открыта':' закрыта'))}
   return {id:d.id,name:d.device.name,entityId:eid,open:stateOpen,since,state:e?.state};
  });
+ return out;
+ // since — из трекера, а если дверь открыта, но времени открытия мы не видели —
+ // считаем от текущего момента (честно для пилота).
  return out;
 }
 async function guardLights(on){
@@ -203,6 +208,15 @@ async function guardSiren(){
   journal('Охрана: интент не сработал ('+(error?.message||error)+') — TTS-сирена','warn');
   try{await ha.announce('Внимание! Внимание! Откройте дверь и уберите руки!',guardPrefs())}catch(e2){journal('Охрана: TTS-сирена не удалась: '+(e2?.message||e2),'warn')}
  }
+}
+async function guardSwitchSet(on){
+ // 3.7.1: синхронизация помощника «Охрана» (мост Яндекс ↔ HA).
+ const prefs=guardPrefs();
+ if(!prefs.guardEntity)return;
+ try{
+  const domain=prefs.guardEntity.split('.')[0];
+  await ha.request('/api/services/'+domain+'/turn_'+(on?'on':'off'),{entity_id:prefs.guardEntity});
+ }catch(error){journal('Охрана: помощник '+(on?'вкл':'выкл')+' — '+(error?.message||error),'warn')}
 }
 async function guardSirenStop(){
  try{await ha.command({id:'station:playing',value:false},guardPrefs())}catch(error){journal('Охрана: стоп сирены — '+(error?.message||error),'warn')}
@@ -231,16 +245,42 @@ async function guardStopAlarm(silent=false){
  if(!silent){await guardSirenStop().catch(()=>{});await guardLights(false).catch(()=>{})}
 }
 async function guardTick(){
- let prefs;
- try{prefs=guardPrefs()}catch{return}
+ try{
+  let prefs;
+  try{prefs=guardPrefs()}catch{return}
  const now=Date.now();
  const armed=prefs.guardArmedAway===true;
- if(!armed){
-  if(guard.alarm||guardTimers.length)await guardStopAlarm(true);
-  guard.exitUntil=0;guard.alerted.clear();
-  return;
+ // 3.7.1: мост «Я ухожу» — помощник охраны as source of truth.
+ if(prefs.guardEntity){
+  const states=await ha.states().catch(e=>{console.log('GUARDSTATES ERR:',e?.message);return[]});
+  if(process.env.PANEL_DOOR_DEBUG)console.log('GUARDSTATES n=',states.length,'ib=',states.find(x=>x.entity_id===prefs.guardEntity)?.state);
+  const sw=states.find(e=>e.entity_id===prefs.guardEntity);
+  const swOn=sw?sw.state==='on':false;
+  if(process.env.PANEL_DOOR_DEBUG)console.log('GUARDTICK swOn=',swOn,'armed=',armed,'ge=',prefs.guardEntity);
+  if(swOn&&!armed){
+   // сценарий «Я ухожу»: взвод без preflight (выход-отсчёт покрывает выход)
+   prefs.guardArmedAway=true;
+   db.prepare('UPDATE profiles SET preferences=? WHERE id=?').run(JSON.stringify(prefs),guardProfileId());
+   guard.exitUntil=Date.now()+prefs.guardExitDelay*1000*GUARD_SCALE;
+   guard.armedBy='bridge';
+   await guardStopAlarm(true);
+   recordEvent('guard','Охрана включена Яндекс-сценарием · выход '+prefs.guardExitDelay+' с');
+   journal('Охрана: взвод от помощника '+prefs.guardEntity);
+   return;
+  }
+  if(!swOn&&armed&&guard.armedBy==='bridge'){
+   prefs.guardArmedAway=false;
+   db.prepare('UPDATE profiles SET preferences=? WHERE id=?').run(JSON.stringify(prefs),guardProfileId());
+   guard.exitUntil=0;
+   await guardStopAlarm();
+   recordEvent('guard','Охрана снята помощником '+prefs.guardEntity);
+   journal('Охрана: снятие от помощника');
+   return;
+  }
  }
  const doors=await guardDoors();
+ // 3.7.1: режим могли сменить, пока читали состояния HA — не продолжаем со старым.
+ if((guardPrefs().guardArmedAway===true)!==armed)return;
  // выход-отсчёт: двери игнорируем, пока не вышли
  if(guard.exitUntil>now)return;
  const open=doors.filter(d=>d.open&&Number.isFinite(d.since)&&d.since>0);
@@ -264,6 +304,7 @@ async function guardTick(){
    }
   }
  }
+ }catch(error){console.log('Guard tick:',error?.message||error)}
 }
 setInterval(guardTick,Math.max(250,5000*GUARD_SCALE)).unref();
 
@@ -398,6 +439,7 @@ const server=http.createServer(async(req,res)=>{
      if(input.energy_readings===undefined)input.energy_readings=p.preferences.energy_readings;
      if(input.energy_tariff===undefined)input.energy_tariff=p.preferences.energy_tariff;
      if(input.guardArmedAway===undefined)input.guardArmedAway=p.preferences.guardArmedAway;
+     if(input.guardEntity===undefined)input.guardEntity=p.preferences.guardEntity;
     }
     // A still-open older client does not know the additive layer. Its theme or
     // binding save must not erase newer groups. Legacy channel deletion detaches
@@ -531,13 +573,16 @@ const server=http.createServer(async(req,res)=>{
      prefs.guardArmedAway=true;
      db.prepare('UPDATE profiles SET preferences=? WHERE id=?').run(JSON.stringify(prefs),id);
      guard.exitUntil=Date.now()+prefs.guardExitDelay*1000*GUARD_SCALE;
+     guard.armedBy='panel';
+     await guardSwitchSet(true);
      await guardStopAlarm(true);
      recordEvent('guard','Охрана: выход, '+prefs.guardExitDelay+' с на дверь');
      return json(res,200,{armed:true,exitDelay:prefs.guardExitDelay});
     }
     if(request.action==='disarm'){
      const was=guard.alarm!==null;
-     prefs.guardArmedAway=false;
+     prefs.guardArmedAway=false;guard.armedBy=null;
+     await guardSwitchSet(false);
      db.prepare('UPDATE profiles SET preferences=? WHERE id=?').run(JSON.stringify(prefs),id);
      guard.exitUntil=0;
      await guardStopAlarm();

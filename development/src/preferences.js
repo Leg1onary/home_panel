@@ -27,7 +27,10 @@ export const defaultPreferences=()=>({
  // guardMasterArms — мастер-кнопка: короткое = уход (без команд света, сцену
  // выполняет Умный дом с Алисой), длинное = снятие.
  guardArmedAway:false,guardExitDelay:120,guardAwayMinutes:3,
- guardHomeAlertMinutes:10,guardHomeAnnounceMinutes:30,guardFlash:true,guardMasterArms:true
+ guardHomeAlertMinutes:10,guardHomeAnnounceMinutes:30,guardFlash:true,guardMasterArms:true,
+ // 3.7.1: сущность-мост Яндекса (input_boolean/switch): on = уход (сценарий
+ // «Я ухожу»), off = снятие. Пусто — взвод только через панель.
+ guardEntity:''
 });
 // Пользовательские сценарии: строгие лимиты, неизвестные поля отбрасываем,
 // целиком невалидные сценарии молча не сохраняем — остальной профиль не страдает.
@@ -176,6 +179,8 @@ export function validatePreferences(input,{importing=false}={}){
  p.guardHomeAnnounceMinutes=raw.guardHomeAnnounceMinutes===undefined?30:raw.guardHomeAnnounceMinutes;
  p.guardFlash=raw.guardFlash!==false;
  p.guardMasterArms=raw.guardMasterArms!==false;
+ p.guardEntity=typeof raw.guardEntity==='string'?raw.guardEntity.trim().slice(0,80):'';
+ if(p.guardEntity&&!/^(input_boolean|switch)\.[a-z0-9_]+$/.test(p.guardEntity))throw new Error('Сущность охраны: ожидается input_boolean.* или switch.*.');
 
  const used=new Set();p.bindings={};
  for(const definition of bindingDefinitions(p.devices)){

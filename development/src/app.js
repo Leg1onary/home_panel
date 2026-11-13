@@ -1311,6 +1311,8 @@ function panelSettings(){
  <div class="night-times"><label class="setting-field">Охрана ночью<select id="guard-setting">${[['auto','Автоматически · по расписанию'],['on','Всегда включена'],['off','Выключена']].map(([v,l])=>`<option value="${v}" ${(state.guardNight||'auto')===v?'selected':''}>${l}</option>`).join('')}</select></label><label class="setting-field">Дверь открыта дольше, мин<input id="guard-minutes" type="number" min="5" max="120" step="1" value="${state.guardDoorMinutes||15}"/></label></div>
  <div class="night-times"><label class="setting-field">Сирена через, мин (вне дома)<input id="guard-away-minutes" type="number" min="1" max="30" step="1" value="${state.guardAwayMinutes||3}"/></label><label class="setting-field">Секунды на выход<input id="guard-exit-delay" type="number" min="0" max="600" step="1" value="${state.guardExitDelay??120}"/></label></div>
  <div class="night-times"><label class="setting-field setting-check"><input id="guard-flash-setting" type="checkbox" ${state.guardFlash!==false?'checked':''}/>Мигание светом при сирене</label><label class="setting-field setting-check"><input id="guard-master-setting" type="checkbox" ${state.guardMasterArms!==false?'checked':''}/>Мастер-кнопка ставит/снимает охрану</label></div>
+ <label class="setting-field">Сущность охраны (мост Яндекса)<input id="guard-entity" value="${esc(state.guardEntity||'')}" placeholder="input_boolean.ohrana" spellcheck="false" autocomplete="off"/></label>
+ <p class="setting-help">Создай в HA помощник-выключатель «Охрана», отдай его в Яндекс (интеграция Yandex Smart Home) и добавь в сценарий «Я ухожу» шаг «Охрана — включить». Вкл = уход и охрана, выкл = снятие. Пусто — взвод только с панели.</p>
  <p class="setting-help">«Авто» — охрана активна в ночное окно из расписания выше. Если дверь открыта дольше указанного времени, в сводке появляется алерт; ночью открытая дверь и события двора помечаются как ночные.</p>
  </section><section class="settings-section"><h3>Оформление и обслуживание</h3><label class="setting-field">Постоянный экран<select id="kiosk-setting"><option value="off" ${!state.kiosk?'selected':''}>Обычная панель</option><option value="on" ${state.kiosk?'selected':''}>Компактный режим для экрана</option></select></label>
  <button class="secondary full-width" data-action="fullscreen">${I('maximize')}Полный экран</button>
@@ -2061,6 +2063,11 @@ document.addEventListener('change',async e=>{
  }
  if(id==='guard-flash-setting'){state.guardFlash=e.target.checked;persist()}
  if(id==='guard-master-setting'){state.guardMasterArms=e.target.checked;persist()}
+ if(id==='guard-entity'){
+  const v=e.target.value.trim();
+  if(v&&!/^(input_boolean|switch)\.[a-z0-9_]+$/.test(v)){toast('Сущность охраны: input_boolean.* или switch.*');return}
+  state.guardEntity=v;persist();
+ }
  if(id==='guard-minutes'){
   const v=Math.round(Number(e.target.value));
   if(!Number.isInteger(v)||v<5||v>120){toast('Минуты открытия двери: от 5 до 120.');e.target.value=state.guardDoorMinutes||15;return}

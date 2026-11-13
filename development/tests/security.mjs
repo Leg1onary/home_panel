@@ -12,11 +12,15 @@ const seen=[];let doorState='off';
 const door={entity_id:'binary_sensor.test_door',state:'off',attributes:{friendly_name:'Тест дверь',device_class:'door'},last_updated:new Date().toISOString()};
 const light={entity_id:'light.test',state:'off',attributes:{friendly_name:'Тест свет',brightness:128},last_updated:new Date().toISOString()};
 const mp={entity_id:'media_player.test',state:'idle',attributes:{friendly_name:'Тест станция',volume_level:0.5,supported_features:65535},last_updated:new Date().toISOString()};
+let ibState='off';
+const ib={entity_id:'input_boolean.ohrana',state:'off',attributes:{friendly_name:'Охрана'},last_updated:new Date().toISOString()};
 const fake=http.createServer((req,res)=>{
  res.setHeader('Content-Type','application/json');
  seen.push(req.url);
  if(req.headers.authorization!=='Bearer mock-test-only'){res.writeHead(401);return res.end('{}')}
- if(req.url==='/api/states')return res.end(JSON.stringify([door,light,mp].map(e=>({...e,state:e.entity_id==='binary_sensor.test_door'?doorState:e.state}))));
+ if(req.url==='/api/states')return res.end(JSON.stringify([door,light,mp,ib].map(e=>({...e,state:e.entity_id==='binary_sensor.test_door'?doorState:e.entity_id==='input_boolean.ohrana'?ibState:e.state}))));
+ if(req.url.startsWith('/api/services/input_boolean/turn_on')){ibState='on';ib.state='on';return res.end('[]')}
+ if(req.url.startsWith('/api/services/input_boolean/turn_off')){ibState='off';ib.state='off';return res.end('[]')}
  if(req.url==='/api/states/light.test')return res.end(JSON.stringify({...light,state:light.state}));
  if(req.url.startsWith('/api/services/light/turn_on')){light.state='on';return res.end('[]')}
  if(req.url.startsWith('/api/services/light/turn_off')){light.state='off';return res.end('[]')}
@@ -34,6 +38,7 @@ await new Promise(r=>fake.listen(3063,'127.0.0.1',r));
 let child;
 await new Promise((resolve_,reject)=>{
  child=spawn(process.execPath,['release/server.mjs'],{cwd:resolve('.'),env:{...process.env,PORT:'3062',PANEL_DATA:dir,HA_URL:'http://127.0.0.1:3063',HA_TOKEN:'mock-test-only',PANEL_PREVIEW:'0',PANEL_GUARD_SCALE:'0.02',PANEL_DOOR_DEBUG:'1'},stdio:['ignore','pipe','pipe']});
+ child.stdout.on('data',b=>{const t=String(b);if(t.includes('GUARDTICK'))process.stdout.write(t)});
  const timer=setTimeout(()=>reject(new Error('Server startup timeout')),10000);
  child.stdout.on('data',b=>{if(String(b).includes('Panel ready')){clearTimeout(timer);resolve_()}});
  child.once('exit',()=>{clearTimeout(timer);reject(new Error('Server exited'))});
@@ -60,6 +65,7 @@ try{
  p.bindings[lightDef.id]={entityId:'light.test',verified:true};
  p.bindings[stationDef.id]={entityId:'media_player.test',verified:true};
  p.guardAwayMinutes=1;
+ p.guardEntity='input_boolean.ohrana';
  let saved=await call('preferences',{method:'PUT',data:p});
  console.log('REJECTED:',JSON.stringify(saved.body.rejected),'OFFLINE:',JSON.stringify(saved.body.offline));
  assert.equal(saved.status,200,'привязки и тайминги сохранены');
@@ -89,15 +95,32 @@ try{
  // disarm: сирена стоп + свет off
  const disarm=await call('guard',{method:'POST',data:{action:'disarm'}});
  assert.equal(disarm.status,200);assert.equal(disarm.body.armed,false);
- st=await call('guard');assert.equal(st.body.alarm,null,'тревога остановлена');
+ st=await call('guard');console.log('ST after disarm:',JSON.stringify(st.body).slice(0,200));assert.equal(st.body.alarm,null,'тревога остановлена');
  const offSeen=await waitFor(()=>seen.some(u=>u.startsWith('/api/services/light/turn_off')));
  assert.ok(offSeen,'свет выключен при снятии');
  const pauseSeen=await waitFor(()=>seen.some(u=>u.startsWith('/api/services/media_player/media_pause')));
  const j=await call('health');console.log('JOURNAL:',(j.body.journal||[]).slice(0,6).map(x=>x.text).join(' | '));
  assert.ok(pauseSeen,'сирена остановлена паузой');
+ // 3.7.1: disarm API гасит и помощника охраны
+ ibState='on';ib.state='on';
+ const rearm=await waitFor(async()=>{const s=await call('guard');return s.body.armed===true});
+ assert.ok(rearm,'помощник снова взвёл (мост — источник истины)');
+ const disarm2=await call('guard',{method:'POST',data:{action:'disarm'}});
+ assert.equal(disarm2.status,200);
+ const ibOff=await waitFor(()=>ibState==='off');
+ const j2=await call('health');console.log('J2:',(j2.body.journal||[]).slice(0,5).map(x=>x.text).join(' | '));
+ assert.ok(ibOff,'disarm выключил помощника охраны');
  // хроника содержит guard-события
  const events=await call('events?type=guard');
  assert.ok(events.body.events.length>=2,'guard-события в хронике');
+ // 3.7.1: мост «Я ухожу» — помощник on при ОТКРЫТОЙ двери (выход) → взвод
+ ibState='on';ib.state='on';
+ const bridgeArm=await waitFor(async()=>{const s=await call('guard');return s.body.armed===true});
+ assert.ok(bridgeArm,'мост взвёл охрану при открытой двери');
+ // 3.7.1: помощник off → снятие
+ ibState='off';ib.state='off';
+ const bridgeOff=await waitFor(async()=>{const s=await call('guard');return s.body.armed===false});
+ assert.ok(bridgeOff,'мост снял охрану');
  console.log('security: ok');
 }finally{
  if(child&&child.exitCode===null){const end=new Promise(r=>child.once('exit',r));child.kill('SIGTERM');await end}

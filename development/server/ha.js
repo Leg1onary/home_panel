@@ -89,7 +89,7 @@ export class HomeAssistant {
  async states(){
   const all=await this.request('/api/states');
   if(!Array.isArray(all))throw new Error('Некорректный список сущностей.');
-  return all.filter(e=>/^(light|switch|sensor|binary_sensor|camera|cover|climate|media_player|vacuum|weather|todo|alarm_control_panel|update|sun)\.[a-z0-9_]+$/.test(e.entity_id)).map(e=>this.sanitize(e));
+  return all.filter(e=>/^(light|switch|sensor|binary_sensor|camera|cover|climate|media_player|vacuum|weather|todo|alarm_control_panel|update|sun|input_boolean)\.[a-z0-9_]+$/.test(e.entity_id)).map(e=>this.sanitize(e));
  }
  async weatherForecast(entityId){
   if(!/^weather\.[a-z0-9_]+$/.test(entityId))throw new Error('Некорректная сущность погоды.');

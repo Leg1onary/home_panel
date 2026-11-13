@@ -2552,7 +2552,10 @@ var defaultPreferences = () => ({
   guardHomeAlertMinutes: 10,
   guardHomeAnnounceMinutes: 30,
   guardFlash: true,
-  guardMasterArms: true
+  guardMasterArms: true,
+  // 3.7.1: сущность-мост Яндекса (input_boolean/switch): on = уход (сценарий
+  // «Я ухожу»), off = снятие. Пусто — взвод только через панель.
+  guardEntity: ""
 });
 var USER_SCENARIO_LIMITS = { max: 8, maxSteps: 12, minBrightness: 30, maxBrightness: 100 };
 var MAX_YARD_CAMERAS = 4;
@@ -2696,6 +2699,8 @@ function validatePreferences(input, { importing = false } = {}) {
   p.guardHomeAnnounceMinutes = raw.guardHomeAnnounceMinutes === void 0 ? 30 : raw.guardHomeAnnounceMinutes;
   p.guardFlash = raw.guardFlash !== false;
   p.guardMasterArms = raw.guardMasterArms !== false;
+  p.guardEntity = typeof raw.guardEntity === "string" ? raw.guardEntity.trim().slice(0, 80) : "";
+  if (p.guardEntity && !/^(input_boolean|switch)\.[a-z0-9_]+$/.test(p.guardEntity)) throw new Error("\u0421\u0443\u0449\u043D\u043E\u0441\u0442\u044C \u043E\u0445\u0440\u0430\u043D\u044B: \u043E\u0436\u0438\u0434\u0430\u0435\u0442\u0441\u044F input_boolean.* \u0438\u043B\u0438 switch.*.");
   const used = /* @__PURE__ */ new Set();
   p.bindings = {};
   for (const definition of bindingDefinitions(p.devices)) {
@@ -2914,7 +2919,7 @@ var HomeAssistant = class {
   async states() {
     const all = await this.request("/api/states");
     if (!Array.isArray(all)) throw new Error("\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u0441\u043F\u0438\u0441\u043E\u043A \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u0435\u0439.");
-    return all.filter((e) => /^(light|switch|sensor|binary_sensor|camera|cover|climate|media_player|vacuum|weather|todo|alarm_control_panel|update|sun)\.[a-z0-9_]+$/.test(e.entity_id)).map((e) => this.sanitize(e));
+    return all.filter((e) => /^(light|switch|sensor|binary_sensor|camera|cover|climate|media_player|vacuum|weather|todo|alarm_control_panel|update|sun|input_boolean)\.[a-z0-9_]+$/.test(e.entity_id)).map((e) => this.sanitize(e));
   }
   async weatherForecast(entityId) {
     if (!/^weather\.[a-z0-9_]+$/.test(entityId)) throw new Error("\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u0430\u044F \u0441\u0443\u0449\u043D\u043E\u0441\u0442\u044C \u043F\u043E\u0433\u043E\u0434\u044B.");
@@ -5068,7 +5073,7 @@ setInterval(async () => {
   }
 }, Number(process.env.PANEL_DOOR_POLL_MS) || 2e4).unref();
 var GUARD_SCALE = Number(process.env.PANEL_GUARD_SCALE) || 1;
-var guard = { exitUntil: 0, alarm: null, timers: [], alerted: /* @__PURE__ */ new Map(), flashTimer: null, flashOn: false };
+var guard = { exitUntil: 0, alarm: null, timers: [], alerted: /* @__PURE__ */ new Map(), flashTimer: null, flashOn: false, armedBy: null };
 var guardTimers = [];
 var gT = (fn, ms) => {
   const t = setTimeout(fn, ms);
@@ -5082,7 +5087,8 @@ var guardClearTimers = () => {
     guard.flashTimer = null;
   }
 };
-var guardPrefs = () => getProfile(addon ? "home" : "local").preferences;
+var guardProfileId = () => addon ? "home" : "local";
+var guardPrefs = () => getProfile(guardProfileId()).preferences;
 async function guardDoors() {
   const prefs = guardPrefs();
   const defs = bindingDefinitions(prefs.devices).filter((d) => d.type === "door" && d.device.status === "installed" && prefs.bindings[d.id]?.verified && prefs.bindings[d.id]?.entityId);
@@ -5092,9 +5098,15 @@ async function guardDoors() {
     const stateOpen = e ? e.state === "on" : false;
     const tr = doorTracker.get(eid);
     const since = stateOpen ? tr?.since && tr.since > 0 ? tr.since : Date.now() : 0;
-    if (!tr || tr.open !== stateOpen) doorTracker.set(eid, { open: stateOpen, since });
+    if (!tr) {
+      doorTracker.set(eid, { open: stateOpen, since });
+    } else if (tr.open !== stateOpen) {
+      doorTracker.set(eid, { open: stateOpen, since });
+      recordEvent("door", d.device.name + (stateOpen ? " \u043E\u0442\u043A\u0440\u044B\u0442\u0430" : " \u0437\u0430\u043A\u0440\u044B\u0442\u0430"));
+    }
     return { id: d.id, name: d.device.name, entityId: eid, open: stateOpen, since, state: e?.state };
   });
+  return out;
   return out;
 }
 async function guardLights(on) {
@@ -5118,6 +5130,16 @@ async function guardSiren() {
     } catch (e2) {
       journal("\u041E\u0445\u0440\u0430\u043D\u0430: TTS-\u0441\u0438\u0440\u0435\u043D\u0430 \u043D\u0435 \u0443\u0434\u0430\u043B\u0430\u0441\u044C: " + (e2?.message || e2), "warn");
     }
+  }
+}
+async function guardSwitchSet(on) {
+  const prefs = guardPrefs();
+  if (!prefs.guardEntity) return;
+  try {
+    const domain = prefs.guardEntity.split(".")[0];
+    await ha.request("/api/services/" + domain + "/turn_" + (on ? "on" : "off"), { entity_id: prefs.guardEntity });
+  } catch (error) {
+    journal("\u041E\u0445\u0440\u0430\u043D\u0430: \u043F\u043E\u043C\u043E\u0449\u043D\u0438\u043A " + (on ? "\u0432\u043A\u043B" : "\u0432\u044B\u043A\u043B") + " \u2014 " + (error?.message || error), "warn");
   }
 }
 async function guardSirenStop() {
@@ -5171,51 +5193,79 @@ async function guardStopAlarm(silent = false) {
   }
 }
 async function guardTick() {
-  let prefs;
   try {
-    prefs = guardPrefs();
-  } catch {
-    return;
-  }
-  const now = Date.now();
-  const armed = prefs.guardArmedAway === true;
-  if (!armed) {
-    if (guard.alarm || guardTimers.length) await guardStopAlarm(true);
-    guard.exitUntil = 0;
-    guard.alerted.clear();
-    return;
-  }
-  const doors = await guardDoors();
-  if (guard.exitUntil > now) return;
-  const open = doors.filter((d2) => d2.open && Number.isFinite(d2.since) && d2.since > 0);
-  if (!guard.alarm) {
-    const trigger = open.find((d2) => now - d2.since >= prefs.guardAwayMinutes * 6e4 * GUARD_SCALE);
-    if (trigger) {
-      recordEvent("guard", "\u0422\u0440\u0435\u0432\u043E\u0433\u0430: " + trigger.name + " \u043E\u0442\u043A\u0440\u044B\u0442\u0430 \u0434\u043E\u043B\u044C\u0448\u0435 " + prefs.guardAwayMinutes + " \u043C\u0438\u043D");
-      await guardStartAlarmCycle(trigger.name);
+    let prefs;
+    try {
+      prefs = guardPrefs();
+    } catch {
       return;
     }
-  }
-  const d = new Date(now), minutes2 = d.getHours() * 60 + d.getMinutes();
-  const night = prefs.guardNight !== "off" && isNight(minutes2, prefs.nightStart, prefs.nightEnd, prefs.guardNight);
-  if (night && !guard.alarm) {
-    for (const door of open) {
-      const openMin = (now - door.since) / 6e4;
-      const keyA = door.entityId + ":a", keyN = door.entityId + ":n";
-      if (openMin >= prefs.guardHomeAlertMinutes && !guard.alerted.has(keyA)) {
-        guard.alerted.set(keyA, now);
-        recordEvent("door", door.name + " \u043E\u0442\u043A\u0440\u044B\u0442\u0430 \u0434\u043E\u043B\u044C\u0448\u0435 " + prefs.guardHomeAlertMinutes + " \u043C\u0438\u043D (\u043D\u043E\u0447\u044C)");
+    const now = Date.now();
+    const armed = prefs.guardArmedAway === true;
+    if (prefs.guardEntity) {
+      const states = await ha.states().catch((e) => {
+        console.log("GUARDSTATES ERR:", e?.message);
+        return [];
+      });
+      if (process.env.PANEL_DOOR_DEBUG) console.log("GUARDSTATES n=", states.length, "ib=", states.find((x) => x.entity_id === prefs.guardEntity)?.state);
+      const sw = states.find((e) => e.entity_id === prefs.guardEntity);
+      const swOn = sw ? sw.state === "on" : false;
+      if (process.env.PANEL_DOOR_DEBUG) console.log("GUARDTICK swOn=", swOn, "armed=", armed, "ge=", prefs.guardEntity);
+      if (swOn && !armed) {
+        prefs.guardArmedAway = true;
+        db.prepare("UPDATE profiles SET preferences=? WHERE id=?").run(JSON.stringify(prefs), guardProfileId());
+        guard.exitUntil = Date.now() + prefs.guardExitDelay * 1e3 * GUARD_SCALE;
+        guard.armedBy = "bridge";
+        await guardStopAlarm(true);
+        recordEvent("guard", "\u041E\u0445\u0440\u0430\u043D\u0430 \u0432\u043A\u043B\u044E\u0447\u0435\u043D\u0430 \u042F\u043D\u0434\u0435\u043A\u0441-\u0441\u0446\u0435\u043D\u0430\u0440\u0438\u0435\u043C \xB7 \u0432\u044B\u0445\u043E\u0434 " + prefs.guardExitDelay + " \u0441");
+        journal("\u041E\u0445\u0440\u0430\u043D\u0430: \u0432\u0437\u0432\u043E\u0434 \u043E\u0442 \u043F\u043E\u043C\u043E\u0449\u043D\u0438\u043A\u0430 " + prefs.guardEntity);
+        return;
       }
-      if (openMin >= prefs.guardHomeAnnounceMinutes && !guard.alerted.has(keyN)) {
-        guard.alerted.set(keyN, now);
-        recordEvent("door", door.name + " \u043E\u0442\u043A\u0440\u044B\u0442\u0430 \u0434\u043E\u043B\u044C\u0448\u0435 " + prefs.guardHomeAnnounceMinutes + " \u043C\u0438\u043D \u2014 \u043E\u0437\u0432\u0443\u0447\u043A\u0430");
-        try {
-          await ha.announce("\u0412\u043D\u0438\u043C\u0430\u043D\u0438\u0435, \u043E\u0442\u043A\u0440\u044B\u0442\u0430 " + door.name, prefs);
-        } catch (error) {
-          journal("\u041E\u0445\u0440\u0430\u043D\u0430: \u043E\u0437\u0432\u0443\u0447\u043A\u0430 \u043D\u0435 \u0443\u0434\u0430\u043B\u0430\u0441\u044C \u2014 " + (error?.message || error), "warn");
+      if (!swOn && armed && guard.armedBy === "bridge") {
+        prefs.guardArmedAway = false;
+        db.prepare("UPDATE profiles SET preferences=? WHERE id=?").run(JSON.stringify(prefs), guardProfileId());
+        guard.exitUntil = 0;
+        await guardStopAlarm();
+        recordEvent("guard", "\u041E\u0445\u0440\u0430\u043D\u0430 \u0441\u043D\u044F\u0442\u0430 \u043F\u043E\u043C\u043E\u0449\u043D\u0438\u043A\u043E\u043C " + prefs.guardEntity);
+        journal("\u041E\u0445\u0440\u0430\u043D\u0430: \u0441\u043D\u044F\u0442\u0438\u0435 \u043E\u0442 \u043F\u043E\u043C\u043E\u0449\u043D\u0438\u043A\u0430");
+        return;
+      }
+    }
+    const doors = await guardDoors();
+    if (guardPrefs().guardArmedAway === true !== armed) return;
+    if (guard.exitUntil > now) return;
+    const open = doors.filter((d2) => d2.open && Number.isFinite(d2.since) && d2.since > 0);
+    if (!guard.alarm) {
+      const trigger = open.find((d2) => now - d2.since >= prefs.guardAwayMinutes * 6e4 * GUARD_SCALE);
+      if (trigger) {
+        recordEvent("guard", "\u0422\u0440\u0435\u0432\u043E\u0433\u0430: " + trigger.name + " \u043E\u0442\u043A\u0440\u044B\u0442\u0430 \u0434\u043E\u043B\u044C\u0448\u0435 " + prefs.guardAwayMinutes + " \u043C\u0438\u043D");
+        await guardStartAlarmCycle(trigger.name);
+        return;
+      }
+    }
+    const d = new Date(now), minutes2 = d.getHours() * 60 + d.getMinutes();
+    const night = prefs.guardNight !== "off" && isNight(minutes2, prefs.nightStart, prefs.nightEnd, prefs.guardNight);
+    if (night && !guard.alarm) {
+      for (const door of open) {
+        const openMin = (now - door.since) / 6e4;
+        const keyA = door.entityId + ":a", keyN = door.entityId + ":n";
+        if (openMin >= prefs.guardHomeAlertMinutes && !guard.alerted.has(keyA)) {
+          guard.alerted.set(keyA, now);
+          recordEvent("door", door.name + " \u043E\u0442\u043A\u0440\u044B\u0442\u0430 \u0434\u043E\u043B\u044C\u0448\u0435 " + prefs.guardHomeAlertMinutes + " \u043C\u0438\u043D (\u043D\u043E\u0447\u044C)");
+        }
+        if (openMin >= prefs.guardHomeAnnounceMinutes && !guard.alerted.has(keyN)) {
+          guard.alerted.set(keyN, now);
+          recordEvent("door", door.name + " \u043E\u0442\u043A\u0440\u044B\u0442\u0430 \u0434\u043E\u043B\u044C\u0448\u0435 " + prefs.guardHomeAnnounceMinutes + " \u043C\u0438\u043D \u2014 \u043E\u0437\u0432\u0443\u0447\u043A\u0430");
+          try {
+            await ha.announce("\u0412\u043D\u0438\u043C\u0430\u043D\u0438\u0435, \u043E\u0442\u043A\u0440\u044B\u0442\u0430 " + door.name, prefs);
+          } catch (error) {
+            journal("\u041E\u0445\u0440\u0430\u043D\u0430: \u043E\u0437\u0432\u0443\u0447\u043A\u0430 \u043D\u0435 \u0443\u0434\u0430\u043B\u0430\u0441\u044C \u2014 " + (error?.message || error), "warn");
+          }
         }
       }
     }
+  } catch (error) {
+    console.log("Guard tick:", error?.message || error);
   }
 }
 setInterval(guardTick, Math.max(250, 5e3 * GUARD_SCALE)).unref();
@@ -5357,6 +5407,7 @@ var server = http.createServer(async (req, res) => {
           if (input.energy_readings === void 0) input.energy_readings = p.preferences.energy_readings;
           if (input.energy_tariff === void 0) input.energy_tariff = p.preferences.energy_tariff;
           if (input.guardArmedAway === void 0) input.guardArmedAway = p.preferences.guardArmedAway;
+          if (input.guardEntity === void 0) input.guardEntity = p.preferences.guardEntity;
         }
         if (input && typeof input === "object" && input.deviceModel === void 0 && Array.isArray(input.devices)) {
           const ids = new Set(input.devices.map((d) => d?.id));
@@ -5502,6 +5553,8 @@ var server = http.createServer(async (req, res) => {
           prefs.guardArmedAway = true;
           db.prepare("UPDATE profiles SET preferences=? WHERE id=?").run(JSON.stringify(prefs), id);
           guard.exitUntil = Date.now() + prefs.guardExitDelay * 1e3 * GUARD_SCALE;
+          guard.armedBy = "panel";
+          await guardSwitchSet(true);
           await guardStopAlarm(true);
           recordEvent("guard", "\u041E\u0445\u0440\u0430\u043D\u0430: \u0432\u044B\u0445\u043E\u0434, " + prefs.guardExitDelay + " \u0441 \u043D\u0430 \u0434\u0432\u0435\u0440\u044C");
           return json(res, 200, { armed: true, exitDelay: prefs.guardExitDelay });
@@ -5509,6 +5562,8 @@ var server = http.createServer(async (req, res) => {
         if (request.action === "disarm") {
           const was = guard.alarm !== null;
           prefs.guardArmedAway = false;
+          guard.armedBy = null;
+          await guardSwitchSet(false);
           db.prepare("UPDATE profiles SET preferences=? WHERE id=?").run(JSON.stringify(prefs), id);
           guard.exitUntil = 0;
           await guardStopAlarm();
