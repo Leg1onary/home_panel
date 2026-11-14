@@ -52,3 +52,23 @@ export function timerPhrase(t){
  const mins=Number.isInteger(min)?String(min):String(Math.round(min*10)/10).replace('.',',');
  return `Время вышло! Таймер на ${mins} минут${label}`.slice(0,100);
 }
+// 3.9.6: отложенное выключение света (сон-таймер). until — абсолютный timestamp.
+export function sleepUntil(minutes,now=Date.now()){
+ const min=parseTimerInput(minutes);
+ if(!min)return null;
+ return {duration:min,until:now+min*60000};
+}
+export function sleepExpired(until,now=Date.now()){
+ return !Number.isFinite(until)||until-now<=0;
+}
+export function sleepEssence(until,now=Date.now()){
+ if(!Number.isFinite(until)||until<=now)return null;
+ const f=fmtTimerLeft(until-now);
+ return f?`Свет погаснет через ${f}`:null;
+}
+export function sleepPhrase(min){
+ const n=Number(min);
+ if(!Number.isFinite(n)||n<=0)return 'Свет выключен.';
+ const m=Number.isInteger(n)?String(n):String(Math.round(n*10)/10).replace('.',',');
+ return `Отработал таймер: свет выключен. Был на ${m} минут`.slice(0,100);
+}

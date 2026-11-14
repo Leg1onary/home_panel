@@ -37,3 +37,20 @@ assert.equal(timerPhrase({duration:1.5}),'Время вышло! Таймер н
 assert.equal(timerPhrase(null),'Время вышло!','битый таймер → короткая фраза');
 assert.ok(timerPhrase({duration:600,label:'x'.repeat(80)}).length<=100,'фраза ≤100 символов');
 console.log('timer: ok');
+// 3.9.6: сон-таймер света.
+import {sleepUntil,sleepExpired,sleepEssence,sleepPhrase} from '../src/timer.js';
+const st=sleepUntil(30,now);
+assert.equal(st.duration,30,'sleepUntil: минуты');
+assert.equal(st.until,now+30*60000,'sleepUntil: until абсолютный');
+assert.equal(sleepUntil('abc',now),null,'sleepUntil: мусор → null');
+assert.equal(sleepExpired(st.until,now),false,'не истёк');
+assert.equal(sleepExpired(st.until,now+30*60000+1),true,'истёк');
+assert.equal(sleepExpired(undefined,now),true,'нет until → считается истёкшим');
+assert.equal(sleepEssence(st.until,now),'Свет погаснет через 30:00','essence');
+assert.equal(sleepEssence(st.until,now+31*60000),null,'essence после истечения');
+assert.equal(sleepPhrase(30),'Отработал таймер: свет выключен. Был на 30 минут','фраза');
+assert.equal(sleepPhrase(1.5),'Отработал таймер: свет выключен. Был на 1,5 минут','дробные');
+assert.equal(sleepPhrase('мусор'),'Свет выключен.','мусор → короткая фраза');
+assert.ok(sleepPhrase(600).length<=100,'фраза ≤100');
+console.log('timer: ok (sleep)');
+

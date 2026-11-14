@@ -49,7 +49,7 @@ import {paintAlarm,alarmMarkup,alarmEntity,alarmAction} from './alarm.js';
 import {weatherViewArgs,weatherNowMarkup,weatherArcMarkup,weatherDailyMarkup,weatherHourlyMarkup,weatherMoonMarkup,weatherWeeklyMarkup,weatherAdvice,weatherEntityOf} from './weather-page.js';
 import {eventsListMarkup,eventsFilterMarkup,activityMarkup,lightTodayMarkup} from './events.js';
 import {parseBlocks,serializeBlocks,digestEssence,energyEssence,stationEssence} from './home-blocks.js';
-import {parseTimerInput,timerLeft,timerExpired,timerEssence,fmtTimerLeft,timerPhrase,TIMER_MAX} from './timer.js';
+import {parseTimerInput,timerLeft,timerExpired,timerEssence,fmtTimerLeft,timerPhrase,TIMER_MAX,sleepUntil,sleepExpired,sleepEssence,sleepPhrase} from './timer.js';
 
 import {esc,disabled,timeOf,clock,date,scheduleMinute,PANEL_TIMEZONE} from './dom.js';
 const $=s=>document.querySelector(s);
@@ -433,6 +433,7 @@ function tickTimer(){
  }
  updateBlockEssences();
 }
+function tickTimers(){tickTimer();tickLightSleep();if(!homeTimer&&lightSleep<=0&&timerInt){clearInterval(timerInt);timerInt=0}}
 function startHomeTimer(min,label=''){
  const parsed=parseTimerInput(min);
  if(!parsed)return toast('Таймер: от 1 до 600 минут (или «90 с»)');
@@ -457,6 +458,51 @@ function cancelHomeTimer(){
  clearInterval(timerInt);timerInt=0;
  paintTimer();updateBlockEssences();
  toast('Таймер отменён');
+}
+// 3.9.6: сон-таймер света — «выключить всё через N минут». Живёт в localStorage,
+// при истечении сам запускает каскад masterConfirm() и говорит голосом.
+let lightSleep=0,lightSleepFired=true;
+const LIGHT_SLEEP_KEY='home-panel-light-sleep';
+function loadLightSleep(){
+ try{const raw=Number(localStorage.getItem(LIGHT_SLEEP_KEY));if(Number.isFinite(raw)&&raw>0){lightSleep=raw;lightSleepFired=false}}catch{/* забыли */}
+}
+function saveLightSleep(){
+ try{lightSleep>0?localStorage.setItem(LIGHT_SLEEP_KEY,String(lightSleep)):localStorage.removeItem(LIGHT_SLEEP_KEY)}catch{/* приватный режим */}
+}
+function tickLightSleep(){
+ if(lightSleep<=0)return;
+ if(!sleepExpired(lightSleep)){
+  const node=$('#sleep-essence');if(node)node.textContent=sleepEssence(lightSleep)||'';
+  return;
+ }
+ if(lightSleepFired)return;
+ lightSleepFired=true;
+ const startedMin=Number(localStorage.getItem('hp-light-sleep-min'))||null;
+ lightSleep=0;saveLightSleep();
+ const node=$('#sleep-essence');if(node)node.textContent='';
+ toast('🌙 Сон-таймер: гашу свет');
+ if(isLive()&&state.voiceAnnounce!==false&&startedMin){
+  api('ha/announce',{method:'POST',body:{text:sleepPhrase(startedMin)}}).catch(()=>{/* голос не критичен */});
+ }
+ if(!masterBlocked()&&!masterWave.active)masterConfirm();
+}
+function startLightSleep(input){
+ const t=sleepUntil(input);
+ if(!t)return toast('Отложенное выключение: от 1 до 600 минут (или «90 с»)');
+ lightSleep=t.until;lightSleepFired=false;
+ try{localStorage.setItem('hp-light-sleep-min',String(t.duration))}catch{/* приватный режим */}
+ saveLightSleep();
+ if(!timerInt)timerInt=setInterval(tickTimers,1000);
+ toast(`🌙 Свет погаснет через ${fmtTimerLeft(t.duration*60000)}`);
+ updateBlockEssences();
+}
+function cancelLightSleep(){
+ if(lightSleep<=0)return;
+ lightSleep=0;lightSleepFired=true;saveLightSleep();
+ try{localStorage.removeItem('hp-light-sleep-min')}catch{/* забыли */}
+ if(!homeTimer&&timerInt){clearInterval(timerInt);timerInt=0}
+ toast('Отложенное выключение отменено');
+ updateBlockEssences();
 }
 async function loadGuardChip(){
  if(!isLive())return paintGuardChip();
@@ -654,7 +700,8 @@ function lightOverview(){
 function lightOverviewBadge(){
  const {all,unknown,on}=lightOverview();
  const label=noConnection()?'Свет · нет связи':`Свет · ${on.length}/${all.length}${unknown.length?' ?':''}`;
- return `<button class="light-overview-badge ${on.length?'has-light':''}" data-action="active-lights" aria-label="Где горит свет: включено ${on.length}, без данных ${unknown.length}">${esc(label)}${I('chevron-right')}</button>`;
+ const sleep=sleepEssence(lightSleep);
+ return `<button class="light-overview-badge ${on.length?'has-light':''}" data-action="active-lights" aria-label="Где горит свет: включено ${on.length}, без данных ${unknown.length}">${esc(label)}${sleep?`<small class="light-sleep-hint">${esc(sleep)}</small>`:''}${I('chevron-right')}</button>`;
 }
 function lightOverviewSheet(){
  const {all,unknown,on}=lightOverview();
@@ -1166,7 +1213,8 @@ function refresh(){
     updateHeroTime();
     updateBlockEssences();
     // 3.9.5: таймер — тикаем сами, пока жив блок (перерисовка каждую секунду).
-    if(homeTimer&&!timerInt)timerInt=setInterval(tickTimer,1000);
+    if((homeTimer||lightSleep>0)&&!timerInt)timerInt=setInterval(tickTimers,1000);
+    tickLightSleep();
     paintTimer();
   }else if(state.view==='room'&&$('#room-scenarios'))updateRegion('#room-scenarios',scenarioChipsRow());
  }else if(state.view==='weather'){paintWeatherArc();loadWeatherForecast()}
@@ -1278,8 +1326,11 @@ function command(id,value){
 }
 function master(){
  settingsOpen=false;$('#sheet-content').dataset.station='';
+ const sleep=sleepEssence(lightSleep);
  modal(`<h2>Выключить весь свет?</h2><p class="description">${isLive()?'Выключатся только привязанные и проверенные линии света. Это реальные команды Home Assistant.':'Команды выполнятся только в демомакете.'} Результат проверяется по состоянию каждой линии.</p>
  <div class="inline-note">Только линии, включённые в мастер-свет в каталоге. Камера, музыка и датчики не затрагиваются.</div>
+ ${sleep?`<div class="sleep-active"><span class="sleep-essence" id="sleep-essence">${esc(sleep)}</span><button class="text-button" data-action="sleep-cancel">Отменить отложенное</button></div>`
+ :`<div class="sleep-offer"><span class="inline-note">Или выключить позже:</span><div class="timer-presets sleep-presets">${[15,30,60].map(m=>`<button class="secondary" data-action="sleep-light" data-sleep-min="${m}">через ${m} мин</button>`).join('')}</div></div>`}
  <div class="sheet-actions"><button class="primary" data-action="confirm-master">Выключить</button><button class="secondary" data-action="cancel">Отмена</button></div>`);
 }
 const masterWave={active:false}; // 3.3.0: флаг идущей «волны выключения» — повторный тап не дублирует команды.
@@ -2013,6 +2064,8 @@ async function dispatchAction(e){
  if(a==='events-reload')return loadEvents(true);
  if(a==='events-open'){state.view='events';render();return}
  if(a==='timer-sheet')return openTimerSheet();
+ if(a==='sleep-light'){startLightSleep(b.dataset.sleepMin);closeModal();return}
+ if(a==='sleep-cancel'){cancelLightSleep();closeModal();return}
  if(a==='timer-cancel')return cancelHomeTimer();
  if(a==='timer-start'){
   const preset=b.dataset.timerMin;
