@@ -49,6 +49,7 @@ import {paintAlarm,alarmMarkup,alarmEntity,alarmAction} from './alarm.js';
 import {weatherViewArgs,weatherNowMarkup,weatherArcMarkup,weatherDailyMarkup,weatherHourlyMarkup,weatherMoonMarkup,weatherWeeklyMarkup,weatherAdvice,weatherEntityOf} from './weather-page.js';
 import {eventsListMarkup,eventsFilterMarkup,activityMarkup,lightTodayMarkup} from './events.js';
 import {parseBlocks,serializeBlocks,digestEssence,energyEssence,stationEssence} from './home-blocks.js';
+import {parseTimerInput,timerLeft,timerExpired,timerEssence,fmtTimerLeft,timerPhrase,TIMER_MAX} from './timer.js';
 
 import {esc,disabled,timeOf,clock,date,scheduleMinute,PANEL_TIMEZONE} from './dom.js';
 const $=s=>document.querySelector(s);
@@ -233,7 +234,7 @@ function paintHeaderLeft(){
 }
 // Сворачиваемые блоки правой колонки: заголовок-строка всегда виден, тело
 // (Preact-монтаж #home-digest/#home-energy/#home-station) прячется классом collapsed.
-const BLOCK_IDS=['digest','energy','station'];
+const BLOCK_IDS=['digest','energy','station','timer'];
 function blockStates(){
  try{return parseBlocks(localStorage.getItem('hp-blocks'))}catch{return {...parseBlocks(null)}}
 }
@@ -262,6 +263,8 @@ function updateBlockEssences(){
  if(energyNode)energyNode.textContent=isLive()&&meterKnownFromWidget?energyEssence(state.energy_readings,state.energy_tariff):'Показаний пока нет';
  const stationNode=$('#home-station-essence');
  if(stationNode)stationNode.textContent=stationEssence(stationArgs());
+ const timerNode=$('#home-timer-essence');
+ if(timerNode)timerNode.textContent=timerEssence(homeTimer)||'—';
 }
 // Чип двора: только реальное движение по панельному детектору (ha/yard-motion).
 // Детектор панельный — сравнение кадров камеры на сервере, биндинг yard-motion не нужен.
@@ -391,6 +394,70 @@ function paintGuardChip(){
  node.innerHTML=`<button type="button" class="guard-chip ${tone}" data-action="guard-sheet">${I('shield')}<div><strong>Охрана · ${esc(label)}</strong><small>${openDoor?esc(openDoor.name+' открыта'):'все двери закрыты'}</small></div></button>`;
  icons();
 }
+// 3.9.5: бытовой таймер (кухня/стирка/полив). Живёт в localStorage — переживает
+// перезагрузку страницы. По истечении: TTS «Время вышло!» через станцию
+// (если включён «Голос станции» и панель в live) + тост на панели.
+let homeTimer=null,timerFired=true,timerInt=0;
+const TIMER_KEY='home-panel-timer';
+function loadHomeTimer(){
+ try{
+  const raw=localStorage.getItem(TIMER_KEY);
+  if(!raw)return;
+  const t=JSON.parse(raw);
+  if(t&&Number.isFinite(t.until)){homeTimer=t;timerFired=false}
+ }catch{/* битый кеш — забыли */}
+}
+function saveHomeTimer(){
+ try{homeTimer?localStorage.setItem(TIMER_KEY,JSON.stringify(homeTimer)):localStorage.removeItem(TIMER_KEY)}catch{/* приватный режим */}
+}
+function paintTimer(){
+ const box=$('#home-timer');if(!box)return;
+ const left=timerLeft(homeTimer);
+ if(!homeTimer||left<=0){box.innerHTML='<p class="description">Засеки время: готовка, стирка, полив. По истечении станция скажет «Время вышло».</p>';icons();return}
+ box.innerHTML=`<div class="timer-active"><strong class="timer-left" data-timer>${esc(fmtTimerLeft(left)||'')}</strong><span class="timer-label">${esc(homeTimer.label||homeTimer.duration+' мин')}</span>
+ <div class="timer-presets"><button class="secondary" data-action="timer-cancel">Отменить</button></div></div>`;
+ icons();
+}
+function tickTimer(){
+ if(!homeTimer)return paintTimer();
+ const expired=timerExpired(homeTimer)&&!timerFired;
+ paintTimer();
+ if(timerEssence(homeTimer)===null)updateBlockEssences();
+ if(!expired)return;
+ timerFired=true;
+ const phrase=timerPhrase(homeTimer),label=homeTimer.label||'';
+ homeTimer=null;saveHomeTimer();
+ toast('⏱ Время вышло!'+(label?' '+label:''));
+ if(isLive()&&state.voiceAnnounce!==false){
+  api('ha/announce',{method:'POST',body:{text:phrase}}).catch(()=>{/* голос не критичен, тост уже показан */});
+ }
+ updateBlockEssences();
+}
+function startHomeTimer(min,label=''){
+ const parsed=parseTimerInput(min);
+ if(!parsed)return toast('Таймер: от 1 до 600 минут (или «90 с»)');
+ homeTimer={duration:parsed,until:Date.now()+parsed*60000,label:String(label||'').slice(0,40)};
+ timerFired=false;saveHomeTimer();
+ paintTimer();updateBlockEssences();
+ toast(`⏱ Таймер на ${parseTimerInput(min)} мин запущен`);
+ clearInterval(timerInt);timerInt=setInterval(tickTimer,1000);
+}
+function openTimerSheet(){
+ const left=timerLeft(homeTimer);
+ simpleSheet(`<div class="timer-sheet"><div class="eyebrow">Бытовой таймер</div><h2>${left>0?'Осталось '+esc(fmtTimerLeft(left)):'Засечь время'}</h2>
+ ${left>0?`<p class="description">${esc(homeTimer.label||homeTimer.duration+' мин')} · по истечении станция скажет «Время вышло».</p><div class="sheet-actions"><button class="secondary" data-action="timer-cancel">Отменить таймер</button></div>`
+ :`<p class="description">По истечении панель подскажет, а станция скажет «Время вышло» (если включён голос).</p>
+ <div class="timer-presets">${[5,10,15,30,60].map(m=>`<button class="secondary" data-action="timer-start" data-timer-min="${m}">${m} мин</button>`).join('')}</div>
+ <label class="setting-field">Своё время, мин<input id="timer-minutes" type="number" min="1" max="${TIMER_MAX}" step="1" placeholder="напр. 7"/></label>
+ <div class="sheet-actions"><button class="primary" data-action="timer-start">Запустить</button></div>`}</div>`);
+}
+function cancelHomeTimer(){
+ if(!homeTimer)return;
+ homeTimer=null;saveHomeTimer();
+ clearInterval(timerInt);timerInt=0;
+ paintTimer();updateBlockEssences();
+ toast('Таймер отменён');
+}
 async function loadGuardChip(){
  if(!isLive())return paintGuardChip();
  try{
@@ -470,7 +537,7 @@ function home(){
  <div class="home-stage-wrap">${sceneStage(hero)}
  <div id="home-room-card" class="home-room-card" hidden></div>
  <aside class="home-rail" aria-label="Сводка дома">
- <div class="home-block home-guard" id="home-guard"></div><div class="home-block" id="home-block-digest"><button class="home-block-head" data-block-toggle="digest" aria-expanded="true" aria-label="Свернуть дайджест"><span>Дайджест</span><span class="home-block-essence" id="home-digest-essence">…</span>${I('chevron-down')}</button><div id="home-digest" hidden></div></div>
+ <div class="home-block home-guard" id="home-guard"></div><div class="home-block" id="home-block-timer"><button class="home-block-head" data-block-toggle="timer" aria-expanded="false" aria-label="Развернуть таймер"><span>Таймер</span><span class="home-block-essence" id="home-timer-essence">—</span>${I('chevron-down')}</button><div id="home-timer" hidden></div></div><div class="home-block" id="home-block-digest"><button class="home-block-head" data-block-toggle="digest" aria-expanded="true" aria-label="Свернуть дайджест"><span>Дайджест</span><span class="home-block-essence" id="home-digest-essence">…</span>${I('chevron-down')}</button><div id="home-digest" hidden></div></div>
  <div class="home-block" id="home-block-energy"><button class="home-block-head" data-block-toggle="energy" aria-expanded="false" aria-label="Развернуть электроэнергию"><span>Электроэнергия</span><span class="home-block-essence" id="home-energy-essence">…</span>${I('chevron-down')}</button><div id="home-energy" hidden></div></div>
  <div id="home-alarm" hidden></div>
  <div class="home-block" id="home-block-station"><button class="home-block-head" data-block-toggle="station" aria-expanded="false" aria-label="Развернуть станцию"><span>Станция</span><span class="home-block-essence" id="home-station-essence">…</span>${I('chevron-down')}</button><div id="home-station" hidden></div></div>
@@ -1098,6 +1165,9 @@ function refresh(){
     const energy=$('#home-energy');if(energy)updateEnergyRegion();
     updateHeroTime();
     updateBlockEssences();
+    // 3.9.5: таймер — тикаем сами, пока жив блок (перерисовка каждую секунду).
+    if(homeTimer&&!timerInt)timerInt=setInterval(tickTimer,1000);
+    paintTimer();
   }else if(state.view==='room'&&$('#room-scenarios'))updateRegion('#room-scenarios',scenarioChipsRow());
  }else if(state.view==='weather'){paintWeatherArc();loadWeatherForecast()}
  else if(state.view!=='statistics')render(false);
@@ -1942,6 +2012,15 @@ async function dispatchAction(e){
  }
  if(a==='events-reload')return loadEvents(true);
  if(a==='events-open'){state.view='events';render();return}
+ if(a==='timer-sheet')return openTimerSheet();
+ if(a==='timer-cancel')return cancelHomeTimer();
+ if(a==='timer-start'){
+  const preset=b.dataset.timerMin;
+  const value=preset||$('#timer-minutes')?.value;
+  startHomeTimer(value);
+  if(preset||parseTimerInput(value))closeModal();
+  return;
+ }
  if(a==='guard-sheet')return openGuardSheet();
  if(a==='guard-rehearse'){
    try{
@@ -2288,7 +2367,7 @@ bindScenarioHost({
 
 setInterval(()=>{updateClocks();applyNight();if(state.view==='home'&&!state.idle&&!hasPending())refresh()},10000);
 $('#main').innerHTML='<div class="boot-state" role="status">Подготавливаем твою панель…</div>';
-loadStorage().then(()=>{applyAppearance();startLive(refresh);render();updateClocks();armIdle();window.__homePanelReady=true});
+loadStorage().then(()=>{applyAppearance();loadHomeTimer();if(homeTimer&&!timerInt)timerInt=setInterval(tickTimer,1000);startLive(refresh);render();updateClocks();armIdle();window.__homePanelReady=true});
 
 // Общие хелперы для вынесенных в волне 5 модулей (shopping.js / alarm.js / weather-sheet.js).
 // Циклический импорт безопасен: модули используют их только внутри функций во время работы.
