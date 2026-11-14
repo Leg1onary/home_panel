@@ -18,6 +18,7 @@ import {journal,journalList} from './journal.js';
 import {meterValue,monthDelta,monthCost,monthForecast,monthComparison} from '../src/energy.js';
 import {computeAnalytics} from '../src/events.js';
 import {isNight} from '../src/night.js';
+import {voiceEnabled,armPhrase,disarmPhrase,cancelExitPhrase,doorOpenPhrase} from '../src/voice-phrases.js';
 import {energyDeltas} from './ha.js';
 
 import {deviceTypes,samePhysicalDevice,resolveAction} from '../src/catalog.js';
@@ -198,6 +199,12 @@ async function guardLights(on){
   try{await ha.command({id:def.id,value:on},prefs)}catch(error){journal('Охрана: свет '+def.name+' — '+(error?.message||error),'warn')}
  }
 }
+// 3.8.0 «Дом говорит»: TTS-фразы станции при взводе/снятии охраны.
+// voiceAnnounce=false выключает всю озвучку; ошибки не мешают охране.
+async function guardSay(text,prefs){
+ if(!voiceEnabled(prefs))return;
+ try{await ha.announce(text,prefs)}catch(error){journal('Голос: не удалось — '+(error?.message||error),'warn')}
+}
 async function guardSiren(){
  // Пилот: интент станции «включи песню «Полицейская сирена»» через conversation;
  // при неудаче — громкая TTS-озвучка (гарантированный запасной вариант).
@@ -266,6 +273,7 @@ async function guardTick(){
    await guardStopAlarm(true);
    recordEvent('guard','Охрана включена Яндекс-сценарием · выход '+prefs.guardExitDelay+' с');
    journal('Охрана: взвод от помощника '+prefs.guardEntity);
+   await guardSay(armPhrase(prefs.guardExitDelay),prefs);
    return;
   }
   if(!swOn&&armed&&guard.armedBy==='bridge'){
@@ -275,6 +283,7 @@ async function guardTick(){
    await guardStopAlarm();
    recordEvent('guard','Охрана снята помощником '+prefs.guardEntity);
    journal('Охрана: снятие от помощника');
+   await guardSay(disarmPhrase(),prefs);
    return;
   }
  }
@@ -284,7 +293,12 @@ async function guardTick(){
  // выход-отсчёт: двери игнорируем, пока не вышли
  if(guard.exitUntil>now)return;
  const open=doors.filter(d=>d.open&&Number.isFinite(d.since)&&d.since>0);
- if(!guard.alarm){
+ // 3.8.0: гейт «не взведено» — тик не триггерит тревогу и гасит висящие
+ // alarm/exit после снятия (гонка «залетевший тик» из 3.7.1). Ночная озвучка
+ // ниже работает и без взвода (режим «дома»), поэтому гейт локальный.
+ if(!armed){
+  if(guard.alarm||guard.exitUntil){guard.exitUntil=0;await guardStopAlarm()}
+ }else if(!guard.alarm){
   const trigger=open.find(d=>now-d.since>=prefs.guardAwayMinutes*60000*GUARD_SCALE);
   if(trigger){recordEvent('guard','Тревога: '+trigger.name+' открыта дольше '+prefs.guardAwayMinutes+' мин');await guardStartAlarmCycle(trigger.name);return}
  }
@@ -300,7 +314,7 @@ async function guardTick(){
    }
    if(openMin>=prefs.guardHomeAnnounceMinutes&&!guard.alerted.has(keyN)){
     guard.alerted.set(keyN,now);recordEvent('door',door.name+' открыта дольше '+prefs.guardHomeAnnounceMinutes+' мин — озвучка');
-    try{await ha.announce('Внимание, открыта '+door.name,prefs)}catch(error){journal('Охрана: озвучка не удалась — '+(error?.message||error),'warn')}
+    await guardSay(doorOpenPhrase(door.name),prefs)
    }
   }
  }
@@ -577,6 +591,7 @@ const server=http.createServer(async(req,res)=>{
      await guardSwitchSet(true);
      await guardStopAlarm(true);
      recordEvent('guard','Охрана: выход, '+prefs.guardExitDelay+' с на дверь');
+     await guardSay(armPhrase(prefs.guardExitDelay),prefs);
      return json(res,200,{armed:true,exitDelay:prefs.guardExitDelay});
     }
     if(request.action==='disarm'){
@@ -587,12 +602,14 @@ const server=http.createServer(async(req,res)=>{
      guard.exitUntil=0;
      await guardStopAlarm();
      recordEvent('guard',was?'Охрана снята — сирена остановлена':'Охрана снята');
+     await guardSay(disarmPhrase(),prefs);
      return json(res,200,{armed:false});
     }
     if(request.action==='cancel-exit'){
      guard.exitUntil=0;prefs.guardArmedAway=false;
      db.prepare('UPDATE profiles SET preferences=? WHERE id=?').run(JSON.stringify(prefs),id);
      recordEvent('guard','Выход отменён — охрана не включена');
+     await guardSay(cancelExitPhrase(),prefs);
      return json(res,200,{armed:false});
     }
     return json(res,400,{error:'Неизвестное действие охраны.'});

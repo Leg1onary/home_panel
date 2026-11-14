@@ -2555,7 +2555,11 @@ var defaultPreferences = () => ({
   guardMasterArms: true,
   // 3.7.1: сущность-мост Яндекса (input_boolean/switch): on = уход (сценарий
   // «Я ухожу»), off = снятие. Пусто — взвод только через панель.
-  guardEntity: ""
+  guardEntity: "",
+  // 3.8.0: голос станции (TTS при взводе/снятии охраны) и гостевой Wi-Fi QR.
+  voiceAnnounce: true,
+  guestWifiSsid: "",
+  guestWifiPass: ""
 });
 var USER_SCENARIO_LIMITS = { max: 8, maxSteps: 12, minBrightness: 30, maxBrightness: 100 };
 var MAX_YARD_CAMERAS = 4;
@@ -2701,6 +2705,9 @@ function validatePreferences(input, { importing = false } = {}) {
   p.guardMasterArms = raw.guardMasterArms !== false;
   p.guardEntity = typeof raw.guardEntity === "string" ? raw.guardEntity.trim().slice(0, 80) : "";
   if (p.guardEntity && !/^(input_boolean|switch)\.[a-z0-9_]+$/.test(p.guardEntity)) throw new Error("\u0421\u0443\u0449\u043D\u043E\u0441\u0442\u044C \u043E\u0445\u0440\u0430\u043D\u044B: \u043E\u0436\u0438\u0434\u0430\u0435\u0442\u0441\u044F input_boolean.* \u0438\u043B\u0438 switch.*.");
+  p.voiceAnnounce = raw.voiceAnnounce !== false;
+  p.guestWifiSsid = typeof raw.guestWifiSsid === "string" ? raw.guestWifiSsid.trim().slice(0, 32) : "";
+  p.guestWifiPass = typeof raw.guestWifiPass === "string" ? raw.guestWifiPass.slice(0, 64) : "";
   const used = /* @__PURE__ */ new Set();
   p.bindings = {};
   for (const definition of bindingDefinitions(p.devices)) {
@@ -4192,6 +4199,24 @@ function computeAnalytics(rows, now = Date.now()) {
   return { lightDays, doorDays, yardHours, rooms, totals: { light: lights, door: doors, yard: yards }, since: days[0].start };
 }
 
+// src/voice-phrases.js
+function voiceEnabled(prefs) {
+  return prefs?.voiceAnnounce !== false;
+}
+function armPhrase(exitSec = 120) {
+  const min = Math.max(1, Math.round((Number(exitSec) || 120) / 60));
+  return `\u0423\u0445\u043E\u0436\u0443. \u041E\u0445\u0440\u0430\u043D\u0430 \u0432\u0441\u0442\u0430\u043D\u0435\u0442 \u0447\u0435\u0440\u0435\u0437 ${min} ${min === 1 ? "\u043C\u0438\u043D\u0443\u0442\u0443" : "\u043C\u0438\u043D\u0443\u0442\u044B"}. \u0414\u043E \u0432\u0435\u0447\u0435\u0440\u0430!`;
+}
+function disarmPhrase() {
+  return "\u041E\u0445\u0440\u0430\u043D\u0430 \u0441\u043D\u044F\u0442\u0430. \u0414\u043E\u0431\u0440\u043E \u043F\u043E\u0436\u0430\u043B\u043E\u0432\u0430\u0442\u044C \u0434\u043E\u043C\u043E\u0439!";
+}
+function cancelExitPhrase() {
+  return "\u0412\u044B\u0445\u043E\u0434 \u043E\u0442\u043C\u0435\u043D\u0451\u043D, \u043E\u0445\u0440\u0430\u043D\u0430 \u043D\u0435 \u0432\u043A\u043B\u044E\u0447\u0435\u043D\u0430.";
+}
+function doorOpenPhrase(name = "\u0432\u0445\u043E\u0434\u043D\u0430\u044F \u0434\u0432\u0435\u0440\u044C") {
+  return `\u0412\u043D\u0438\u043C\u0430\u043D\u0438\u0435, \u043E\u0442\u043A\u0440\u044B\u0442\u0430 ${String(name).toLowerCase().slice(0, 60)}`;
+}
+
 // src/sensor-state.js
 function binaryValue(type, value) {
   const v = String(value ?? "").trim().toLowerCase();
@@ -5119,6 +5144,14 @@ async function guardLights(on) {
     }
   }
 }
+async function guardSay(text, prefs) {
+  if (!voiceEnabled(prefs)) return;
+  try {
+    await ha.announce(text, prefs);
+  } catch (error) {
+    journal("\u0413\u043E\u043B\u043E\u0441: \u043D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u2014 " + (error?.message || error), "warn");
+  }
+}
 async function guardSiren() {
   try {
     const r = await ha.converse("\u0432\u043A\u043B\u044E\u0447\u0438 \u043F\u0435\u0441\u043D\u044E \u041F\u043E\u043B\u0438\u0446\u0435\u0439\u0441\u043A\u0430\u044F \u0441\u0438\u0440\u0435\u043D\u0430");
@@ -5219,6 +5252,7 @@ async function guardTick() {
         await guardStopAlarm(true);
         recordEvent("guard", "\u041E\u0445\u0440\u0430\u043D\u0430 \u0432\u043A\u043B\u044E\u0447\u0435\u043D\u0430 \u042F\u043D\u0434\u0435\u043A\u0441-\u0441\u0446\u0435\u043D\u0430\u0440\u0438\u0435\u043C \xB7 \u0432\u044B\u0445\u043E\u0434 " + prefs.guardExitDelay + " \u0441");
         journal("\u041E\u0445\u0440\u0430\u043D\u0430: \u0432\u0437\u0432\u043E\u0434 \u043E\u0442 \u043F\u043E\u043C\u043E\u0449\u043D\u0438\u043A\u0430 " + prefs.guardEntity);
+        await guardSay(armPhrase(prefs.guardExitDelay), prefs);
         return;
       }
       if (!swOn && armed && guard.armedBy === "bridge") {
@@ -5228,6 +5262,7 @@ async function guardTick() {
         await guardStopAlarm();
         recordEvent("guard", "\u041E\u0445\u0440\u0430\u043D\u0430 \u0441\u043D\u044F\u0442\u0430 \u043F\u043E\u043C\u043E\u0449\u043D\u0438\u043A\u043E\u043C " + prefs.guardEntity);
         journal("\u041E\u0445\u0440\u0430\u043D\u0430: \u0441\u043D\u044F\u0442\u0438\u0435 \u043E\u0442 \u043F\u043E\u043C\u043E\u0449\u043D\u0438\u043A\u0430");
+        await guardSay(disarmPhrase(), prefs);
         return;
       }
     }
@@ -5235,7 +5270,12 @@ async function guardTick() {
     if (guardPrefs().guardArmedAway === true !== armed) return;
     if (guard.exitUntil > now) return;
     const open = doors.filter((d2) => d2.open && Number.isFinite(d2.since) && d2.since > 0);
-    if (!guard.alarm) {
+    if (!armed) {
+      if (guard.alarm || guard.exitUntil) {
+        guard.exitUntil = 0;
+        await guardStopAlarm();
+      }
+    } else if (!guard.alarm) {
       const trigger = open.find((d2) => now - d2.since >= prefs.guardAwayMinutes * 6e4 * GUARD_SCALE);
       if (trigger) {
         recordEvent("guard", "\u0422\u0440\u0435\u0432\u043E\u0433\u0430: " + trigger.name + " \u043E\u0442\u043A\u0440\u044B\u0442\u0430 \u0434\u043E\u043B\u044C\u0448\u0435 " + prefs.guardAwayMinutes + " \u043C\u0438\u043D");
@@ -5256,11 +5296,7 @@ async function guardTick() {
         if (openMin >= prefs.guardHomeAnnounceMinutes && !guard.alerted.has(keyN)) {
           guard.alerted.set(keyN, now);
           recordEvent("door", door.name + " \u043E\u0442\u043A\u0440\u044B\u0442\u0430 \u0434\u043E\u043B\u044C\u0448\u0435 " + prefs.guardHomeAnnounceMinutes + " \u043C\u0438\u043D \u2014 \u043E\u0437\u0432\u0443\u0447\u043A\u0430");
-          try {
-            await ha.announce("\u0412\u043D\u0438\u043C\u0430\u043D\u0438\u0435, \u043E\u0442\u043A\u0440\u044B\u0442\u0430 " + door.name, prefs);
-          } catch (error) {
-            journal("\u041E\u0445\u0440\u0430\u043D\u0430: \u043E\u0437\u0432\u0443\u0447\u043A\u0430 \u043D\u0435 \u0443\u0434\u0430\u043B\u0430\u0441\u044C \u2014 " + (error?.message || error), "warn");
-          }
+          await guardSay(doorOpenPhrase(door.name), prefs);
         }
       }
     }
@@ -5557,6 +5593,7 @@ var server = http.createServer(async (req, res) => {
           await guardSwitchSet(true);
           await guardStopAlarm(true);
           recordEvent("guard", "\u041E\u0445\u0440\u0430\u043D\u0430: \u0432\u044B\u0445\u043E\u0434, " + prefs.guardExitDelay + " \u0441 \u043D\u0430 \u0434\u0432\u0435\u0440\u044C");
+          await guardSay(armPhrase(prefs.guardExitDelay), prefs);
           return json(res, 200, { armed: true, exitDelay: prefs.guardExitDelay });
         }
         if (request.action === "disarm") {
@@ -5568,6 +5605,7 @@ var server = http.createServer(async (req, res) => {
           guard.exitUntil = 0;
           await guardStopAlarm();
           recordEvent("guard", was ? "\u041E\u0445\u0440\u0430\u043D\u0430 \u0441\u043D\u044F\u0442\u0430 \u2014 \u0441\u0438\u0440\u0435\u043D\u0430 \u043E\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u0430" : "\u041E\u0445\u0440\u0430\u043D\u0430 \u0441\u043D\u044F\u0442\u0430");
+          await guardSay(disarmPhrase(), prefs);
           return json(res, 200, { armed: false });
         }
         if (request.action === "cancel-exit") {
@@ -5575,6 +5613,7 @@ var server = http.createServer(async (req, res) => {
           prefs.guardArmedAway = false;
           db.prepare("UPDATE profiles SET preferences=? WHERE id=?").run(JSON.stringify(prefs), id);
           recordEvent("guard", "\u0412\u044B\u0445\u043E\u0434 \u043E\u0442\u043C\u0435\u043D\u0451\u043D \u2014 \u043E\u0445\u0440\u0430\u043D\u0430 \u043D\u0435 \u0432\u043A\u043B\u044E\u0447\u0435\u043D\u0430");
+          await guardSay(cancelExitPhrase(), prefs);
           return json(res, 200, { armed: false });
         }
         return json(res, 400, { error: "\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435 \u043E\u0445\u0440\u0430\u043D\u044B." });

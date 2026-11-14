@@ -30,7 +30,9 @@ export const defaultPreferences=()=>({
  guardHomeAlertMinutes:10,guardHomeAnnounceMinutes:30,guardFlash:true,guardMasterArms:true,
  // 3.7.1: сущность-мост Яндекса (input_boolean/switch): on = уход (сценарий
  // «Я ухожу»), off = снятие. Пусто — взвод только через панель.
- guardEntity:''
+ guardEntity:'',
+ // 3.8.0: голос станции (TTS при взводе/снятии охраны) и гостевой Wi-Fi QR.
+ voiceAnnounce:true,guestWifiSsid:'',guestWifiPass:''
 });
 // Пользовательские сценарии: строгие лимиты, неизвестные поля отбрасываем,
 // целиком невалидные сценарии молча не сохраняем — остальной профиль не страдает.
@@ -181,6 +183,10 @@ export function validatePreferences(input,{importing=false}={}){
  p.guardMasterArms=raw.guardMasterArms!==false;
  p.guardEntity=typeof raw.guardEntity==='string'?raw.guardEntity.trim().slice(0,80):'';
  if(p.guardEntity&&!/^(input_boolean|switch)\.[a-z0-9_]+$/.test(p.guardEntity))throw new Error('Сущность охраны: ожидается input_boolean.* или switch.*.');
+ // 3.8.0: голос станции и гостевой Wi-Fi (SSID/пароль хранятся в профиле панели).
+ p.voiceAnnounce=raw.voiceAnnounce!==false;
+ p.guestWifiSsid=typeof raw.guestWifiSsid==='string'?raw.guestWifiSsid.trim().slice(0,32):'';
+ p.guestWifiPass=typeof raw.guestWifiPass==='string'?raw.guestWifiPass.slice(0,64):'';
 
  const used=new Set();p.bindings={};
  for(const definition of bindingDefinitions(p.devices)){

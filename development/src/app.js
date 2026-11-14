@@ -28,6 +28,8 @@ import {duoUI,assistantView} from './assistant-ui.js';
 import {scenarioChipsRow,handleScenarioClick,bindScenarioPainter,bindScenarioHost} from './scenarios-ui.js';
 import {shouldAmbient,AMBIENT_AFTER_IDLE} from './ambient.js';
 import {isNight,isTime,nightLabel,nightDim} from './night.js';
+import QRCode from 'qrcode';
+import {wifiQrPayload} from './guest-wifi.js';
 import {rememberSunrise} from './day-arc.js';
 import {luxValue,autoTheme,AUTO_THEME_UP,AUTO_THEME_DOWN} from './auto-theme.js';
 import {render as preactRender,h as ph} from './preact/kit.js';
@@ -55,7 +57,7 @@ const I=name=>`<i data-lucide="${name}"></i>`;
 const iconSet={House,Box,Lightbulb,Power,ScanEye,SlidersHorizontal,Sun,Moon,X,ArrowRight,ArrowUpRight,Zap,Activity,
  AudioLines,Camera,ChevronRight,CircleCheck,DoorClosed,Droplets,Heater,Leaf,Radio,RotateCcw,Thermometer,Shield,
  Trees,Archive,Armchair,Bath,BedDouble,Blocks,DoorOpen,MoveUpRight,Sofa,MoonStar,Star,ChevronUp,
- ChevronDown,Check,LoaderCircle,TriangleAlert,WifiOff,Play,Pause,SkipBack,SkipForward,ChartNoAxesCombined,Volume2,ImagePlus,Settings2,Info,Maximize,Minimize,Download,Upload,Cloud,Cloudy,CloudSun,CloudRain,CloudSnow,CloudFog,CloudLightning,CloudDrizzle,CloudHail,Wind,LogOut,Film,Sparkles};
+ ChevronDown,Check,LoaderCircle,TriangleAlert,WifiOff,Play,Pause,SkipBack,SkipForward,ChartNoAxesCombined,Volume2,ImagePlus,Settings2,Info,Maximize,Minimize,Download,Upload,Cloud,Cloudy,CloudSun,CloudRain,CloudSnow,CloudFog,CloudLightning,CloudDrizzle,CloudHail,Wind,LogOut,Film,Sparkles,QrCode,Wifi};
 const icons=()=>{
  createIcons({icons:{...iconSet,...ICONS},attrs:{'stroke-width':1.6}});
  // lucide хранит data-lucide на созданных svg и пересоздаёт их при каждом вызове: кнопка заменялась между mousedown и mouseup и браузер не генерировал click. Конвертация — одноразовая.
@@ -1329,6 +1331,11 @@ function panelSettings(){
  <div class="night-times"><label class="setting-field setting-check"><input id="guard-flash-setting" type="checkbox" ${state.guardFlash!==false?'checked':''}/>Мигание светом при сирене</label><label class="setting-field setting-check"><input id="guard-master-setting" type="checkbox" ${state.guardMasterArms!==false?'checked':''}/>Мастер-кнопка ставит/снимает охрану</label></div>
  <label class="setting-field">Сущность охраны (мост Яндекса)<input id="guard-entity" value="${esc(state.guardEntity||'')}" placeholder="input_boolean.ohrana" spellcheck="false" autocomplete="off"/></label>
  <p class="setting-help">Создай в HA помощник-выключатель «Охрана», отдай его в Яндекс (интеграция Yandex Smart Home) и добавь в сценарий «Я ухожу» шаг «Охрана — включить». Вкл = уход и охрана, выкл = снятие. Пусто — взвод только с панели.</p>
+ <label class="setting-field setting-check"><input id="voice-setting" type="checkbox" ${state.voiceAnnounce!==false?'checked':''}/>Голос станции</label>
+ <p class="setting-help">Станция проговаривает охрану: взвод («Охрана встанет через 2 минуты»), снятие («Добро пожаловать домой»), отмену выхода и открытую дверь дома.</p>
+ <div class="night-times"><label class="setting-field">Гостевой Wi-Fi · имя<input id="guest-ssid" value="${esc(state.guestWifiSsid||'')}" maxlength="32" autocomplete="off" spellcheck="false"/></label><label class="setting-field">Пароль<input id="guest-pass" value="${esc(state.guestWifiPass||'')}" maxlength="64" autocomplete="off"/></label></div>
+ <button class="secondary full-width" data-action="guest-qr" ${(!state.guestWifiSsid||!state.guestWifiPass)?'disabled':''}>${I('QrCode')}Показать QR для гостей</button>
+ <p class="setting-help">Гости наводят камеру телефона на QR — сеть подключается сама. Данные хранятся только в панели.</p>
  <p class="setting-help">«Авто» — охрана активна в ночное окно из расписания выше. Если дверь открыта дольше указанного времени, в сводке появляется алерт; ночью открытая дверь и события двора помечаются как ночные.</p>
  </section><section class="settings-section"><h3>Оформление и обслуживание</h3><label class="setting-field">Постоянный экран<select id="kiosk-setting"><option value="off" ${!state.kiosk?'selected':''}>Обычная панель</option><option value="on" ${state.kiosk?'selected':''}>Компактный режим для экрана</option></select></label>
  <button class="secondary full-width" data-action="fullscreen">${I('maximize')}Полный экран</button>
@@ -1739,6 +1746,15 @@ function updateClocks(){
  updateHeroTime();
  $('#idle-climate').textContent=noConnection()||sensors.living.quality==='unavailable'||sensors.well.quality==='unavailable'?'Датчики недоступны':sensorStatus('living')==='Данные устарели'||sensorStatus('well')==='Данные устарели'?'Показания устарели':`Гостиная ${reading(sensors.living.value)}°  ·  Скважина ${reading(sensors.well.value)}°  ·  ${isLive()?'Home Assistant':'демоданные'}`;
 }
+// 3.8.0 «QR гостевого Wi-Fi»: стандартный WIFI:-payload камерой телефона.
+async function showGuestQr(){
+ const payload=wifiQrPayload(state.guestWifiSsid,state.guestWifiPass);
+ if(!payload)return toast('Заполни имя сети и пароль.');
+ try{
+  const url=await QRCode.toDataURL(payload,{width:280,margin:1});
+  modal(`<div class="guest-qr"><h3>Wi-Fi для гостей</h3><p class="setting-help">Сеть «${esc(state.guestWifiSsid)}» — наведи камеру телефона</p><img src="${url}" alt="QR-код гостевого Wi-Fi" width="280" height="280"/></div>`);
+ }catch(error){toast('QR не собрался: '+error.message)}
+}
 function armIdle(){
  clearTimeout(idleTimer);clearTimeout(ambientTimer);
  if(state.idle||document.hidden||!state.idleSeconds||cameraPlayer)return;
@@ -1982,6 +1998,7 @@ async function dispatchAction(e){
  if(a==='standby')return enterIdle();
  if(a==='about')return about();
  if(a==='technical')return openTechnical();
+ if(a==='guest-qr')return showGuestQr();
  if(a==='fullscreen')return fullscreen();
  if(a==='save-bindings')return saveBindings();
  if(a==='export')return downloadSettings();
@@ -2070,6 +2087,12 @@ document.addEventListener('change',async e=>{
   }
  if(id==='night-setting'){state.nightMode=e.target.value;applyNight();persist()}
  if(id==='guard-setting'){state.guardNight=e.target.value;persist();refresh()}
+ if(id==='voice-setting'){state.voiceAnnounce=e.target.checked;persist()}
+ if(id==='guest-ssid'||id==='guest-pass'){
+  if(id==='guest-ssid')state.guestWifiSsid=e.target.value.trim();else state.guestWifiPass=e.target.value;
+  persist();
+  document.querySelectorAll('[data-action="guest-qr"]').forEach(b=>b.disabled=!(state.guestWifiSsid&&state.guestWifiPass));
+ }
  if(id==='guard-away-minutes'||id==='guard-exit-delay'){
   const v=Math.round(Number(e.target.value));
   const ok=id==='guard-away-minutes'?(v>=1&&v<=30):(v>=0&&v<=600);
