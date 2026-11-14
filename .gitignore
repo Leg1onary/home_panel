@@ -12,3 +12,8 @@ development/addon/home-panel/dist/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+
+development/part_*.log
+development/s1-s4_*.log
+development/s?.log
+development/live_s.log

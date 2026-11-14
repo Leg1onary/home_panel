@@ -1,1 +1,0 @@
-PASS: health endpoint fields, ha connected via fake HA, yard_onvif_enabled default on, off stops watcher, on reconfigures.
