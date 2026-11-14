@@ -72,7 +72,8 @@ try{
  assert.ok(doorSeen,'событие двери от поллинга');
  let list=await call('events');
  const types=list.body.events.map(e=>e.type);
- assert.ok(types.includes('system'),'стартовое системное событие');
+ // 3.9.2: стартовое системное событие больше не пишется (тикер удалён);
+ // guard пишет свои события при взводе/тревоге, здесь их не проверяем.
  assert.ok(types.includes('yard'),'событие двора от клипа');
  assert.ok(types.includes('light'),'событие света от команды');
  assert.ok(types.includes('door'),'событие двери от поллинга');

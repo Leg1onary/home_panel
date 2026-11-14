@@ -49,7 +49,6 @@ import {paintAlarm,alarmMarkup,alarmEntity,alarmAction} from './alarm.js';
 import {weatherViewArgs,weatherNowMarkup,weatherArcMarkup,weatherDailyMarkup,weatherHourlyMarkup,weatherMoonMarkup,weatherWeeklyMarkup,weatherEntityOf} from './weather-page.js';
 import {eventsListMarkup,eventsFilterMarkup,activityMarkup,lightTodayMarkup} from './events.js';
 import {parseBlocks,serializeBlocks,digestEssence,energyEssence,stationEssence} from './home-blocks.js';
-import {setHomeEventHandler} from './live.js';
 
 import {esc,disabled,timeOf,clock,date,scheduleMinute,PANEL_TIMEZONE} from './dom.js';
 const $=s=>document.querySelector(s);
@@ -369,20 +368,8 @@ function updateYardClipsRegion(){
  }
 }
 setYardClipHandler(info=>yardClipsBus.notify({kind:'new',clip:info}));
-// 3.6.0: живой тикер хроники на главной — последнее событие поверх hero.
-let tickerFlash=0;
-function paintHomeTicker(ev){
- const node=$('#home-ticker');
- if(!node)return;
- if(!ev||!Number.isFinite(ev.at)){node.hidden=true;return}
- const meta={yard:['video','Двор'],door:['door-open','Дверь'],light:['lightbulb','Свет'],meter:['zap','Счётчик'],system:['activity','Система']}[ev.type]||['activity','Дом'];
- const time=new Date(ev.at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
- node.hidden=false;
- node.innerHTML=`<i data-lucide="${meta[0]}"></i><span>${esc(meta[1])} · ${esc(ev.text)}</span><time>${esc(time)}</time>`;
- node.classList.add('is-flash');clearTimeout(tickerFlash);
- tickerFlash=setTimeout(()=>node.classList.remove('is-flash'),2500);
- icons();
-}
+// 3.9.2: тикер хроники на главной удалён — место под чипами датчиков было
+// неудачным, перекрывал их. Хроника живёт в разделе «События» (3.6.1).
 let guardData=null,guardPoll=null;
 function guardChipLabel(){
  if(!isLive())return 'Демо';
@@ -424,11 +411,6 @@ function openGuardSheet(){
  ${g.exitRemaining>0?'<button class="secondary" data-action="guard-cancel">Отменить выход</button>':''}${!g.armed&&!g.alarm?`<button class="secondary" data-action="guard-rehearse">${I('Sparkles')}Репетиция цикла</button>`:g.alarm?.doorName==='Репетиция'?'<button class="secondary" data-action="guard-disarm">Остановить репетицию</button>':''}</div>
  <p class="description">Вне дома: дверь открыта дольше ${state.guardAwayMinutes||3} мин — сирена циклами (3 мин / пауза 2 мин) + свет. Ночь: алерт через ${state.guardHomeAlertMinutes||10} мин, озвучка через ${state.guardHomeAnnounceMinutes||30} мин.</p></div>`);
 }
-async function loadHomeTicker(){
- try{const data=await api('events?limit=1');if(state.view==='home'&&data.events?.length)paintHomeTicker(data.events[0])}
- catch{/* тикер не критичен */}
-}
-setHomeEventHandler(ev=>{if(state.view==='home')paintHomeTicker(ev)});
 function quickArgs(){
  const camera=state.devices.find(d=>d.type==='camera'&&d.room==='yard'&&d.status==='installed');
  return {masterBlocked:masterBlocked(),cameraId:camera?.id||null};
@@ -482,7 +464,7 @@ function home(){
  const hero=`<div class="hero-overlay">
  <div class="hero-top"><div class="hero-clock" aria-label="Местное время дома"><div id="hero-clock">${clock()}</div><span id="hero-date">${date()}</span><span id="hero-greeting" class="hero-greeting" hidden></span></div></div>
  <div class="hero-facts" id="home-status">${WEATHER_SLOT}${FACTS_SLOT}</div></div>
- <div id="home-ticker" class="home-ticker" hidden data-action="events-open" role="button" aria-label="Открыть хронику"></div></div>`;
+ <div id="home-ticker" hidden></div></div>`;
  return `<div class="view dashboard-view view-enter">
  <h1 class="visually-hidden">Мой дом</h1>
  <div class="home-stage-wrap">${sceneStage(hero)}
@@ -1032,7 +1014,7 @@ function render(animate=true){
  if(!animate&&$('#main .view'))$('#main .view').style.animation='none';
  paintHeaderLeft();
  if(state.view==='home')applyBlocks();
- if(state.view==='home')loadHomeTicker();
+ if(state.view==='home'){/* тикер удалён (3.9.2) */}
  if(state.view==='home')loadGuardChip();
  if(state.view==='weather')loadWeatherForecast();
  document.querySelectorAll('nav button').forEach(b=>{

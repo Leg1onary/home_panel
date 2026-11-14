@@ -1,0 +1,823 @@
+﻿{
+  "exportedAt": "2026-11-14T17:11:38.298Z",
+  "version": 3,
+  "preferences": {
+    "version": 3,
+    "theme": "dark",
+    "favorites": [
+      "living",
+      "hall",
+      "terrace",
+      "bedroom",
+      "office",
+      "bath"
+    ],
+    "nightMode": "auto",
+    "nightStart": "23:00",
+    "nightEnd": "07:00",
+    "idleSeconds": 90,
+    "kiosk": false,
+    "mode": "live",
+    "ambientMode": true,
+    "autoTheme": false,
+    "devices": [
+      {
+        "id": "living:0",
+        "type": "light",
+        "room": "living",
+        "name": "Зона гостиной",
+        "status": "installed",
+        "note": "Ближе к террасе",
+        "masterOff": true,
+        "demoOn": true
+      },
+      {
+        "id": "living:1",
+        "type": "light",
+        "room": "living",
+        "name": "Зона кухни",
+        "status": "installed",
+        "note": "Кухонный свет",
+        "masterOff": true,
+        "demoOn": true
+      },
+      {
+        "id": "hall:0",
+        "type": "light",
+        "room": "hall",
+        "name": "Прихожая",
+        "status": "installed",
+        "note": "Левая клавиша",
+        "masterOff": true,
+        "demoOn": false
+      },
+      {
+        "id": "hall:1",
+        "type": "light",
+        "room": "terrace",
+        "name": "Терраса",
+        "status": "installed",
+        "note": "Правая клавиша · отдельная зона",
+        "masterOff": true,
+        "demoOn": false
+      },
+      {
+        "id": "office:0",
+        "type": "light",
+        "room": "office",
+        "name": "Линия света 1",
+        "status": "installed",
+        "note": "",
+        "masterOff": true,
+        "demoOn": true
+      },
+      {
+        "id": "office:1",
+        "type": "light",
+        "room": "office",
+        "name": "Линия света 2",
+        "status": "installed",
+        "note": "",
+        "masterOff": true,
+        "demoOn": false
+      },
+      {
+        "id": "bedroom:0",
+        "type": "light",
+        "room": "bedroom",
+        "name": "Линия света 1",
+        "status": "installed",
+        "note": "",
+        "masterOff": true,
+        "demoOn": false
+      },
+      {
+        "id": "bedroom:1",
+        "type": "light",
+        "room": "bedroom",
+        "name": "Линия света 2",
+        "status": "installed",
+        "note": "",
+        "masterOff": true,
+        "demoOn": false
+      },
+      {
+        "id": "children:0",
+        "type": "light",
+        "room": "children",
+        "name": "Линия света 1",
+        "status": "installed",
+        "note": "",
+        "masterOff": true,
+        "demoOn": false
+      },
+      {
+        "id": "children:1",
+        "type": "light",
+        "room": "children",
+        "name": "Линия света 2",
+        "status": "installed",
+        "note": "",
+        "masterOff": true,
+        "demoOn": false
+      },
+      {
+        "id": "bath:0",
+        "type": "light",
+        "room": "bath",
+        "name": "Основной свет",
+        "status": "installed",
+        "note": "Споты",
+        "masterOff": true,
+        "demoOn": false
+      },
+      {
+        "id": "bath:1",
+        "type": "light",
+        "room": "bath",
+        "name": "Потолочная лента",
+        "status": "installed",
+        "note": "Правая клавиша · установлена",
+        "masterOff": true,
+        "demoOn": false
+      },
+      {
+        "id": "utility:0",
+        "type": "light",
+        "room": "utility",
+        "name": "Свет туалета",
+        "status": "installed",
+        "note": "",
+        "masterOff": true,
+        "demoOn": false
+      },
+      {
+        "id": "pantry:0",
+        "type": "light",
+        "room": "pantry",
+        "name": "Основной свет",
+        "status": "installed",
+        "note": "",
+        "masterOff": true,
+        "demoOn": false
+      },
+      {
+        "id": "temperature:living",
+        "type": "temperature",
+        "room": "living",
+        "name": "Температура · Гостиная / кухня",
+        "status": "installed",
+        "note": "miaomiaoce.sensor_ht.t2 · BLE; подключение к HA ещё не проверено",
+        "masterOff": false,
+        "demoValue": 20.4
+      },
+      {
+        "id": "humidity:living",
+        "type": "humidity",
+        "room": "living",
+        "name": "Влажность · Гостиная / кухня",
+        "status": "installed",
+        "note": "miaomiaoce.sensor_ht.t2 · BLE; подключение к HA ещё не проверено",
+        "masterOff": false,
+        "demoValue": 53
+      },
+      {
+        "id": "temperature:attic",
+        "type": "temperature",
+        "room": "attic",
+        "name": "Температура · Чердак",
+        "status": "installed",
+        "note": "Сущность HA из выгрузки дома",
+        "masterOff": false,
+        "demoValue": 40,
+        "demoStale": true
+      },
+      {
+        "id": "humidity:attic",
+        "type": "humidity",
+        "room": "attic",
+        "name": "Влажность · Чердак",
+        "status": "installed",
+        "note": "Сущность HA из выгрузки дома",
+        "masterOff": false,
+        "demoValue": 24,
+        "demoStale": true
+      },
+      {
+        "id": "temperature:well",
+        "type": "temperature",
+        "room": "well",
+        "name": "Температура · Скважина",
+        "status": "installed",
+        "note": "Yandex Station · источник заменён по проверке владельца",
+        "masterOff": false,
+        "demoValue": 16.5
+      },
+      {
+        "id": "humidity:well",
+        "type": "humidity",
+        "room": "well",
+        "name": "Влажность · Скважина",
+        "status": "installed",
+        "note": "Yandex Station · источник заменён по проверке владельца",
+        "masterOff": false,
+        "demoValue": 86
+      },
+      {
+        "id": "door",
+        "type": "door",
+        "room": "hall",
+        "name": "Входная дверь",
+        "status": "installed",
+        "note": "Сущность HA из выгрузки дома",
+        "masterOff": false,
+        "demoValue": "off"
+      },
+      {
+        "id": "smoke",
+        "type": "smoke",
+        "room": "living",
+        "name": "Датчик дыма над кухней",
+        "status": "planned",
+        "note": "DIGMA SmartLife · подключение отложено",
+        "masterOff": false,
+        "demoValue": "off"
+      },
+      {
+        "id": "terrace-motion",
+        "type": "motion",
+        "room": "terrace",
+        "name": "Движение на террасе",
+        "status": "installed",
+        "note": "Сущность HA из выгрузки дома",
+        "masterOff": false
+      },
+      {
+        "id": "terrace-lux",
+        "type": "illuminance",
+        "room": "terrace",
+        "name": "Освещённость террасы",
+        "status": "installed",
+        "note": "Сущность HA из выгрузки дома",
+        "masterOff": false
+      },
+      {
+        "id": "camera-yard",
+        "type": "camera",
+        "room": "yard",
+        "name": "Двор · Tapo C320WS",
+        "status": "installed",
+        "note": "TP-Link · Live View · источник заменён по выбору владельца",
+        "masterOff": false
+      },
+      {
+        "id": "corridor-main",
+        "type": "light",
+        "room": "corridor",
+        "name": "Основной свет",
+        "status": "installed",
+        "note": "",
+        "masterOff": true
+      },
+      {
+        "id": "camera-extra-1",
+        "type": "camera",
+        "room": "yard",
+        "name": "Камера 2 · планируется",
+        "status": "planned",
+        "note": "Место установки ещё не выбрано",
+        "masterOff": false
+      },
+      {
+        "id": "camera-extra-2",
+        "type": "camera",
+        "room": "yard",
+        "name": "Камера 3 · резерв",
+        "status": "planned",
+        "note": "Не куплена; необязательное расширение",
+        "masterOff": false
+      },
+      {
+        "id": "sliding-gate",
+        "type": "gate",
+        "room": "yard",
+        "name": "Откатные ворота",
+        "status": "planned",
+        "note": "Модель привода, интерфейс и датчики положения не проверены",
+        "masterOff": false
+      },
+      {
+        "id": "boiler",
+        "type": "heating",
+        "room": "utility",
+        "name": "Газовый котёл Kentatsu",
+        "status": "installed",
+        "note": "Внешнее управление и совместимость не проверены",
+        "masterOff": false
+      },
+      {
+        "id": "station",
+        "type": "station",
+        "room": "corridor",
+        "name": "Яндекс Станция Миди",
+        "status": "installed",
+        "note": "Яндекс Станция · постоянное место: коридор",
+        "masterOff": false
+      },
+      {
+        "id": "master-event",
+        "type": "button_event",
+        "room": "hall",
+        "name": "Мастер-свет · последнее событие",
+        "status": "installed",
+        "note": "Сущность HA из выгрузки дома",
+        "masterOff": false
+      },
+      {
+        "id": "battery:living",
+        "type": "battery",
+        "room": "living",
+        "name": "Батарейка · гостиная",
+        "status": "installed",
+        "note": "Yandex Station · источник заменён по проверке владельца",
+        "masterOff": false
+      },
+      {
+        "id": "battery:well",
+        "type": "battery",
+        "room": "well",
+        "name": "Батарейка · скважина",
+        "status": "installed",
+        "note": "Yandex Station · источник заменён по проверке владельца",
+        "masterOff": false
+      },
+      {
+        "id": "battery:attic",
+        "type": "battery",
+        "room": "attic",
+        "name": "Батарейка · чердак",
+        "status": "installed",
+        "note": "Сущность HA из выгрузки дома",
+        "masterOff": false
+      },
+      {
+        "id": "battery:door",
+        "type": "battery",
+        "room": "hall",
+        "name": "Батарейка · входная дверь",
+        "status": "installed",
+        "note": "Сущность HA из выгрузки дома",
+        "masterOff": false
+      },
+      {
+        "id": "battery:terrace",
+        "type": "battery",
+        "room": "terrace",
+        "name": "Батарейка · движение террасы",
+        "status": "installed",
+        "note": "Сущность HA из выгрузки дома",
+        "masterOff": false
+      },
+      {
+        "id": "battery:master",
+        "type": "battery",
+        "room": "hall",
+        "name": "Батарейка · мастер-кнопка",
+        "status": "installed",
+        "note": "Сущность HA из выгрузки дома",
+        "masterOff": false
+      },
+      {
+        "id": "terrace-door",
+        "type": "door",
+        "room": "living",
+        "name": "Дверь на террасу",
+        "status": "installed",
+        "note": "Яндекс · Zigbee через станцию; привяжи сущность HA",
+        "masterOff": false,
+        "demoValue": "off"
+      },
+      {
+        "id": "leak:utility",
+        "type": "leak",
+        "room": "utility",
+        "name": "Протечка в котельной",
+        "status": "installed",
+        "note": "Яндекс · Zigbee через станцию; привяжи сущность HA",
+        "masterOff": false,
+        "demoValue": "off"
+      },
+      {
+        "id": "leak:bath",
+        "type": "leak",
+        "room": "bath",
+        "name": "Протечка в ванной",
+        "status": "installed",
+        "note": "Яндекс · Zigbee через станцию; привяжи сущность HA",
+        "masterOff": false,
+        "demoValue": "off"
+      },
+      {
+        "id": "battery:terrace-door",
+        "type": "battery",
+        "room": "living",
+        "name": "Батарейка · дверь на террасу",
+        "status": "installed",
+        "note": "По выгрузке HA · только наблюдение",
+        "masterOff": false
+      },
+      {
+        "id": "battery:leak-utility",
+        "type": "battery",
+        "room": "utility",
+        "name": "Батарейка · протечка в котельной",
+        "status": "installed",
+        "note": "По выгрузке HA · только наблюдение",
+        "masterOff": false
+      },
+      {
+        "id": "battery:leak-bath",
+        "type": "battery",
+        "room": "bath",
+        "name": "Батарейка · протечка в ванной",
+        "status": "installed",
+        "note": "По выгрузке HA · только наблюдение",
+        "masterOff": false
+      }
+    ],
+    "bindings": {
+      "living:0": {
+        "entityId": "light.gostinaia_pravyi_vykliuchatel",
+        "verified": true
+      },
+      "living:1": {
+        "entityId": "light.gostinaia_levyi_vykliuchatel",
+        "verified": true
+      },
+      "hall:0": {
+        "entityId": "light.prikhozhaia_levyi_vykliuchatel",
+        "verified": true
+      },
+      "hall:1": {
+        "entityId": "light.prikhozhaia_pravyi_vykliuchatel",
+        "verified": true
+      },
+      "office:0": {
+        "entityId": "light.kabinet_levyi_vykliuchatel",
+        "verified": true
+      },
+      "office:1": {
+        "entityId": "light.kabinet_pravyi_vykliuchatel",
+        "verified": true
+      },
+      "bedroom:0": {
+        "entityId": "light.spalnia_levyi_vykliuchatel",
+        "verified": true
+      },
+      "bedroom:1": {
+        "entityId": "light.spalnia_pravyi_vykliuchatel",
+        "verified": true
+      },
+      "children:0": {
+        "entityId": "light.detskaia_levyi_vykliuchatel",
+        "verified": true
+      },
+      "children:1": {
+        "entityId": "light.detskaia_pravyi_vykliuchatel",
+        "verified": true
+      },
+      "bath:0": {
+        "entityId": "light.vannaia_levyi_vykliuchatel",
+        "verified": true
+      },
+      "bath:1": {
+        "entityId": "light.vannaia_pravyi_vykliuchatel",
+        "verified": true
+      },
+      "utility:0": {
+        "entityId": "light.tualet_vykliuchatel",
+        "verified": true
+      },
+      "pantry:0": {
+        "entityId": "light.kladovaia_vykliuchatel",
+        "verified": true
+      },
+      "temperature:living": {
+        "entityId": "sensor.gostinaia_datchik_temperatury_temperatura",
+        "verified": true
+      },
+      "humidity:living": {
+        "entityId": "sensor.gostinaia_datchik_temperatury_vlazhnost",
+        "verified": true
+      },
+      "temperature:attic": {
+        "entityId": "sensor.cherdak_datchik_temperatury_temperatura",
+        "verified": true
+      },
+      "humidity:attic": {
+        "entityId": "sensor.cherdak_datchik_temperatury_vlazhnost",
+        "verified": true
+      },
+      "temperature:well": {
+        "entityId": "sensor.skvazhina_datchik_temperatury_temperatura",
+        "verified": true
+      },
+      "humidity:well": {
+        "entityId": "sensor.skvazhina_datchik_temperatury_vlazhnost",
+        "verified": true
+      },
+      "door": {
+        "entityId": "binary_sensor.e4aaec90027a_contact",
+        "verified": true
+      },
+      "smoke": {
+        "entityId": "",
+        "verified": false
+      },
+      "terrace-motion": {
+        "entityId": "sensor.terrasa_datchik_dvizheniia_dvizhenie",
+        "verified": true
+      },
+      "terrace-lux": {
+        "entityId": "sensor.terrasa_datchik_dvizheniia_osveshchennost",
+        "verified": true
+      },
+      "camera-yard": {
+        "entityId": "camera.dvor_kamera_dvor_live_view",
+        "verified": true
+      },
+      "corridor-main": {
+        "entityId": "light.koridor_vykliuchatel",
+        "verified": true
+      },
+      "camera-extra-1": {
+        "entityId": "",
+        "verified": false
+      },
+      "camera-extra-2": {
+        "entityId": "",
+        "verified": false
+      },
+      "sliding-gate": {
+        "entityId": "",
+        "verified": false
+      },
+      "boiler": {
+        "entityId": "",
+        "verified": false
+      },
+      "station": {
+        "entityId": "media_player.yandex_station_r10c5zt00h7hek",
+        "verified": true
+      },
+      "master-event": {
+        "entityId": "sensor.prikhozhaia_master_svet_knopka",
+        "verified": true
+      },
+      "battery:living": {
+        "entityId": "sensor.gostinaia_datchik_temperatury_uroven_zariada",
+        "verified": true
+      },
+      "battery:well": {
+        "entityId": "sensor.skvazhina_datchik_temperatury_uroven_zariada",
+        "verified": true
+      },
+      "battery:attic": {
+        "entityId": "sensor.cherdak_datchik_temperatury_uroven_zariada",
+        "verified": true
+      },
+      "battery:door": {
+        "entityId": "sensor.e4aaec90027a_battery",
+        "verified": true
+      },
+      "battery:terrace": {
+        "entityId": "sensor.terrasa_datchik_dvizheniia_uroven_zariada",
+        "verified": true
+      },
+      "battery:master": {
+        "entityId": "sensor.prikhozhaia_master_svet_uroven_zariada",
+        "verified": true
+      },
+      "terrace-door": {
+        "entityId": "sensor.gostinaia_datchik_dveri_dver_okno",
+        "verified": true
+      },
+      "leak:utility": {
+        "entityId": "sensor.kotelnaia_datchik_protechki_vody_protechka_vody",
+        "verified": true
+      },
+      "leak:bath": {
+        "entityId": "sensor.vannaia_datchik_protechki_vody_protechka_vody",
+        "verified": true
+      },
+      "battery:terrace-door": {
+        "entityId": "sensor.gostinaia_datchik_dveri_uroven_zariada",
+        "verified": true
+      },
+      "battery:leak-utility": {
+        "entityId": "sensor.kotelnaia_datchik_protechki_vody_uroven_zariada",
+        "verified": true
+      },
+      "battery:leak-bath": {
+        "entityId": "sensor.vannaia_datchik_protechki_vody_uroven_zariada",
+        "verified": true
+      }
+    },
+    "userScenarios": [],
+    "yard_onvif_user": "Mytapo_1",
+    "yard_onvif_host": "192.168.8.204",
+    "yard_onvif_enabled": true,
+    "yardCameras": [
+      {
+        "name": "Двор",
+        "host": "192.168.8.204",
+        "port": 2020,
+        "user": "Mytapo_1",
+        "enabled": true,
+        "pass": ""
+      }
+    ],
+    "energy_readings": [
+      {
+        "date": "2026-02-26",
+        "value": 25771
+      },
+      {
+        "date": "2026-03-26",
+        "value": 26753
+      },
+      {
+        "date": "2026-04-26",
+        "value": 28229
+      },
+      {
+        "date": "2026-05-26",
+        "value": 28795
+      },
+      {
+        "date": "2026-06-26",
+        "value": 28888
+      },
+      {
+        "date": "2026-07-27",
+        "value": 29257
+      },
+      {
+        "date": "2026-08-26",
+        "value": 29370
+      },
+      {
+        "date": "2026-09-25",
+        "value": 29428
+      },
+      {
+        "date": "2026-10-26",
+        "value": 29558
+      }
+    ],
+    "energy_tariff": 4.68,
+    "guardNight": "auto",
+    "guardDoorMinutes": 15,
+    "guardArmedAway": false,
+    "guardExitDelay": 120,
+    "guardAwayMinutes": 3,
+    "guardHomeAlertMinutes": 10,
+    "guardHomeAnnounceMinutes": 30,
+    "guardFlash": true,
+    "guardMasterArms": true,
+    "guardEntity": "",
+    "voiceAnnounce": true,
+    "guestWifiSsid": "",
+    "guestWifiPass": "",
+    "housePresetVersion": 5,
+    "houseProfileConfirmed": true,
+    "deviceModel": {
+      "version": 1,
+      "groups": [
+        {
+          "id": "unit-climate-living",
+          "name": "Датчик климата · гостиная",
+          "room": "living",
+          "members": [
+            "temperature:living",
+            "humidity:living",
+            "battery:living"
+          ],
+          "visual": {
+            "mode": "room"
+          }
+        },
+        {
+          "id": "unit-climate-attic",
+          "name": "Датчик климата · чердак",
+          "room": "attic",
+          "members": [
+            "temperature:attic",
+            "humidity:attic",
+            "battery:attic"
+          ],
+          "visual": {
+            "mode": "room"
+          }
+        },
+        {
+          "id": "unit-climate-well",
+          "name": "Датчик климата · скважина",
+          "room": "well",
+          "members": [
+            "temperature:well",
+            "humidity:well",
+            "battery:well"
+          ],
+          "visual": {
+            "mode": "room"
+          }
+        },
+        {
+          "id": "unit-door",
+          "name": "Входная дверь",
+          "room": "hall",
+          "members": [
+            "door",
+            "battery:door"
+          ],
+          "visual": {
+            "mode": "room"
+          }
+        },
+        {
+          "id": "unit-terrace-motion",
+          "name": "Датчик движения · терраса",
+          "room": "terrace",
+          "members": [
+            "terrace-motion",
+            "terrace-lux",
+            "battery:terrace"
+          ],
+          "visual": {
+            "mode": "room"
+          }
+        },
+        {
+          "id": "unit-master-button",
+          "name": "Мастер-кнопка",
+          "room": "hall",
+          "members": [
+            "master-event",
+            "battery:master"
+          ],
+          "visual": {
+            "mode": "room"
+          }
+        },
+        {
+          "id": "unit-yard-camera",
+          "name": "Камера двора",
+          "room": "yard",
+          "members": [
+            "camera-yard"
+          ],
+          "visual": {
+            "mode": "room"
+          }
+        },
+        {
+          "id": "unit-terrace-door",
+          "name": "Дверь на террасу",
+          "room": "living",
+          "members": [
+            "terrace-door",
+            "battery:terrace-door"
+          ],
+          "visual": {
+            "mode": "room"
+          }
+        },
+        {
+          "id": "unit-leak-utility",
+          "name": "Протечка в котельной",
+          "room": "utility",
+          "members": [
+            "leak:utility",
+            "battery:leak-utility"
+          ],
+          "visual": {
+            "mode": "room"
+          }
+        },
+        {
+          "id": "unit-leak-bath",
+          "name": "Протечка в ванной",
+          "room": "bath",
+          "members": [
+            "leak:bath",
+            "battery:leak-bath"
+          ],
+          "visual": {
+            "mode": "room"
+          }
+        }
+      ]
+    }
+  }
+}
