@@ -1,0 +1,26 @@
+PASS: clean catalog v3, older formats rejected, stable IDs, import reset, capabilities, duplicates, planned locks, extensible sensors and climate summary follows real zones.
+PASS: yard-card — чип только по факту движения панельного детектора ≤5 мин; демо и отсутствие данных никогда не показывают карточку; сдвинутое/неизвестное время события не считается движением.
+PASS: additive device model v1, logical groups, components, stable bindings, capabilities, imports, validation, read-only new families, no command escalation.
+PASS: real SQLite migration, original backup, idempotent restart, preserved theme/photo/live mappings, grouping CRUD, new device without a plan, unknown versions rejected without mutation.
+PASS: 39 inventory bindings, enum safety/alerts, v5 migration/idempotency, theme/photo/custom mappings preserved, partial activation, numeric units/classes, CSRF, zero service calls, read-only events/batteries, persistence.
+PASS: media discovery/secret filtering, pause/play/volume readback, unchanged target no-op, features/offline/unverified locks, strict action/value allowlist, demo isolation.
+PASS: station hub action allowlist, TTS/cloud/local gating, durable idempotency/crash safety, truthful acknowledgements, background wet/dry/unknown/restart dedupe, Moscow quiet hours, shopping readback, scoped leave, no secret/HTML leakage.
+shopping: ok
+voice: ok (converse: process вызов, speech, пустая строка, валидация, proof, выключенный и упавший HA)
+PASS: floor states, no texture/living overlay, independent selection; transformed house/terrace foundation vertices are safely below every room floor.
+PASS: unavailable light observations stay unknown; detailed schematic interior is batched and room-tagged.
+PASS: one installed corridor line, immutable/idempotent migration, verified/custom/grouped mappings preserved, no guessed entity, persistent spatial view contracts.
+PASS: motion expiry/event timestamps, no polling renewal, native binary semantics, HA-only scoped history, unavailable gaps, line-hours/coverage, cache and binding changes, honest scene pins.
+PASS: stable and untimestamped HA values remain visible, provenance is not polling, zero/units/offline/unknown validation and verified scene pins.
+PASS: дайджест показывает только реальные сигналы — батарейки/агрегат, протечка danger, offline, недоступные датчики только с проверенным биндингом, забытый свет, мороз, сортировка; действия (датчики/комната/системы) и гистерезис авто-темы.
+digest-brief ok
+guard: ok
+PASS: энергия v2 — поиск счётчика, карточка рельсы (показания/дата показаний/потребление/сутки/неделя/заглушка), история расхода (energyHistory: /api/history/period, фильтр unavailable, кеш 60 с) и energyDeltas (окна 24/168 ч, <2 точек → null).
+PASS: месяц по показаниям ТНС — monthDelta (prev строго раньше readings_date, current<prev → null), cost по тарифу, карточка «Месяц» вместо «Неделя», валидация prefs (дата/значение/лимит 36/дедуп/тариф) и обратная совместимость.
+energy-chart: ок
+preact-energy ok
+preact-digest ok
+preact-weather ok
+preact-quick ok
+preact-facts ok
+Part A ok (25 suites).

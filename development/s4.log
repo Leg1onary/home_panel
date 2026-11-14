@@ -1,0 +1,1 @@
+PASS: TNS readings auto-append — no duplicate for same date, new later date appended and month recalculated, rollback ignored, same-date refinement updates the value.
