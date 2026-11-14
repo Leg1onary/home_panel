@@ -894,7 +894,9 @@ server.requestTimeout=25000;
 server.listen(port,preview||addon?'0.0.0.0':'127.0.0.1',()=>{
  console.log(`Panel ready: port ${port} · ${addon?'Home Assistant add-on':preview?'private preview':'local only'} · HA ${ha.enabled?'configured':'not configured'}`);
   journal('Панель запущена: порт '+port+(addon?' · add-on':preview?' · превью':' · локально')+(ha.enabled?' · Home Assistant настроен':' · деморежим'));
- recordEvent('system','Панель запущена · версия '+PANEL_VERSION);
+   // 3.9.2: событие «Панель запущена» в хронику больше не пишем — версия видна в шапке и в «Здоровье».
+  // Заодно гасим старые такие события, оставшиеся в базе с прошлых запусков.
+  try{db.prepare("DELETE FROM events WHERE type='system' AND text LIKE 'Панель запущена%'").run()}catch{}
  if(process.platform==='win32'&&process.argv.includes('--open'))spawn('rundll32.exe',['url.dll,FileProtocolHandler',`http://127.0.0.1:${port}`],{stdio:'ignore'}).on('error',()=>{});
 });
 server.on('error',error=>{console.error(error.code==='EADDRINUSE'?`Port ${port} is busy. Close the other panel server or set PORT in .env.`:'Panel server could not start.');process.exitCode=1});

@@ -85,4 +85,19 @@ assert.match(moon,/Полнолуние/,'фаза в разметке');
 assert.match(moon,/Освещённость 100 %/,'освещённость в разметке');
 assert.match(moon,/moon-lit|moon-shadow/,'svg кружки');
 assert.equal(weatherMoonMarkup(NaN),'','мусор → пусто');
-console.log('weather-rich: ok');
+// 3.9.2: недельная сводка, давление в мм рт. ст.
+import {weatherWeeklyMarkup,mmPressure} from '../src/weather-page.js';
+const mm=mmPressure(1013);
+assert.equal(mm,760,'гПа → мм рт. ст.'); // 1013*0.750062 ≈ 760
+assert.equal(mmPressure('мусор'),null,'мусорное давление → null');
+const nm2=weatherNowMarkup({temp:5,wind:null,humidity:60,pressure:1000,icon:'cloudy',label:'Облачно'});
+assert.match(nm2,/750 мм рт\. ст\./,'давление в мм рт. ст. в разметке «сейчас»');
+const weekly=weatherWeeklyMarkup([
+ {day:'пн',max:5,min:0},{day:'вт',max:8,min:2},{day:'ср',max:-3,min:-8},{day:'чт',max:2,min:-1}]);
+assert.match(weekly,/днём в среднем \+3°, ночью −2°/,'средние за неделю');
+assert.match(weekly,/самый тёплый — вт \(\+8°\)/,'тёплый день');
+assert.match(weekly,/самая холодная ночь — ср \(−8°\)/,'холодная ночь');
+assert.equal(weatherWeeklyMarkup([]),'','пустой daily → пусто');
+assert.equal(weatherWeeklyMarkup([{day:'пн',max:1,min:0}]),'','один день → сводки нет');
+console.log('weather-rich: ok (weekly, mmHg)');
+

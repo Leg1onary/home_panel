@@ -5938,7 +5938,10 @@ server.requestTimeout = 25e3;
 server.listen(port, preview || addon ? "0.0.0.0" : "127.0.0.1", () => {
   console.log(`Panel ready: port ${port} \xB7 ${addon ? "Home Assistant add-on" : preview ? "private preview" : "local only"} \xB7 HA ${ha.enabled ? "configured" : "not configured"}`);
   journal("\u041F\u0430\u043D\u0435\u043B\u044C \u0437\u0430\u043F\u0443\u0449\u0435\u043D\u0430: \u043F\u043E\u0440\u0442 " + port + (addon ? " \xB7 add-on" : preview ? " \xB7 \u043F\u0440\u0435\u0432\u044C\u044E" : " \xB7 \u043B\u043E\u043A\u0430\u043B\u044C\u043D\u043E") + (ha.enabled ? " \xB7 Home Assistant \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D" : " \xB7 \u0434\u0435\u043C\u043E\u0440\u0435\u0436\u0438\u043C"));
-  recordEvent("system", "\u041F\u0430\u043D\u0435\u043B\u044C \u0437\u0430\u043F\u0443\u0449\u0435\u043D\u0430 \xB7 \u0432\u0435\u0440\u0441\u0438\u044F " + PANEL_VERSION);
+  try {
+    db.prepare("DELETE FROM events WHERE type='system' AND text LIKE '\u041F\u0430\u043D\u0435\u043B\u044C \u0437\u0430\u043F\u0443\u0449\u0435\u043D\u0430%'").run();
+  } catch {
+  }
   if (process.platform === "win32" && process.argv.includes("--open")) spawn("rundll32.exe", ["url.dll,FileProtocolHandler", `http://127.0.0.1:${port}`], { stdio: "ignore" }).on("error", () => {
   });
 });

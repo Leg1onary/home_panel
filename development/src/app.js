@@ -46,7 +46,7 @@ import {YARD_REFRESH_MS} from './yard-card.js';
 import {parseBrightness,scheduleWave} from './light-wave.js';
 import {loadShopping,paintShopping,shoppingMutate,shoppingState,shoppingCardMarkup} from './shopping.js';
 import {paintAlarm,alarmMarkup,alarmEntity,alarmAction} from './alarm.js';
-import {weatherViewArgs,weatherNowMarkup,weatherArcMarkup,weatherDailyMarkup,weatherHourlyMarkup,weatherMoonMarkup,weatherEntityOf} from './weather-page.js';
+import {weatherViewArgs,weatherNowMarkup,weatherArcMarkup,weatherDailyMarkup,weatherHourlyMarkup,weatherMoonMarkup,weatherWeeklyMarkup,weatherEntityOf} from './weather-page.js';
 import {eventsListMarkup,eventsFilterMarkup,activityMarkup,lightTodayMarkup} from './events.js';
 import {parseBlocks,serializeBlocks,digestEssence,energyEssence,stationEssence} from './home-blocks.js';
 import {setHomeEventHandler} from './live.js';
@@ -199,9 +199,17 @@ function quietDoor(){
  return `<button class="quiet-card" data-action="door"><div class="quiet-info">${I(label==='Нет данных'||noConnection()?'wifi-off':'door-closed')}
  <div><h3>${label}</h3><p>${isLive()?'Xiaomi · '+(observed('door')?'Home Assistant':'не привязан'):'Состояние демонстрационное'}</p></div></div>${I('chevron-right')}</button>`;
 }
+let panelVersion=null,panelVersionDone=false;
+// 3.9.2: версия панели в hero-чипе (вместо системного события в хронике).
+async function ensurePanelVersion(){
+ if(panelVersionDone)return;panelVersionDone=true;
+ try{panelVersion=(await api('health'))?.version||null}catch{/* не критично */}
+ if(panelVersion&&state.view==='home')updateRegion('#hero-status',heroStatusChip());
+}
 function heroStatusChip(){
  const online=isLive()&&state.liveOnline,offline=isLive()&&!state.liveOnline;
- const label=offline?`Нет связи${state.liveError?' · '+state.liveError:''}`:online?'Home Assistant · Онлайн':'Демо · без Home Assistant';
+ const ver=online&&panelVersion?' · v'+panelVersion:'';
+ const label=offline?`Нет связи${state.liveError?' · '+state.liveError:''}`:online?`Home Assistant · Онлайн${ver}`:'Демо · без Home Assistant';
  return `<button class="hero-status-chip ${offline?'is-offline':''}" data-action="house-review" title="${esc(isLive()?[state.liveError||'Home Assistant','Проверить подключение'].join(' · '):'Реальные устройства не подключены')}" aria-label="${esc(label)}: открыть настройки подключения"><span class="hero-dot"></span>${esc(label)}</button>`;
 }
 let lastSunState=null;
@@ -427,12 +435,21 @@ function quickArgs(){
 }
 // Компактная карточка станции в правой колонке главной (3.3.14): deps для
 // station-widget.js. В демо — заголовок «Демо», live — media_title из HA.
+// 3.9.2: интеграция Яндекса отдаёт служебные строки (например «Удалённые
+// страницы», когда станция ничего не играет) — фильтруем их как «нет трека».
+const JUNK_MEDIA_TITLES=new Set(['удалённые страницы','пауза','воспроизведение','играет','тв']);
+const stationTitleOf=e=>{
+ const raw=e?.attributes?.media_title;
+ if(typeof raw!=='string'||!raw.trim())return null;
+ return JUNK_MEDIA_TITLES.has(raw.trim().toLowerCase())?null:raw;
+};
 function stationArgs(){
  const demo=!isLive()&&state.stationMode==='demo';
  const e=isLive()?observed('station'):null;
- const idle=!state.stationPlaying&&!(e?.attributes?.media_title);
+ const title=stationTitleOf(e);
+ const idle=!state.stationPlaying&&!title;
  return {demo,playing:state.stationPlaying,
-  title:isLive()?(e?.attributes?.media_title||(idle?'Тишина · запусти с пульта или Алисой':'Музыка и голос · через Home Assistant')):demo?'Демо':'Голос и музыка',
+  title:isLive()?(title||(idle?'Тишина · запусти с пульта или Алисой':'Музыка и голос · через Home Assistant')):demo?'Демо':'Голос и музыка',
   room:stationRoom(),
   playDisabled:!canControl('station:playing')||hasPending(),
   prevDisabled:!isLive()||!stationSupports(e,'previous',true)||hasPending(),
@@ -836,7 +853,7 @@ function weatherPage(){
  <section class="weather-now-card">${weatherNowMarkup(args)}</section>
  <section class="weather-arc-card"><div id="weather-arc">${args?.sun?weatherArcMarkup(args.sun):''}</div></section>
  <section class="weather-moon-card"><h2>Луна</h2>${weatherMoonMarkup(Date.now())}</section>
- <section class="weather-forecast-card"><h2>Прогноз на дни</h2><div id="weather-daily">${args?weatherDailyMarkup(args.daily):'<p class="description forecast-error">Прогноз недоступен</p>'}</div></section>
+ <section class="weather-forecast-card"><h2>Прогноз на дни</h2><div id="weather-weekly">${args?weatherWeeklyMarkup(args.daily):''}</div><div id="weather-daily">${args?weatherDailyMarkup(args.daily):'<p class="description forecast-error">Прогноз недоступен</p>'}</div></section>
  ${args?.hourly?.length?`<section class="weather-forecast-card"><h2>По часам</h2>${weatherHourlyMarkup(args.hourly)}</section>`:''}
  <p class="weather-updated" id="weather-updated">${weatherFetchedAt?`Обновлено ${timeOf(weatherFetchedAt)}`:''}</p>
  </div>`;
@@ -856,6 +873,7 @@ async function loadWeatherForecast(){
  const args=weatherViewArgs(state.entityStates,weatherForecast);
  if(!args)return;
  updateRegion('#weather-daily',weatherDailyMarkup(args.daily));
+ updateRegion('#weather-weekly',weatherWeeklyMarkup(args.daily));
  updateRegion('#weather-updated',`Обновлено ${timeOf(weatherFetchedAt)}`);
  icons();
  const tape=document.querySelector('.weather-view .weather-hourly-tape');
@@ -1081,6 +1099,7 @@ function refresh(){
   trackSunrise();
  if(['home','model','room'].includes(state.view)){
   updateDetail();modelAPI?.updateModel(rooms,state);
+  ensurePanelVersion();
   const weatherEntity=Object.values(state.entityStates||{}).find(e=>e.entity_id?.startsWith('weather.')),weatherTemp=weatherEntity?.attributes?.temperature;
   modelAPI?.setModelWeather(weatherTemp<0&&weatherEntity?.state==='snowy'?'snow':weatherTemp<0&&weatherEntity?.state==='rainy'?'rain':null);
   if(state.view==='home'){

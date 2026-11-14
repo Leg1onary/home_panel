@@ -42,7 +42,7 @@ export function weatherViewArgs(entityStates,forecast=[],now=Date.now()){
    condition:WEATHER_LABEL[f.condition],min:Number.isFinite(f.templow)?Math.round(f.templow):null,
    max:Number.isFinite(f.temperature)?Math.round(f.temperature):null,
    prec:precOf(f),mm:mmOf(f)})),
-  hourly:hourly.slice(0,24).map(f=>({time:timeOf(Date.parse(f.datetime)),icon:WEATHER_ICON[f.condition]||'cloudy',
+  hourly:hourly.slice(0,48).map(f=>({time:timeOf(Date.parse(f.datetime)),icon:WEATHER_ICON[f.condition]||'cloudy',
    temp:Number.isFinite(f.temperature)?Math.round(f.temperature):null,
    prec:precOf(f),mm:mmOf(f)})),
   sun:sunInfo(entityStates,now)};
@@ -101,15 +101,21 @@ export function tempColor(t){
  const cold=[0x5b,0x8e,0xc9],warm=[0xd8,0xa2,0x3e];
  return `rgb(${cold.map((c,i)=>Math.round(c+(warm[i]-c)*x)).join(',')})`;
 }
+// 3.9.2: гПа → мм рт. ст. (привычнее для бытового прогноза).
+export function mmPressure(hPa){
+ if(!Number.isFinite(Number(hPa)))return null;
+ return Math.round(Number(hPa)*0.750062);
+}
 // «Сейчас»: крупная температура + состояние + ощущение + влажность/ветер/давление.
 export function weatherNowMarkup(args){
  if(!args)return '<p class="description">Данные погоды недоступны.</p>';
  const t=args.temp.toFixed(1).replace('.',',');
  const feel=feelsLike(args.temp,args.wind);
  const feelLabel=feel!==null&&Math.abs(feel-args.temp)>=0.05?`${feel.toFixed(1).replace('.',',')}°`:'';
+ const mm=mmPressure(args.pressure);
  const facts=[['Влажность',args.humidity!==null?args.humidity+' %':null],
   ['Ветер',args.wind!==null?`${args.wind} км/ч · ${windCompass(args.bearing)}`:null],
-  ['Давление',args.pressure!==null?args.pressure+' гПа':null]]
+  ['Давление',mm!==null?`${mm} мм рт. ст.`:null]]
   .filter(([,v])=>v!==null).map(([k,v])=>`<div class="weather-fact"><span>${esc(k)}</span><strong>${esc(v)}</strong></div>`).join('');
  return `<div class="weather-now-main" data-weather="${esc(args.data||'cloudy')}">${I(args.icon)}<div><strong class="weather-temp">${esc(t)}°</strong><span class="weather-label">${esc(args.label)}</span>${feelLabel?`<span class="weather-feels">Ощущается как ${esc(feelLabel)}</span>`:''}</div></div>
  <div class="weather-facts">${facts||'<span class="weather-fact is-faint">Подробностей у сущности нет</span>'}</div>`;
@@ -161,6 +167,26 @@ export function weatherDailyMarkup(daily){
   const width=f.min!==null&&f.max!==null?Math.max(6,(f.max-f.min)/span*100):6;
   const mid=f.min!==null&&f.max!==null?(f.min+f.max)/2:f.min??f.max??0;
   return `<li class="forecast-row"><span class="forecast-day">${esc(f.day)}</span>${I(f.icon)}<b>${f.max!==null?esc(String(f.max))+'°':'—'}${f.min!==null?' / '+esc(String(f.min))+'°':''}</b><span class="forecast-range" data-min="${f.min??''}" data-max="${f.max??''}" data-scale="${lo}..${hi}"><span class="forecast-range-bar" style="left:${left.toFixed(1)}%;width:${width.toFixed(1)}%;background:${tempColor(mid)}"></span></span>${f.prec!==null?`<span class="forecast-prec" title="Вероятность осадков">${I('droplets')}${f.prec} %</span>`:''}${f.mm>0?`<small class="forecast-mm">${mmLabel(f.mm)} мм</small>`:''}</li>`}).join('')}</ul>`;
+}
+// 3.9.2: недельная сводка над суточным прогнозом — средние максимумы/минимумы,
+// самый тёплый и самый холодный день недели. Без выдумок: считаем только то,
+// что реально пришло в daily.
+export function weatherWeeklyMarkup(daily){
+ if(!Array.isArray(daily)||daily.length<2)return '';
+ const withMax=daily.filter(f=>f.max!==null),withMin=daily.filter(f=>f.min!==null);
+ if(!withMax.length&&!withMin.length)return '';
+ const avg=a=>a.length?Math.round(a.reduce((s,f)=>s+f.v,0)/a.length):null;
+ const avgMax=avg(withMax.map(f=>({v:f.max}))),avgMin=avg(withMin.map(f=>({v:f.min})));
+ const warm=withMax.length?withMax.reduce((a,b)=>b.max>a.max?b:a):null;
+ const cold=withMin.length?withMin.reduce((a,b)=>b.min<a.min?b:a):null;
+ const deg=v=>(v>0?'+':v<0?'\u2212':'')+Math.abs(v)+'\u00B0';
+ const parts=[];
+ if(avgMax!==null&&avgMin!==null)parts.push(`днём в среднем ${deg(avgMax)}, ночью ${deg(avgMin)}`);
+ else if(avgMax!==null)parts.push(`днём в среднем ${deg(avgMax)}`);
+ if(warm&&warm.day)parts.push(`самый тёплый — ${esc(warm.day)} (${deg(warm.max)})`);
+ if(cold&&cold.day)parts.push(`самая холодная ночь — ${esc(cold.day)} (${deg(cold.min)})`);
+ if(!parts.length)return '';
+ return `<p class="weather-weekly">${parts.join(' · ')}</p>`;
 }
 // Почасовая лента: время / иконка / температура / столбик вероятности осадков /
 // подпись «N %» и мм при осадках >0.
