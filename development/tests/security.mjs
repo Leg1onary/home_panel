@@ -67,14 +67,12 @@ try{
  p.guardAwayMinutes=1;
  p.guardEntity='input_boolean.ohrana';
  let saved=await call('preferences',{method:'PUT',data:p});
- console.log('REJECTED:',JSON.stringify(saved.body.rejected),'OFFLINE:',JSON.stringify(saved.body.offline));
- assert.equal(saved.status,200,'привязки и тайминги сохранены');
+  assert.equal(saved.status,200,'привязки и тайминги сохранены');
  // preflight: дверь открыта → 409
  doorState='on';
  await new Promise(r=>setTimeout(r,600));
  const blocked=await call('guard',{method:'POST',data:{action:'arm'}});
- console.log('DEBUG blocked:',JSON.stringify(blocked.body).slice(0,300));
- assert.equal(blocked.status,409,'нельзя встать на охрану с открытой дверью');
+  assert.equal(blocked.status,409,'нельзя встать на охрану с открытой дверью');
  doorState='off';
  await new Promise(r=>setTimeout(r,600));
  // arm
@@ -95,12 +93,11 @@ try{
  // disarm: сирена стоп + свет off
  const disarm=await call('guard',{method:'POST',data:{action:'disarm'}});
  assert.equal(disarm.status,200);assert.equal(disarm.body.armed,false);
- st=await call('guard');console.log('ST after disarm:',JSON.stringify(st.body).slice(0,200));assert.equal(st.body.alarm,null,'тревога остановлена');
+ st=await call('guard');assert.equal(st.body.alarm,null,'тревога остановлена');
  const offSeen=await waitFor(()=>seen.some(u=>u.startsWith('/api/services/light/turn_off')));
  assert.ok(offSeen,'свет выключен при снятии');
  const pauseSeen=await waitFor(()=>seen.some(u=>u.startsWith('/api/services/media_player/media_pause')));
- const j=await call('health');console.log('JOURNAL:',(j.body.journal||[]).slice(0,6).map(x=>x.text).join(' | '));
- assert.ok(pauseSeen,'сирена остановлена паузой');
+ const j=await call('health'); assert.ok(pauseSeen,'сирена остановлена паузой');
  // 3.7.1: disarm API гасит и помощника охраны
  ibState='on';ib.state='on';
  const rearm=await waitFor(async()=>{const s=await call('guard');return s.body.armed===true});
@@ -108,12 +105,11 @@ try{
  const disarm2=await call('guard',{method:'POST',data:{action:'disarm'}});
  assert.equal(disarm2.status,200);
  const ibOff=await waitFor(()=>ibState==='off');
- const j2=await call('health');console.log('J2:',(j2.body.journal||[]).slice(0,5).map(x=>x.text).join(' | '));
- assert.ok(ibOff,'disarm выключил помощника охраны');
+ const j2=await call('health'); assert.ok(ibOff,'disarm выключил помощника охраны');
  // хроника содержит guard-события
  const events=await call('events?type=guard');
  assert.ok(events.body.events.length>=2,'guard-события в хронике');
- // 3.7.1: мост «Я ухожу» — помощник on при ОТКРЫТОЙ двери (выход) → взвод
+ // 3.8.0: мост «Я ухожу» — помощник on при ОТКРЫТОЙ двери (выход) → взвод
  ibState='on';ib.state='on';
  const bridgeArm=await waitFor(async()=>{const s=await call('guard');return s.body.armed===true});
  assert.ok(bridgeArm,'мост взвёл охрану при открытой двери');
@@ -121,6 +117,20 @@ try{
  ibState='off';ib.state='off';
  const bridgeOff=await waitFor(async()=>{const s=await call('guard');return s.body.armed===false});
  assert.ok(bridgeOff,'мост снял охрану');
+ // 3.9.0: репетиция — прогон цикла без реальной двери
+ const convBefore=seen.filter(u=>u.startsWith('/api/services/conversation/process')).length;
+ const reh=await call('guard',{method:'POST',data:{action:'rehearse'}});
+ assert.equal(reh.status,200,'репетиция запущена');
+ const busy=await call('guard',{method:'POST',data:{action:'rehearse'}});
+ assert.equal(busy.status,409,'вторую репетицию не запускаем — цикл уже идёт');
+ const rehAlarm=await waitFor(async()=>{const s=await call('guard');return s.body.alarm?.doorName==='Репетиция'});
+ assert.ok(rehAlarm,'репетиция показывается как цикл «Репетиция»');
+ const rehIntent=await waitFor(()=>seen.filter(u=>u.startsWith('/api/services/conversation/process')).length>convBefore);
+ assert.ok(rehIntent,'репетиция послала интент сирены');
+ const rehStop=await call('guard',{method:'POST',data:{action:'disarm'}});
+ assert.equal(rehStop.status,200);
+ const rehOff=await waitFor(async()=>{const s=await call('guard');return s.body.alarm===null});
+ assert.ok(rehOff,'репетиция остановлена снятием');
  console.log('security: ok');
 }finally{
  if(child&&child.exitCode===null){const end=new Promise(r=>child.once('exit',r));child.kill('SIGTERM');await end}

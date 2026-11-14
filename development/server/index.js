@@ -18,7 +18,7 @@ import {journal,journalList} from './journal.js';
 import {meterValue,monthDelta,monthCost,monthForecast,monthComparison} from '../src/energy.js';
 import {computeAnalytics} from '../src/events.js';
 import {isNight} from '../src/night.js';
-import {voiceEnabled,armPhrase,disarmPhrase,cancelExitPhrase,doorOpenPhrase} from '../src/voice-phrases.js';
+import {voiceEnabled,voiceQuiet,shouldSpeak,VOICE_COOLDOWN_MS,armPhrase,disarmPhrase,cancelExitPhrase,doorOpenPhrase} from '../src/voice-phrases.js';
 import {energyDeltas} from './ha.js';
 
 import {deviceTypes,samePhysicalDevice,resolveAction} from '../src/catalog.js';
@@ -201,8 +201,15 @@ async function guardLights(on){
 }
 // 3.8.0 «Дом говорит»: TTS-фразы станции при взводе/снятии охраны.
 // voiceAnnounce=false выключает всю озвучку; ошибки не мешают охране.
-async function guardSay(text,prefs){
+const guardSpoken=new Map(); // текст фразы → ts последнего прогона (3.9.0 дедупликация)
+async function guardSay(text,prefs,urgent=false){
  if(!voiceEnabled(prefs))return;
+ const d=new Date(),minute=d.getHours()*60+d.getMinutes();
+ // 3.9.0 «Вежливый голос»: ночью молчим, кроме срочных алертов (открытая дверь).
+ if(!urgent&&voiceQuiet(prefs,minute))return;
+ const now=Date.now();
+ if(!shouldSpeak(text,guardSpoken.get(text)||0,now,VOICE_COOLDOWN_MS*GUARD_SCALE))return;
+ guardSpoken.set(text,now);
  try{await ha.announce(text,prefs)}catch(error){journal('Голос: не удалось — '+(error?.message||error),'warn')}
 }
 async function guardSiren(){
@@ -260,11 +267,9 @@ async function guardTick(){
  // 3.7.1: мост «Я ухожу» — помощник охраны as source of truth.
  if(prefs.guardEntity){
   const states=await ha.states().catch(e=>{console.log('GUARDSTATES ERR:',e?.message);return[]});
-  if(process.env.PANEL_DOOR_DEBUG)console.log('GUARDSTATES n=',states.length,'ib=',states.find(x=>x.entity_id===prefs.guardEntity)?.state);
-  const sw=states.find(e=>e.entity_id===prefs.guardEntity);
+    const sw=states.find(e=>e.entity_id===prefs.guardEntity);
   const swOn=sw?sw.state==='on':false;
-  if(process.env.PANEL_DOOR_DEBUG)console.log('GUARDTICK swOn=',swOn,'armed=',armed,'ge=',prefs.guardEntity);
-  if(swOn&&!armed){
+    if(swOn&&!armed){
    // сценарий «Я ухожу»: взвод без preflight (выход-отсчёт покрывает выход)
    prefs.guardArmedAway=true;
    db.prepare('UPDATE profiles SET preferences=? WHERE id=?').run(JSON.stringify(prefs),guardProfileId());
@@ -314,7 +319,7 @@ async function guardTick(){
    }
    if(openMin>=prefs.guardHomeAnnounceMinutes&&!guard.alerted.has(keyN)){
     guard.alerted.set(keyN,now);recordEvent('door',door.name+' открыта дольше '+prefs.guardHomeAnnounceMinutes+' мин — озвучка');
-    await guardSay(doorOpenPhrase(door.name),prefs)
+    await guardSay(doorOpenPhrase(door.name),prefs,true)
    }
   }
  }
@@ -612,7 +617,18 @@ const server=http.createServer(async(req,res)=>{
      await guardSay(cancelExitPhrase(),prefs);
      return json(res,200,{armed:false});
     }
-    return json(res,400,{error:'Неизвестное действие охраны.'});
+    if(request.action==='rehearse'){
+     // 3.9.0 «Репетиция»: прогон сирены/света/циклов без реальной двери.
+     if(prefs.guardArmedAway===true)return json(res,409,{error:'Охрана взведена — репетиция не нужна.'});
+     if(guard.alarm)return json(res,409,{error:'Цикл сирены уже идёт.'});
+     guardStartAlarmCycle('Репетиция');
+     recordEvent('guard','Репетиция: прогон сирены, света и циклов');
+     gT(async()=>{
+      if(guard.alarm&&guard.alarm.doorName==='Репетиция'){await guardStopAlarm();recordEvent('guard','Репетиция завершена')}
+     },(3*60000+2*60000)*GUARD_SCALE);
+     return json(res,200,{rehearsal:true});
+    }
+     return json(res,400,{error:'Неизвестное действие охраны.'});
    }
    // 3.4.6: поиск ONVIF-камер в локальной сети (WS-Discovery) — для формы в тех.разделе.
    if(route==='onvif-discover'&&req.method==='POST'){

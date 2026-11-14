@@ -4207,6 +4207,14 @@ function armPhrase(exitSec = 120) {
   const min = Math.max(1, Math.round((Number(exitSec) || 120) / 60));
   return `\u0423\u0445\u043E\u0436\u0443. \u041E\u0445\u0440\u0430\u043D\u0430 \u0432\u0441\u0442\u0430\u043D\u0435\u0442 \u0447\u0435\u0440\u0435\u0437 ${min} ${min === 1 ? "\u043C\u0438\u043D\u0443\u0442\u0443" : "\u043C\u0438\u043D\u0443\u0442\u044B"}. \u0414\u043E \u0432\u0435\u0447\u0435\u0440\u0430!`;
 }
+function voiceQuiet(prefs, minute) {
+  return isNight(minute, prefs?.nightStart, prefs?.nightEnd, "auto");
+}
+var VOICE_COOLDOWN_MS = 10 * 60 * 1e3;
+function shouldSpeak(text, lastTs, now, cooldownMs = VOICE_COOLDOWN_MS) {
+  if (!lastTs) return true;
+  return now - lastTs >= cooldownMs;
+}
 function disarmPhrase() {
   return "\u041E\u0445\u0440\u0430\u043D\u0430 \u0441\u043D\u044F\u0442\u0430. \u0414\u043E\u0431\u0440\u043E \u043F\u043E\u0436\u0430\u043B\u043E\u0432\u0430\u0442\u044C \u0434\u043E\u043C\u043E\u0439!";
 }
@@ -5144,8 +5152,14 @@ async function guardLights(on) {
     }
   }
 }
-async function guardSay(text, prefs) {
+var guardSpoken = /* @__PURE__ */ new Map();
+async function guardSay(text, prefs, urgent = false) {
   if (!voiceEnabled(prefs)) return;
+  const d = /* @__PURE__ */ new Date(), minute = d.getHours() * 60 + d.getMinutes();
+  if (!urgent && voiceQuiet(prefs, minute)) return;
+  const now = Date.now();
+  if (!shouldSpeak(text, guardSpoken.get(text) || 0, now, VOICE_COOLDOWN_MS * GUARD_SCALE)) return;
+  guardSpoken.set(text, now);
   try {
     await ha.announce(text, prefs);
   } catch (error) {
@@ -5240,10 +5254,8 @@ async function guardTick() {
         console.log("GUARDSTATES ERR:", e?.message);
         return [];
       });
-      if (process.env.PANEL_DOOR_DEBUG) console.log("GUARDSTATES n=", states.length, "ib=", states.find((x) => x.entity_id === prefs.guardEntity)?.state);
       const sw = states.find((e) => e.entity_id === prefs.guardEntity);
       const swOn = sw ? sw.state === "on" : false;
-      if (process.env.PANEL_DOOR_DEBUG) console.log("GUARDTICK swOn=", swOn, "armed=", armed, "ge=", prefs.guardEntity);
       if (swOn && !armed) {
         prefs.guardArmedAway = true;
         db.prepare("UPDATE profiles SET preferences=? WHERE id=?").run(JSON.stringify(prefs), guardProfileId());
@@ -5296,7 +5308,7 @@ async function guardTick() {
         if (openMin >= prefs.guardHomeAnnounceMinutes && !guard.alerted.has(keyN)) {
           guard.alerted.set(keyN, now);
           recordEvent("door", door.name + " \u043E\u0442\u043A\u0440\u044B\u0442\u0430 \u0434\u043E\u043B\u044C\u0448\u0435 " + prefs.guardHomeAnnounceMinutes + " \u043C\u0438\u043D \u2014 \u043E\u0437\u0432\u0443\u0447\u043A\u0430");
-          await guardSay(doorOpenPhrase(door.name), prefs);
+          await guardSay(doorOpenPhrase(door.name), prefs, true);
         }
       }
     }
@@ -5615,6 +5627,19 @@ var server = http.createServer(async (req, res) => {
           recordEvent("guard", "\u0412\u044B\u0445\u043E\u0434 \u043E\u0442\u043C\u0435\u043D\u0451\u043D \u2014 \u043E\u0445\u0440\u0430\u043D\u0430 \u043D\u0435 \u0432\u043A\u043B\u044E\u0447\u0435\u043D\u0430");
           await guardSay(cancelExitPhrase(), prefs);
           return json(res, 200, { armed: false });
+        }
+        if (request.action === "rehearse") {
+          if (prefs.guardArmedAway === true) return json(res, 409, { error: "\u041E\u0445\u0440\u0430\u043D\u0430 \u0432\u0437\u0432\u0435\u0434\u0435\u043D\u0430 \u2014 \u0440\u0435\u043F\u0435\u0442\u0438\u0446\u0438\u044F \u043D\u0435 \u043D\u0443\u0436\u043D\u0430." });
+          if (guard.alarm) return json(res, 409, { error: "\u0426\u0438\u043A\u043B \u0441\u0438\u0440\u0435\u043D\u044B \u0443\u0436\u0435 \u0438\u0434\u0451\u0442." });
+          guardStartAlarmCycle("\u0420\u0435\u043F\u0435\u0442\u0438\u0446\u0438\u044F");
+          recordEvent("guard", "\u0420\u0435\u043F\u0435\u0442\u0438\u0446\u0438\u044F: \u043F\u0440\u043E\u0433\u043E\u043D \u0441\u0438\u0440\u0435\u043D\u044B, \u0441\u0432\u0435\u0442\u0430 \u0438 \u0446\u0438\u043A\u043B\u043E\u0432");
+          gT(async () => {
+            if (guard.alarm && guard.alarm.doorName === "\u0420\u0435\u043F\u0435\u0442\u0438\u0446\u0438\u044F") {
+              await guardStopAlarm();
+              recordEvent("guard", "\u0420\u0435\u043F\u0435\u0442\u0438\u0446\u0438\u044F \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0430");
+            }
+          }, (3 * 6e4 + 2 * 6e4) * GUARD_SCALE);
+          return json(res, 200, { rehearsal: true });
         }
         return json(res, 400, { error: "\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435 \u043E\u0445\u0440\u0430\u043D\u044B." });
       }

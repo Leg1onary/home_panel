@@ -413,7 +413,7 @@ function openGuardSheet(){
  ${doors||'<p class="description">Двери не привязаны — привяжи в тех.разделе.</p>'}
  <div class="sheet-actions"><button class="primary" data-action="guard-arm" ${disabled(g.armed&&!g.alarm)}>Ушёл — поставить</button>
  <button class="secondary" data-action="guard-disarm" ${disabled(!g.armed)}>Снять с охраны</button>
- ${g.exitRemaining>0?'<button class="secondary" data-action="guard-cancel">Отменить выход</button>':''}</div>
+ ${g.exitRemaining>0?'<button class="secondary" data-action="guard-cancel">Отменить выход</button>':''}${!g.armed&&!g.alarm?`<button class="secondary" data-action="guard-rehearse">${I('Sparkles')}Репетиция цикла</button>`:g.alarm?.doorName==='Репетиция'?'<button class="secondary" data-action="guard-disarm">Остановить репетицию</button>':''}</div>
  <p class="description">Вне дома: дверь открыта дольше ${state.guardAwayMinutes||3} мин — сирена циклами (3 мин / пауза 2 мин) + свет. Ночь: алерт через ${state.guardHomeAlertMinutes||10} мин, озвучка через ${state.guardHomeAnnounceMinutes||30} мин.</p></div>`);
 }
 async function loadHomeTicker(){
@@ -1941,7 +1941,15 @@ async function dispatchAction(e){
  if(a==='events-reload')return loadEvents(true);
  if(a==='events-open'){state.view='events';render();return}
  if(a==='guard-sheet')return openGuardSheet();
- if(a==='guard-arm'||a==='guard-disarm'||a==='guard-cancel'){
+ if(a==='guard-rehearse'){
+   try{
+    await api('guard',{method:'POST',body:{action:'rehearse'}});
+    toast('Репетиция: сирена и свет прогоняют цикл 3/2 мин');
+    guardData=null;loadGuardChip();closeModal();
+   }catch(error){toast(error.message)}
+   return;
+  }
+  if(a==='guard-arm'||a==='guard-disarm'||a==='guard-cancel'){
   const action=a==='guard-arm'?'arm':a==='guard-disarm'?'disarm':'cancel-exit';
   try{
    await api('guard',{method:'POST',body:{action}});
