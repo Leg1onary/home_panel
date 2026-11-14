@@ -4,6 +4,7 @@
 // Разметку монтирует app.js (render()/refresh()); здесь нет обращения к DOM.
 import {esc,timeOf,PANEL_TIMEZONE} from './dom.js';
 import {WEATHER_LABEL,WEATHER_ICON,WEATHER_DATA} from './weather-const.js';
+import {weatherHint} from './weather-hint.js';
 import {dayArcMarkup,dayProgressParams,storedSunrise} from './day-arc.js';
 const I=name=>`<i data-lucide="${name}"></i>`;
 const weekday=t=>new Intl.DateTimeFormat('ru-RU',{weekday:'short',day:'numeric',month:'short',timeZone:PANEL_TIMEZONE}).format(new Date(t));
@@ -119,6 +120,26 @@ export function weatherNowMarkup(args){
   .filter(([,v])=>v!==null).map(([k,v])=>`<div class="weather-fact"><span>${esc(k)}</span><strong>${esc(v)}</strong></div>`).join('');
  return `<div class="weather-now-main" data-weather="${esc(args.data||'cloudy')}">${I(args.icon)}<div><strong class="weather-temp">${esc(t)}°</strong><span class="weather-label">${esc(args.label)}</span>${feelLabel?`<span class="weather-feels">Ощущается как ${esc(feelLabel)}</span>`:''}</div></div>
  <div class="weather-facts">${facts||'<span class="weather-fact is-faint">Подробностей у сущности нет</span>'}</div>`;
+}
+// 3.9.4: «Советы по погоде» — только из реальных данных (прогноз + текущие
+// атрибуты). Ничего не выдумываем: нет повода — пустая строка. Максимум 2 совета,
+// самый важный первым. Порядок важности: осадки > мороз > ветер > жара > ясная идилия.
+export function weatherAdvice(args,forecast=[],now=Date.now()){
+ if(!args)return '';
+ const parts=[];
+ const hint=weatherHint(forecast,now);
+ if(hint){
+  if(/Дожд|Гроз|Град/i.test(hint))parts.push(`Возьми зонт — ${hint.toLowerCase()}`);
+  else if(/Снег/i.test(hint))parts.push(`Тёплая обувь — ${hint.toLowerCase()}`);
+ }
+ const feel=feelsLike(args.temp,args.wind);
+ if(feel!==null&&feel<0)parts.push(`Мороз ${feel.toFixed(0).replace('-0','0')}° — тёплая куртка и лёд под ногами`);
+ if(Number.isFinite(args.wind)&&args.wind>=30)parts.push(`Сильный ветер ${args.wind} км/ч`);
+ if(args.temp>=27)parts.push('Жарко — пей воду и голову в тень');
+ if(!parts.length&&['sunny','clear-night'].includes(args.state)&&(!Number.isFinite(args.wind)||args.wind<15))
+  parts.push('Ясно и спокойно — отличная погода');
+ if(!parts.length)return '';
+ return parts.slice(0,2).map(p=>`<span class="weather-advice-chip">${I('sparkles')}${esc(p)}</span>`).join('');
 }
 // Луна: фаза + освещённость + svg-кружок, «тень» которого сдвигается по фазе
 // (приближение: круг-маска скользит по диску, у полнолуния уходит за край).

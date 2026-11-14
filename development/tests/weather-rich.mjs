@@ -100,4 +100,23 @@ assert.match(weekly,/самая холодная ночь — ср \(−8°\)/,'
 assert.equal(weatherWeeklyMarkup([]),'','пустой daily → пусто');
 assert.equal(weatherWeeklyMarkup([{day:'пн',max:1,min:0}]),'','один день → сводки нет');
 console.log('weather-rich: ok (weekly, mmHg)');
+// 3.9.4: советы по погоде — только из реальных данных.
+import {weatherAdvice} from '../src/weather-page.js';
+assert.equal(weatherAdvice(null),'','нет аргументов → нет советов');
+// дождь через ~40 мин → зонт
+const rainForecast=[{datetime:new Date(now+40*60000).toISOString(),condition:'rainy',temperature:8}];
+const advRain=weatherAdvice({temp:8,wind:null,state:'cloudy',label:'Облачно'},rainForecast,now);
+assert.match(advRain,/Возьми зонт — дождь через ~40 мин/,'зонт при скором дожде');
+// мороз с ветром
+const advCold=weatherAdvice({temp:-5,wind:36,state:'snowy',label:'Снег'},[],now);
+assert.match(advCold,/Мороз -?\d+° — тёплая куртка/,'совет при морозе');
+assert.match(advCold,/Сильный ветер 36 км\/ч/,'совет при сильном ветре');
+// жара
+assert.match(weatherAdvice({temp:29,wind:null,state:'sunny',label:'Ясно'},[],now),/Жарко — пей воду/,'совет в жару');
+// ясная идилия
+assert.match(weatherAdvice({temp:20,wind:8,state:'sunny',label:'Ясно'},[],now),/Ясно и спокойно/,'совет в ясную погоду');
+// облачно, ветер слабый, осадков нет → честно пусто (не выдумываем)
+assert.equal(weatherAdvice({temp:15,wind:10,state:'cloudy',label:'Облачно'},[],now),'','нет повода → нет советов');
+console.log('weather-rich: ok (advice)');
+
 

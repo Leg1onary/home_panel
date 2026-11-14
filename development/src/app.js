@@ -46,7 +46,7 @@ import {YARD_REFRESH_MS} from './yard-card.js';
 import {parseBrightness,scheduleWave} from './light-wave.js';
 import {loadShopping,paintShopping,shoppingMutate,shoppingState,shoppingCardMarkup} from './shopping.js';
 import {paintAlarm,alarmMarkup,alarmEntity,alarmAction} from './alarm.js';
-import {weatherViewArgs,weatherNowMarkup,weatherArcMarkup,weatherDailyMarkup,weatherHourlyMarkup,weatherMoonMarkup,weatherWeeklyMarkup,weatherEntityOf} from './weather-page.js';
+import {weatherViewArgs,weatherNowMarkup,weatherArcMarkup,weatherDailyMarkup,weatherHourlyMarkup,weatherMoonMarkup,weatherWeeklyMarkup,weatherAdvice,weatherEntityOf} from './weather-page.js';
 import {eventsListMarkup,eventsFilterMarkup,activityMarkup,lightTodayMarkup} from './events.js';
 import {parseBlocks,serializeBlocks,digestEssence,energyEssence,stationEssence} from './home-blocks.js';
 
@@ -832,7 +832,7 @@ function weatherPage(){
  trackSunrise();
  const args=weatherViewArgs(state.entityStates,weatherForecast);
  return `<div class="view weather-view"><div class="view-title"><div><div class="eyebrow">Среда</div><h1>Погода</h1><p>Сейчас, световой день и прогноз.</p></div></div>
- <section class="weather-now-card">${weatherNowMarkup(args)}</section>
+ <section class="weather-now-card">${weatherNowMarkup(args)}<div id="weather-advice" class="weather-advice">${args?weatherAdvice(args,weatherForecast):''}</div></section>
  <section class="weather-arc-card"><div id="weather-arc">${args?.sun?weatherArcMarkup(args.sun):''}</div></section>
  <section class="weather-moon-card"><h2>Луна</h2>${weatherMoonMarkup(Date.now())}</section>
  <section class="weather-forecast-card"><h2>Прогноз на дни</h2><div id="weather-weekly">${args?weatherWeeklyMarkup(args.daily):''}</div><div id="weather-daily">${args?weatherDailyMarkup(args.daily):'<p class="description forecast-error">Прогноз недоступен</p>'}</div></section>
@@ -856,6 +856,7 @@ async function loadWeatherForecast(){
  if(!args)return;
  updateRegion('#weather-daily',weatherDailyMarkup(args.daily));
  updateRegion('#weather-weekly',weatherWeeklyMarkup(args.daily));
+ updateRegion('#weather-advice',weatherAdvice(args,weatherForecast));
  updateRegion('#weather-updated',`Обновлено ${timeOf(weatherFetchedAt)}`);
  icons();
  const tape=document.querySelector('.weather-view .weather-hourly-tape');
