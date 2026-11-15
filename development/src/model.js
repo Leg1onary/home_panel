@@ -6,7 +6,6 @@ import {modelLevels} from './model-geometry.js';
 import {scenePins,pinMarkup} from './scene-pins.js';
 import {motionObservation} from './motion.js';
 import {binaryValue} from './sensor-state.js';
-import {tempTint} from './thermal.js';
 import {state} from './schema.js';
 import {PANEL_TIMEZONE} from './dom.js';
 // Температура комнаты для теплового тинта: живой сенсор (привязка+состояние HA)
@@ -340,12 +339,14 @@ export function updateModel(rooms,state){
  const {floors,zoneFloors,outlines}=current;
  current.setPins(state);
  for(const [id,m]of Object.entries(floors)){
-   const visual=floorVisual(rooms.find(x=>x.id===id)?.channels,state);
-   current.paintFloor(m,visual,tempTint(roomTemperature(id)));
+   // 3.9.8: тепловизор-тинт снят с пола — при одном датчике тёплое свечение
+   // только у гостиной выглядело как необъяснимая подсветка. Пол честно
+   // отражает только состояние света (floorVisual).
+   current.paintFloor(m,floorVisual(rooms.find(x=>x.id===id)?.channels,state));
  }
  zoneFloors.forEach((m,i)=>{
   const c=rooms.find(x=>x.id==='living')?.channels.find(c=>c.id===`living:${i}`);
-  current.paintFloor(m,floorVisual(c?[c]:[],state),tempTint(roomTemperature('living')));
+  current.paintFloor(m,floorVisual(c?[c]:[],state));
  });
  current.applyRoomLights(rooms,state);
  current.motionPulse(terraceMotion(state));
