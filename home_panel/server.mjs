@@ -3957,6 +3957,8 @@ var TICK_MS = 8e3;
 var DEDUP_MS = 15e3;
 var POST_DELAYS = [6e3, 12e3];
 var KEEP = 30;
+var VERIFY_GRID = { w: 32, h: 18 };
+var VERIFY_THRESHOLD = 5;
 var BLANK = import_jpeg_js2.default.encode({ data: Buffer.alloc(4, 255), width: 1, height: 1 }, 80).data.toString("base64");
 var YardClips = class {
   constructor({ ha: ha2, db: db2, notify = null, getEntityId = () => null, yardOnvif = null, getSnaps = null } = {}) {
@@ -3969,6 +3971,7 @@ var YardClips = class {
     this.timer = null;
     this.busy = false;
     this.lastClipAt = 0;
+    this.lastRingAt = 0;
     db2.exec("CREATE TABLE IF NOT EXISTS yard_clips (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, source TEXT NOT NULL, frames BLOB NOT NULL);");
     this.insert = db2.prepare("INSERT INTO yard_clips(at,source,frames) VALUES(?,?,?)");
     this.prune = db2.prepare("DELETE FROM yard_clips WHERE id NOT IN (SELECT id FROM yard_clips ORDER BY at DESC, id DESC LIMIT ?)");
@@ -4026,6 +4029,7 @@ var YardClips = class {
       }
       this.ring.push(b64);
       if (this.ring.length > RING) this.ring = this.ring.slice(-RING);
+      this.lastRingAt = Date.now();
       return b64;
     }
     if (identicalB64) return identicalB64;
@@ -4038,10 +4042,48 @@ var YardClips = class {
       if (this.ring.length && this.ring[this.ring.length - 1] === b64) return b64;
       this.ring.push(b64);
       if (this.ring.length > RING) this.ring = this.ring.slice(-RING);
+      this.lastRingAt = Date.now();
       return b64;
     } catch {
       return null;
     }
+  }
+  // 3.9.7: верификационный кадр — ТОЛЬКО через живой camera_proxy (тот же путь,
+  // что у панельного детектора движения). ONVIF-snapshot у Tapo обновляется раз
+  // в минуты и для подтверждения бесполезен.
+  async captureProxy() {
+    const entityId = this.getEntityId();
+    if (!entityId || !this.ha?.enabled) return null;
+    try {
+      const raw = await this.ha.requestRaw("/api/camera_proxy/" + entityId + "?width=320&height=180");
+      if (!raw || raw.type !== "image/jpeg" || !raw.bytes?.length) return null;
+      return Buffer.from(raw.bytes).toString("base64");
+    } catch {
+      return null;
+    }
+  }
+  // 3.9.7: анти-ложняк. ONVIF motion у Tapo срабатывает на пустом дворе, а
+  // snapshot обновляется редко. Если pre-кадры свежие (< VERIFY_MIN_PRE_MS) и
+  // post-кадр от них практически не отличается (grid-diff < VERIFY_THRESHOLD) —
+  // событие ложное: клип не пишется, хроника не загрязняется, окно дедупа не
+  // закрывается (реальное движение через секунду всё равно запишется).
+  gridScore(a, b) {
+    const da = import_jpeg_js2.default.decode(Buffer.from(a, "base64"), { useTArray: true }), db2 = import_jpeg_js2.default.decode(Buffer.from(b, "base64"), { useTArray: true });
+    const { w: gw, h: gh } = VERIFY_GRID, step = 4;
+    const grid = (d) => {
+      const g = new Array(gw * gh).fill(0), cnt = new Array(gw * gh).fill(0);
+      for (let y = 0; y < d.height; y += step) for (let x = 0; x < d.width; x += step) {
+        const i = (y * d.width + x) * 4, lum = 0.299 * d.data[i] + 0.587 * d.data[i + 1] + 0.114 * d.data[i + 2];
+        const gx = Math.min(gw - 1, Math.floor(x / d.width * gw)), gy = Math.min(gh - 1, Math.floor(y / d.height * gh));
+        g[gy * gw + gx] += lum;
+        cnt[gy * gw + gx]++;
+      }
+      return g.map((v, i) => cnt[i] ? v / cnt[i] : 0);
+    };
+    const ga = grid(da), gb = grid(db2);
+    let s = 0;
+    for (let i = 0; i < ga.length; i++) s += Math.abs(ga[i] - gb[i]);
+    return s / ga.length;
   }
   // Событие движения → клип. Дедуп: <15с от последнего клипа — окно продлевается,
   // новый клип не создаётся. pre-кадры из кольца, пост-кадры через POST_DELAYS.
@@ -4073,6 +4115,25 @@ var YardClips = class {
     }
     const unique = [];
     for (const f of frames) if (!unique.length || unique[unique.length - 1] !== f) unique.push(f);
+    if (posts && String(source).startsWith("onvif")) {
+      const v1 = await this.captureProxy();
+      if (v1) {
+        await new Promise((r) => setTimeout(r, 5e3));
+        const v2 = await this.captureProxy();
+        if (v2) {
+          let score = NaN;
+          try {
+            score = this.gridScore(v1, v2);
+          } catch {
+          }
+          if (Number.isFinite(score) && score < VERIFY_THRESHOLD) {
+            this.lastClipAt = 0;
+            return null;
+          }
+          frames.unshift(v2);
+        }
+      }
+    }
     const info = this.insert.run(at, source, Buffer.from(JSON.stringify(unique)));
     this.prune.run(KEEP);
     const result = { id: Number(info.lastInsertRowid), at, source, frameCount: unique.length };

@@ -11,7 +11,7 @@ const I=name=>`<i data-lucide="${name}"></i>`;
 // deps: playing, title, room, demo, playDisabled, prevDisabled, nextDisabled.
 export function stationMarkup(deps){
  return `<section class="station-card station-compact"><div class="station-top"><span class="eyebrow">Станция · ${esc(deps.room)}${deps.demo?' · демо':''}</span>${deps.playing?'<span class="eq-bars" aria-hidden="true"><i></i><i></i><i></i></span>':I('audio-lines')}</div>
- <button class="station-compact-title" data-action="station" title="${esc(deps.title)}"><strong>${esc(deps.title)}</strong></button>
+ <button class="station-compact-title" data-action="station" title="${esc(deps.title)}"><strong>${esc(deps.title)}</strong>${deps.artist?`<small>${esc(deps.artist)}</small>`:''}</button>
  <div class="station-compact-controls"><button class="icon-button" data-action="station-previous" aria-label="Предыдущий трек" ${disabled(deps.prevDisabled)}>${I('skip-back')}</button>
  <button class="icon-button station-compact-play" data-action="station-play" aria-label="${deps.playing?'Пауза':'Продолжить на станции'}" ${disabled(deps.playDisabled)}>${I(deps.playing?'pause':'play')}</button>
  <button class="icon-button" data-action="station-next" aria-label="Следующий трек" ${disabled(deps.nextDisabled)}>${I('skip-forward')}</button></div></section>`;
