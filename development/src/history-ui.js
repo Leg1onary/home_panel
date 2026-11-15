@@ -95,7 +95,6 @@ export function statisticsView(s=historyState){
  const eventItem=(e,isFocused)=>`<li class="${e.type==='leak'&&binaryValue('leak',e.state)===true?'is-alarm':''}${isFocused?' is-focus':''}" data-history-event-id="${esc(e.id)}" data-history-event-at="${e.at}" role="button" tabindex="0" aria-pressed="${isFocused}" aria-label="${esc(e.name)}: показать контекст событий"><time datetime="${new Date(e.at).toISOString()}">${time(e.at)}</time><div><strong>${esc(e.name)}</strong><span>${esc(areaName(e.room))} · ${esc(eventText(e))}</span></div></li>`;
  const roomIds=[...new Set([...areas.map(a=>a.id),...[...(d?.series||[]),...(d?.events||[]),...(d?.lights||[])].map(g=>g.room)])];
  const lights=(d?.lights||[]).filter(e=>s.room==='all'||e.room===s.room);
- const lineHours=lights.reduce((sum,e)=>sum+e.onMs/3600000,0),coverage=lights.length?lights.reduce((sum,e)=>sum+e.coverage,0)/lights.length:0;
  return `<div class="statistics-view"><div class="statistics-heading"><div><p class="eyebrow">ИСТОРИЯ ДОМА</p><h1>Статистика</h1><p>Показания и события из Home Assistant. Без выдуманных данных.</p></div><button class="secondary" data-action="history-reload" ${s.loading?'disabled':''}>${s.loading?'Загружаем…':'Обновить'}</button></div>
  ${energyChartBlock()}
  <section class="activity-card"><div class="section-heading"><div><h2>Активность дома</h2><p>Из хроники панели: свет, двери, двор за 14 дней</p></div></div><div data-activity><p class="description">Загружаем…</p></div></section>
@@ -109,8 +108,5 @@ export function statisticsView(s=historyState){
  ${graph(s)}
  <div class="history-ranges">${groups.map(g=>`<span>${esc(areaName(g.room))}: <b>${number(g.min)}…${number(g.max)} ${s.metric==='temperature'?'°C':'%'}</b></span>`).join('')}</div>
  <p class="history-footnote">Разрывы — нет достоверных показаний. Последняя точка относится к истории, а не обязательно к текущему состоянию.</p></section>
- <section class="history-lights"><h2>Свет за период</h2><div class="history-line-hours">${d&&coverage>0?number(lineHours):'—'}<small>линия·ч</small></div><p>Сумма времени включения всех линий, не расход электричества.</p>
- <p class="history-footnote">Покрытие достоверными состояниями: ${d?Math.round(coverage*100):'—'} %. Непривязанные линии не учитываются.</p>
- ${lights.sort((a,b)=>b.onMs-a.onMs).slice(0,6).map(e=>`<div class="history-light-row"><span>${esc(e.name)}</span><b>${e.knownMs?number(e.onMs/3600000)+' ч':'нет истории'}</b></div>`).join('')}
- <div class="history-source">Home Assistant History${d?' · загружено '+time(d.end)+'<br/>История есть для '+d.recordedCount+' из '+d.scopeCount+' сущностей':''}</div></section></div></div>`;
+ <div class="history-source">Home Assistant History${d?' · загружено '+time(d.end)+'<br/>История есть для '+d.recordedCount+' из '+d.scopeCount+' сущностей':''}</div></div></div>`;
 }
