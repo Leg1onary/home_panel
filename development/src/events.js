@@ -39,22 +39,61 @@ export function eventsListMarkup(rows,now=Date.now()){
 // 3.6.0: аналитика из хроники — свет/двери по дням, двор по часам. Всё честно
 // из событий: нет событий за день → ноль, не «подделка».
 const DAY_LABEL=d=>`${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}`;
+// 3.9.10: состояние светового события по тексту хроники. «выключено» проверяем
+// ПЕРВЫМ — «выключено» заканчивается на «включено», обратный порядок врёт.
+const lightStateOf=text=>{
+ const s=String(text||'').trim();
+ if(/выключено$/i.test(s))return 'off';
+ if(/включено$/i.test(s))return 'on';
+ return null;
+};
+// «Гостиная · Правый выключатель: включено» → «Гостиная · Правый выключатель»
+const lightKeyOf=text=>String(text||'').split(':')[0].trim();
 export function computeAnalytics(rows,now=Date.now()){
- const valid=(Array.isArray(rows)?rows:[]).filter(r=>r&&Number.isFinite(r.at)&&EVENT_TYPES[r.type]);
+ const valid=(Array.isArray(rows)?rows:[]).filter(r=>r&&Number.isFinite(r.at)&&EVENT_TYPES[r.type])
+  .sort((a,b)=>a.at-b.at);
  const dayStart=t=>{const d=new Date(t);d.setHours(0,0,0,0);return d.getTime()};
  const days=[];for(let i=13;i>=0;i--){const t=dayStart(now)-i*86400000;days.push({start:t,label:DAY_LABEL(new Date(t))})}
  const inDay=t=>{const k=dayStart(t);return days.findIndex(d=>d.start===k)};
  const lightDays=days.map(d=>({...d,count:0})),doorDays=days.map(d=>({...d,count:0}));
  const lightRooms=new Map(),yardHours=Array.from({length:24},()=>0);
+ // 3.9.10: время горения по комнатам — пары включ/выключ из хроники.
+ // Начатое до окна или не выключенное до сих пор считается от края окна/от «сейчас».
+ const lightOn=new Map(),roomMs=new Map();
  let lights=0,doors=0,yards=0;
+ const addMs=(key,ms)=>roomMs.set(key,(roomMs.get(key)||0)+Math.max(0,ms));
  for(const r of valid){
   const idx=inDay(r.at);if(idx<0)continue;
-  if(r.type==='light'){lightDays[idx].count++;lights++;const room=String(r.text||'').split(':')[0].trim();if(room)lightRooms.set(room,(lightRooms.get(room)||0)+1)}
+  if(r.type==='light'){
+   const st=lightStateOf(r.text),key=lightKeyOf(r.text);
+   const room=String(r.text||'').split(' ·')[0].trim();
+   if(st==='on'){
+    lights++;
+    if(room)lightRooms.set(room,(lightRooms.get(room)||0)+1);
+    lightDays[idx].count++;
+    if(!lightOn.has(key))lightOn.set(key,r.at);
+   }else if(st==='off'){
+    const start=lightOn.get(key);
+    if(start!==undefined){addMs(key,r.at-start);lightOn.delete(key)}
+   }
+  }
   if(r.type==='door'){doorDays[idx].count++;doors++}
   if(r.type==='yard'){yardHours[new Date(r.at).getHours()]++;yards++}
  }
+ // Всё, что ещё горит, — до «сейчас».
+ for(const [key,start] of lightOn)addMs(key,now-start);
  const rooms=[...lightRooms.entries()].map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count).slice(0,5);
- return {lightDays,doorDays,yardHours,rooms,totals:{light:lights,door:doors,yard:yards},since:days[0].start};
+ const roomMinutes=[...roomMs.entries()].map(([name,m])=>({name,min:Math.round(m/60000)}))
+  .filter(r=>r.min>=1).sort((a,b)=>b.min-a.min);
+ return {lightDays,doorDays,yardHours,rooms,roomMinutes,totals:{light:lights,door:doors,yard:yards},since:days[0].start};
+}
+// Мини-нотация длительности: «6 ч 12 мин», «45 мин», «40 с».
+export function durationLabel(minutes){
+ const m=Math.max(0,Math.round(minutes));
+ const h=Math.floor(m/60),rest=m%60;
+ if(h>=1)return `${h} ч ${rest?rest+' мин':''}`.trim();
+ if(m>=1)return `${m} мин`;
+ return 'меньше минуты';
 }
 // Разметка «Активность дома»: три мини-графика на HTML-барах (без библиотек).
 const barRow=(bars,max)=>`<div class="activity-bars">${bars.map(b=>`<span class="activity-bar" data-count="${b.count}" title="${esc(b.title)}"><i style="height:${max?Math.round(b.count/max*100):0}%"></i></span>`).join('')}</div>`;
@@ -71,7 +110,7 @@ export function activityMarkup(a,now=Date.now()){
   <div class="activity-item"><h3>Свет · 14 дней <small>${a.totals.light} включений</small></h3>${barRow(lightBars,maxLight)}</div>
   <div class="activity-item"><h3>Двери · 14 дней <small>${a.totals.door} открытий</small></h3>${barRow(doorBars,maxDoor)}</div>
   <div class="activity-item activity-hours"><h3>Двор по часам <small>${a.totals.yard} событий</small></h3>${barRow(yardBars,maxYard)}<div class="activity-hours-axis">${Array.from({length:24},(_,h)=>`<span>${h%6===0?hourLabel(h):''}</span>`).join('')}</div></div>
- </div>${a.rooms.length?`<p class="activity-rooms">${a.rooms.map(r=>`${esc(r.name)} — ${r.count}`).join(' · ')}</p>`:''}`;
+ </div>${Array.isArray(a.roomMinutes)&&a.roomMinutes.length?`<p class="activity-rooms"><strong>Свет горел по комнатам (14 дней):</strong> ${a.roomMinutes.slice(0,6).map(r=>`${esc(r.name)} — ${durationLabel(r.min)}`).join(' · ')}</p>`:''}`;
 }
 // 3.7.2: «Свет сегодня» — агрегат из хроники для раздела «Свет».
 export function lightTodayMarkup(lightDays,rooms){

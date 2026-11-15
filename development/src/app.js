@@ -774,23 +774,34 @@ let eventsRows=[],eventsFilter='all',eventsBusy=false,eventsQuery='';
 function eventsView(){
  return `<div class="view events-view"><div class="view-title"><div><div class="eyebrow">Хроника</div><h1>События</h1><p>Что происходило в доме: двор, двери, свет, показания.</p></div>
  <button class="icon-button" data-action="events-reload" ${disabled(eventsBusy)} aria-label="Обновить события"><i data-lucide="rotate-ccw"></i></button></div>
- <input class="events-search" data-events-search type="search" placeholder="Поиск по событиям…" value="${esc(eventsQuery)}" aria-label="Поиск по событиям"/>
- <div data-events-filters>${eventsFilterMarkup(eventsFilter,eventsRows)}</div>
+ <div class="events-topbar"><div class="events-searchbox"><i data-lucide="search"></i><input class="events-search" data-events-search type="search" placeholder="Поиск по событиям…" value="${esc(eventsQuery)}" aria-label="Поиск по событиям"/></div>
+ <div data-events-filters>${eventsFilterMarkup(eventsFilter,eventsRows)}</div></div>
  <div class="events-list" data-events-list>${eventsListMarkup(eventsRows.filter(r=>eventsFilter==='all'||r.type===eventsFilter))}</div></div>`;
 }
 let lightsTodayData=null;
+const LIGHTS_TODAY_CACHE_MS=60000;
+let lightsTodayAt=0,lightsTodayBusy=false;
 function paintLightsToday(){
  const node=$('#lights-today');
  if(!node)return;
- node.innerHTML=lightsTodayData?lightTodayMarkup(lightsTodayData.lightDays,lightsTodayData.rooms):'';
- icons();
+ const markup=lightsTodayData?lightTodayMarkup(lightsTodayData.lightDays,lightsTodayData.rooms):'';
+ // 3.9.10: перекрашиваем только при реально изменившейся разметке — строка
+ // больше не мигает при каждом refresh.
+ if(!markup){node.innerHTML='';node.dataset.rendered='';return}
+ if(node.dataset.rendered===markup)return;
+ node.innerHTML=markup;node.dataset.rendered=markup;icons();
 }
-async function loadLightsToday(){
+async function loadLightsToday(force=false){
+ const now=Date.now();
+ if(lightsTodayBusy||(!force&&lightsTodayData&&now-lightsTodayAt<LIGHTS_TODAY_CACHE_MS))return;
+ lightsTodayBusy=true;
  try{
   const a=await api('analytics');
+  lightsTodayData=a;lightsTodayAt=Date.now();
   if(state.view!=='rooms')return;
-  lightsTodayData=a;paintLightsToday();
+  paintLightsToday();
  }catch{/* агрегат не критичен */}
+ finally{lightsTodayBusy=false}
 }
 let activityBusy=false;
 async function loadActivity(force=false){
@@ -1175,7 +1186,7 @@ function refresh(){
  }else if(state.view==='weather'){paintWeatherArc();loadWeatherForecast()}
  else if(state.view==='events')updateEventsRegions(); // 3.9.7: без полной перерисовки — фокус поиска не сбрасывается
  else if(state.view==='statistics')loadActivity();
- else if(state.view!=='statistics')render(false);
+ else if(state.view!=='statistics'){render(false);if(state.view==='rooms')paintLightsToday()}
  if(!$('#overlay').hidden){
   if(state.techOpen&&techTab==='diagnostics')$('#sheet-content').innerHTML=technical();
   else if(settingsOpen){/* HA polling must not replace an open form or its focus. */}

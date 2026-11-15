@@ -4229,8 +4229,15 @@ var EVENT_TYPES = {
   guard: { icon: "shield", label: "\u041E\u0445\u0440\u0430\u043D\u0430" }
 };
 var DAY_LABEL = (d) => `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}`;
+var lightStateOf = (text) => {
+  const s = String(text || "").trim();
+  if (/выключено$/i.test(s)) return "off";
+  if (/включено$/i.test(s)) return "on";
+  return null;
+};
+var lightKeyOf = (text) => String(text || "").split(":")[0].trim();
 function computeAnalytics(rows, now = Date.now()) {
-  const valid = (Array.isArray(rows) ? rows : []).filter((r) => r && Number.isFinite(r.at) && EVENT_TYPES[r.type]);
+  const valid = (Array.isArray(rows) ? rows : []).filter((r) => r && Number.isFinite(r.at) && EVENT_TYPES[r.type]).sort((a, b) => a.at - b.at);
   const dayStart = (t) => {
     const d = new Date(t);
     d.setHours(0, 0, 0, 0);
@@ -4247,15 +4254,27 @@ function computeAnalytics(rows, now = Date.now()) {
   };
   const lightDays = days.map((d) => ({ ...d, count: 0 })), doorDays = days.map((d) => ({ ...d, count: 0 }));
   const lightRooms = /* @__PURE__ */ new Map(), yardHours = Array.from({ length: 24 }, () => 0);
+  const lightOn = /* @__PURE__ */ new Map(), roomMs = /* @__PURE__ */ new Map();
   let lights = 0, doors = 0, yards = 0;
+  const addMs = (key, ms) => roomMs.set(key, (roomMs.get(key) || 0) + Math.max(0, ms));
   for (const r of valid) {
     const idx = inDay(r.at);
     if (idx < 0) continue;
     if (r.type === "light") {
-      lightDays[idx].count++;
-      lights++;
-      const room = String(r.text || "").split(":")[0].trim();
-      if (room) lightRooms.set(room, (lightRooms.get(room) || 0) + 1);
+      const st = lightStateOf(r.text), key = lightKeyOf(r.text);
+      const room = String(r.text || "").split(" \xB7")[0].trim();
+      if (st === "on") {
+        lights++;
+        if (room) lightRooms.set(room, (lightRooms.get(room) || 0) + 1);
+        lightDays[idx].count++;
+        if (!lightOn.has(key)) lightOn.set(key, r.at);
+      } else if (st === "off") {
+        const start = lightOn.get(key);
+        if (start !== void 0) {
+          addMs(key, r.at - start);
+          lightOn.delete(key);
+        }
+      }
     }
     if (r.type === "door") {
       doorDays[idx].count++;
@@ -4266,8 +4285,10 @@ function computeAnalytics(rows, now = Date.now()) {
       yards++;
     }
   }
+  for (const [key, start] of lightOn) addMs(key, now - start);
   const rooms = [...lightRooms.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count).slice(0, 5);
-  return { lightDays, doorDays, yardHours, rooms, totals: { light: lights, door: doors, yard: yards }, since: days[0].start };
+  const roomMinutes = [...roomMs.entries()].map(([name, m]) => ({ name, min: Math.round(m / 6e4) })).filter((r) => r.min >= 1).sort((a, b) => b.min - a.min);
+  return { lightDays, doorDays, yardHours, rooms, roomMinutes, totals: { light: lights, door: doors, yard: yards }, since: days[0].start };
 }
 
 // src/voice-phrases.js
