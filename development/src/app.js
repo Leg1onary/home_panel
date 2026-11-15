@@ -1024,7 +1024,7 @@ async function openYardClipSheet(b){
  if(!Number.isFinite(id)||!Number.isFinite(at))return;
  for(const u of yardClipUrls)URL.revokeObjectURL(u);yardClipUrls=[];
  const frames=Array.from({length:count},(_,i)=>`<div class="yard-clip-frame" data-clip-idx="${i}"><span>Загрузка…</span></div>`).join('');
- simpleSheet(`<div class="yard-clip-sheet"><div class="eyebrow">Двор</div><h2>Событие · ${esc(timeOf(at))}</h2><p class="description">${esc(source==='frames'?'Движение по кадрам камеры':'Датчик камеры · ONVIF')} · ${esc(new Date(at).toLocaleString())}</p><div class="yard-clip-frames">${frames}</div></div>`);
+ simpleSheet(`<div class="yard-clip-sheet"><div class="eyebrow">Двор</div><h2>Событие · ${esc(new Date(at).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit'}))} ${esc(timeOf(at))}</h2><p class="description">${esc(source==='frames'?'Движение по кадрам камеры':'Датчик камеры · ONVIF')} · ${esc(new Date(at).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'}))}, ${esc(new Date(at).toLocaleTimeString('ru-RU'))}</p><div class="yard-clip-frames">${frames}</div></div>`);
  for(let i=0;i<count;i++){
   try{
    const blob=await api(`yard-clip/${id}/${i}`,{image:true});

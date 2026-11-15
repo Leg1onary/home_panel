@@ -10,6 +10,15 @@ export const yardClipsBus={fns:[],last:undefined,sub(fn){this.fns.push(fn);if(th
 const CACHE_MS=10000,SHOW_LIMIT=10;
 let listCache={at:0,clips:null};
 const sourceLabel=s=>s==='onvif'?'Датчик камеры · ONVIF':s==='frames'?'Кадры камеры':'Движение';
+// 3.9.7: дата в списке — сегодня только время, иначе «вчера» или дд.мм.
+const dayLabel=at=>{
+ const d=new Date(Number(at)),today=new Date();
+ const same=(a,b)=>a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate();
+ if(same(d,today))return '';
+ const yesterday=new Date(today.getTime()-86400000);
+ if(same(d,yesterday))return 'вчера';
+ return new Intl.DateTimeFormat('ru-RU',{day:'2-digit',month:'2-digit'}).format(d);
+};
 // Ночь события — по локальному времени панели в момент at (минуты new Date(at)),
 // та же математика, что isNight для «сейчас» (см. guard.js).
 const atMinute=at=>{const d=new Date(at);return d.getHours()*60+d.getMinutes()};
@@ -48,7 +57,7 @@ export function YardClipsWidget({live,nightStart='23:00',nightEnd='07:00'}){
     data-clip-at=${c.at} data-clip-count=${Math.min(4,c.frameCount||1)} data-clip-source=${esc(c.source||'')}
     aria-label=${'Клип двора, '+(night?'ночь, ':'')+timeOf(c.at)}>
     <${ClipThumb} id=${c.id}/>
-    <span class="yard-clip-meta"><strong>${night?html`<i data-lucide="moon" class="yard-clip-moon"></i>`:''}${timeOf(c.at)}</strong><small>${esc(sourceLabel(c.source))}</small></span>
+    <span class="yard-clip-meta"><strong>${night?html`<i data-lucide="moon" class="yard-clip-moon"></i>`:''}${timeOf(c.at)}</strong><small>${esc(sourceLabel(c.source))}${dayLabel(c.at)?' · '+dayLabel(c.at):''}</small></span>
     <i data-lucide="chevron-right"></i>
    </button>`})}
   </div>

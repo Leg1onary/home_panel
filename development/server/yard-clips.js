@@ -10,7 +10,7 @@ const RING=3,TICK_MS=8000,DEDUP_MS=15000,POST_DELAYS=[6000,12000],KEEP=30;
 // 3.9.7: подтверждение ONVIF-события диффом кадров. Камеры Tapo шлют motion
 // ложными срабатываниями (ночь/тени/сенсор), а их snapshot-эндпоинт обновляется
 // раз в минуты. Клип пишется только если post-кадр реально отличается от pre.
-const VERIFY_GRID={w:32,h:18},VERIFY_THRESHOLD=5;
+const VERIFY_GRID={w:32,h:18},VERIFY_THRESHOLD=5,VERIFY_STRONG=18,VERIFY_GLOBAL_FRAC=0.55;
 const VERIFY_MIN_PRE_MS=20000; // pre-кадры старше этого — кольцо «протухло», верим событию
 const BLANK=jpeg.encode({data:Buffer.alloc(4,255),width:1,height:1},80).data.toString('base64');
 export {RING as YARD_CLIPS_RING,TICK_MS as YARD_CLIPS_TICK_MS,DEDUP_MS as YARD_CLIPS_DEDUP_MS,KEEP as YARD_CLIPS_KEEP};
@@ -83,12 +83,14 @@ export class YardClips{
    return Buffer.from(raw.bytes).toString('base64');
   }catch{return null}
  }
- // 3.9.7: анти-ложняк. ONVIF motion у Tapo срабатывает на пустом дворе, а
- // snapshot обновляется редко. Если pre-кадры свежие (< VERIFY_MIN_PRE_MS) и
- // post-кадр от них практически не отличается (grid-diff < VERIFY_THRESHOLD) —
- // событие ложное: клип не пишется, хроника не загрязняется, окно дедупа не
- // закрывается (реальное движение через секунду всё равно запишется).
- gridScore(a,b){
+ // 3.9.7: анти-ложняк. Сравнение двух живых кадров (camera_proxy) по сетке 32×18:
+ //  · score — средний |Δ| яркости по ячейкам: ~0 → сцена не менялась (пустое
+ //    событие), >
+ //  · fracStrong — доля ячеек с сильным изменением (|Δ|>STRONG): движение у
+ //    человека/машины затрагивает часть кадра (~1–40 %), а включение фонаря или
+ //    ИК-подсветки осветляет ВЕСЬ кадр (большинство ячеек меняются) — это не
+ //    движение, и именно на это так реагирует ONVIF CellMotion у Tapo.
+ gridStats(a,b){
   const da=jpeg.decode(Buffer.from(a,'base64'),{useTArray:true}),db=jpeg.decode(Buffer.from(b,'base64'),{useTArray:true});
   const {w:gw,h:gh}=VERIFY_GRID,step=4;
   const grid=(d)=>{const g=new Array(gw*gh).fill(0),cnt=new Array(gw*gh).fill(0);
@@ -98,8 +100,13 @@ export class YardClips{
     g[gy*gw+gx]+=lum;cnt[gy*gw+gx]++}
    return g.map((v,i)=>cnt[i]?v/cnt[i]:0)};
   const ga=grid(da),gb=grid(db);
-  let s=0;for(let i=0;i<ga.length;i++)s+=Math.abs(ga[i]-gb[i]);
-  return s/ga.length;
+  let s=0,strong=0;
+  for(let i=0;i<ga.length;i++){
+   const d=Math.abs(ga[i]-gb[i]);
+   s+=d;
+   if(d>VERIFY_STRONG)strong++;
+  }
+  return {score:s/ga.length,strongFrac:strong/ga.length};
  }
  // Событие движения → клип. Дедуп: <15с от последнего клипа — окно продлевается,
  // новый клип не создаётся. pre-кадры из кольца, пост-кадры через POST_DELAYS.
@@ -132,12 +139,19 @@ export class YardClips{
     await new Promise(r=>setTimeout(r,5000));
     const v2=await this.captureProxy();
     if(v2){
-     let score=NaN;
-     try{score=this.gridScore(v1,v2)}catch{/* не декодировали — верим событию */}
-     if(Number.isFinite(score)&&score<VERIFY_THRESHOLD){this.lastClipAt=0;return null}
-     // Событие подтверждено: свежий живой кадр — первым в клип (snapshot-кадры
-     // могут отставать от реальности на минуты).
-     frames.unshift(v2);
+     let stats=null;
+     try{stats=this.gridStats(v1,v2)}catch{/* не декодировали — верим событию */}
+     if(stats){
+      // Пустое событие: сцена не изменилась. Глобальная засветка (фонарь, ИК):
+      // меняются почти все ячейки — яркость, не движение.
+      if(stats.score<VERIFY_THRESHOLD||stats.strongFrac>VERIFY_GLOBAL_FRAC){
+       this.lastClipAt=0;
+       return null;
+      }
+      // Событие подтверждено: свежий живой кадр — первым в клип (snapshot-кадры
+      // могут отставать от реальности на минуты).
+      frames.unshift(v2);
+     }
     }
    }
   }
