@@ -86,6 +86,16 @@ main{min-height:650px}
 .climate .subreadings{border-top:1px solid var(--border);margin-top:var(--space-5);padding-top:var(--space-4);display:grid;gap:var(--space-3)}
 .subreadings>div{display:flex;justify-content:space-between;font-size:var(--text-sm)}
 .subreadings span{color:var(--muted)}.subreadings .warning{font-size:var(--text-xs);color:var(--warning)}
+/* 3.9.13: компактные карточки климата по комнатам */
+.climate-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-3);margin-top:var(--space-4)}
+.climate-tile{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;min-width:0;padding:var(--space-4);background:var(--surface-2,rgba(255,255,255,.03));border:1px solid var(--border);border-radius:var(--radius-md,var(--radius-sm));cursor:pointer}
+.climate-tile:hover{border-color:var(--accent)}
+.climate-tile span{color:var(--muted);font-size:var(--text-xs)}
+.climate-tile strong{font-size:1.7rem;font-weight:400;letter-spacing:-.05em;line-height:1.15;font-variant-numeric:tabular-nums}
+.climate-tile strong i{font-style:normal;font-size:var(--text-sm);color:var(--muted);margin-left:2px}
+.climate-tile small{display:inline-flex;align-items:center;gap:4px;color:var(--muted);font-size:var(--text-xs)}
+.climate-tile small svg{width:13px;height:13px}
+.climate-tile.is-unavailable strong,.climate-tile.is-unavailable small{color:var(--faint)}
 .station-card{background:var(--surface);border-radius:24px;padding:var(--space-6);position:relative;overflow:hidden;min-height:240px}
 .station-card .station-top{display:flex;align-items:center;justify-content:space-between}
 .station-card .station-top .eyebrow{color:var(--muted);font-size:var(--text-xs);letter-spacing:.1em}

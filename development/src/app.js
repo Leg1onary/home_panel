@@ -164,16 +164,16 @@ function sensorStatus(id){
  return s.quality==='stale'||Date.now()-s.receivedAt>30*60*1000?'Данные устарели':(isLive()?'Home Assistant · ':'Демопакет · ')+timeOf(s.receivedAt);
 }
 function climate(){
- // 3.9.12: подстроки климата — по всем комнатам с датчиком температуры, не только well/attic.
- const SUB_LABEL={living:'Гостиная',well:'Скважина',attic:'Чердак',office:'Кабинет',children:'Детская',bedroom:'Спальня'};
- const main='living',s=sensors[main],stale=sensorStatus(main)==='Данные устарели';
- const subRooms=state.devices.filter(d=>d.type==='temperature'&&d.status==='installed'&&d.room!==main&&sensors[d.room]).map(d=>d.room)
-  .filter((id,i,a)=>a.indexOf(id)===i);
- const sub=id=>{const v=sensors[id];return `<button class="sensor-row" data-sensor="${id}"><span>${esc(SUB_LABEL[id]||areaName(id))}</span><strong>${noConnection()||v.quality==='unavailable'?'Нет данных':sensorStatus(id)==='Данные устарели'?'Данные устарели':reading(v.value)+'°'}</strong></button>`};
- return `<section class="climate"><div class="title-line"><span>Температура гостиной</span>${I('thermometer')}</div>
- <div class="reading"><strong>${noConnection()||stale||s.quality==='unavailable'?'—':reading(s.value)}</strong><span>°C</span></div>
- <div class="humidity">${I('droplets')}${noConnection()||s.humidity===null?'—':s.humidity+' %'} · ${sensorStatus(main)}</div>
- <div class="subreadings">${subRooms.map(sub).join('')}</div></section>`;
+ // 3.9.13: компактная сетка карточек по комнатам дома + строки уличных зон.
+ const LABEL={living:'Гостиная',office:'Кабинет',bedroom:'Спальня',children:'Детская',well:'Скважина',attic:'Чердак'};
+ const indoor=['living','office','bedroom','children'].filter(id=>sensors[id]);
+ const outdoor=['well','attic'].filter(id=>sensors[id]);
+ const tile=id=>{const v=sensors[id],down=noConnection()||v.quality==='unavailable';
+  return `<button class="climate-tile${down?' is-unavailable':''}" data-sensor="${id}" aria-label="${esc(LABEL[id]||areaName(id))}: открыть датчик"><span>${esc(LABEL[id]||areaName(id))}</span><strong>${down?'—':reading(v.value)}<i>°C</i></strong><small>${I('droplets')}${down||v.humidity===null?'—':v.humidity+' %'}</small></button>`};
+ const row=id=>{const v=sensors[id];return `<button class="sensor-row" data-sensor="${id}"><span>${esc(LABEL[id]||areaName(id))}</span><strong>${noConnection()||v.quality==='unavailable'?'Нет данных':sensorStatus(id)==='Данные устарели'?'Данные устарели':reading(v.value)+'°'}</strong></button>`};
+ return `<section class="climate"><div class="title-line"><span>Климат дома</span>${I('thermometer')}</div>
+ <div class="climate-grid">${indoor.map(tile).join('')}</div>
+ ${outdoor.length?`<div class="subreadings">${outdoor.map(row).join('')}</div>`:''}</section>`;
 }
 function station(){
  const demo=!isLive()&&state.stationMode==='demo',offline=!isLive()&&(state.stationMode==='offline'||state.demoOffline);

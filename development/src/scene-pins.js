@@ -11,9 +11,10 @@ export function scenePins(state,now=Date.now()){
   return state.liveOnline&&b?.verified?state.entityStates[b.entityId]:null;
  };
  const pins=[];
- // 3.9.12: климатический пин для каждой комнаты с установленным датчиком
- // температуры (координаты — центры комнат на плане model.js).
- const CLIMATE_PINS={living:[450,115],office:[646,431],children:[369,783],bedroom:[540,789],well:[330,470],attic:[340,340]};
+ // 3.9.13: климатический пин — только для комнат, существующих на плане
+ // (центроиды floorPoints из model.js). Скважина и чердак на плане не нарисованы,
+ // поэтому пинов для них нет (раньше «скважина» рендерилась в туалете).
+ const CLIMATE_PINS={living:[482,159],office:[646,431],children:[342,786],bedroom:[611,796]};
  for(const [room,[px,pz]] of Object.entries(CLIMATE_PINS)){
   const temp=read(`temperature:${room}`),humidity=read(`humidity:${room}`);
   if(!state.devices.some(d=>d.id===`temperature:${room}`&&d.status==='installed'))continue;
