@@ -17,7 +17,7 @@ const make=(id,type,room,name,extra={})=>({id,type,room,name,status:'installed',
 export function defaultDevices(){
  return [
   ...house.rooms.flatMap(r=>r.channels.map((c,i)=>make(lightIDs[r.id][i],'light',r.id==='hall'&&i===1?'terrace':r.id,c.name,{status:c.planned?'planned':'installed',note:c.note||'',demoOn:c.demoOn}))),
-  ...[['living',20.4,53],['attic',40,24],['well',16.5,86]].flatMap(([id,t,h])=>[
+  ...[['living',20.4,53],['attic',40,24],['well',16.5,86],['office',24,45],['children',23,40],['bedroom',23,38]].flatMap(([id,t,h])=>[
    make(`temperature:${id}`,'temperature',id,`Температура · ${areaName(id)}`,{note:'miaomiaoce.sensor_ht.t2 · BLE; подключение к HA ещё не проверено',demoValue:t,demoStale:id==='attic'}),
    make(`humidity:${id}`,'humidity',id,`Влажность · ${areaName(id)}`,{note:'miaomiaoce.sensor_ht.t2 · BLE; подключение к HA ещё не проверено',demoValue:h,demoStale:id==='attic'})
   ]),

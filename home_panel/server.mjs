@@ -2283,7 +2283,7 @@ var make = (id, type, room, name, extra2 = {}) => ({ id, type, room, name, statu
 function defaultDevices() {
   return [
     ...house_default.rooms.flatMap((r) => r.channels.map((c, i) => make(lightIDs[r.id][i], "light", r.id === "hall" && i === 1 ? "terrace" : r.id, c.name, { status: c.planned ? "planned" : "installed", note: c.note || "", demoOn: c.demoOn }))),
-    ...[["living", 20.4, 53], ["attic", 40, 24], ["well", 16.5, 86]].flatMap(([id, t, h]) => [
+    ...[["living", 20.4, 53], ["attic", 40, 24], ["well", 16.5, 86], ["office", 24, 45], ["children", 23, 40], ["bedroom", 23, 38]].flatMap(([id, t, h]) => [
       make(`temperature:${id}`, "temperature", id, `\u0422\u0435\u043C\u043F\u0435\u0440\u0430\u0442\u0443\u0440\u0430 \xB7 ${areaName(id)}`, { note: "miaomiaoce.sensor_ht.t2 \xB7 BLE; \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435 \u043A HA \u0435\u0449\u0451 \u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u043E", demoValue: t, demoStale: id === "attic" }),
       make(`humidity:${id}`, "humidity", id, `\u0412\u043B\u0430\u0436\u043D\u043E\u0441\u0442\u044C \xB7 ${areaName(id)}`, { note: "miaomiaoce.sensor_ht.t2 \xB7 BLE; \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435 \u043A HA \u0435\u0449\u0451 \u043D\u0435 \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u043E", demoValue: h, demoStale: id === "attic" })
     ]),
@@ -2395,7 +2395,7 @@ function seedDeviceModel(devices) {
     if (members.length < 2 || new Set(found.map((d) => d.room)).size !== 1) return;
     groups.push({ id: "unit-" + id, name, room: found[0].room, members, visual: { mode: "room" } });
   };
-  for (const [id, label] of [["living", "\u0433\u043E\u0441\u0442\u0438\u043D\u0430\u044F"], ["attic", "\u0447\u0435\u0440\u0434\u0430\u043A"], ["well", "\u0441\u043A\u0432\u0430\u0436\u0438\u043D\u0430"]]) {
+  for (const [id, label] of [["living", "\u0433\u043E\u0441\u0442\u0438\u043D\u0430\u044F"], ["attic", "\u0447\u0435\u0440\u0434\u0430\u043A"], ["well", "\u0441\u043A\u0432\u0430\u0436\u0438\u043D\u0430"], ["office", "\u043A\u0430\u0431\u0438\u043D\u0435\u0442"], ["children", "\u0434\u0435\u0442\u0441\u043A\u0430\u044F"], ["bedroom", "\u0441\u043F\u0430\u043B\u044C\u043D\u044F"]]) {
     add("climate-" + id, "\u0414\u0430\u0442\u0447\u0438\u043A \u043A\u043B\u0438\u043C\u0430\u0442\u0430 \xB7 " + label, ["temperature:" + id, "humidity:" + id, "battery:" + id]);
   }
   add("door", "\u0412\u0445\u043E\u0434\u043D\u0430\u044F \u0434\u0432\u0435\u0440\u044C", ["door", "battery:door"]);

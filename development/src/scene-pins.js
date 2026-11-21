@@ -11,11 +11,17 @@ export function scenePins(state,now=Date.now()){
   return state.liveOnline&&b?.verified?state.entityStates[b.entityId]:null;
  };
  const pins=[];
- const temp=read('temperature:living'),humidity=read('humidity:living');
- const t=numericReading(temp?.demo?{...temp,state:String(temp.state)}:temp,{unit:temp?.demo?undefined:'°C',now});
- const h=numericReading(humidity?.demo?{...humidity,state:String(humidity.state)}:humidity,{unit:humidity?.demo?undefined:'%',now});
- if(t.available){
-  pins.push({id:'climate',x:450,z:115,kind:'climate',action:'sensor',sensor:'living',label:t.value.toFixed(1)+'°',detail:temp.demo?'демо':h.available?Math.round(h.value)+'% · гостиная':'Гостиная',priority:2});
+ // 3.9.12: климатический пин для каждой комнаты с установленным датчиком
+ // температуры (координаты — центры комнат на плане model.js).
+ const CLIMATE_PINS={living:[450,115],office:[646,431],children:[369,783],bedroom:[540,789],well:[330,470],attic:[340,340]};
+ for(const [room,[px,pz]] of Object.entries(CLIMATE_PINS)){
+  const temp=read(`temperature:${room}`),humidity=read(`humidity:${room}`);
+  if(!state.devices.some(d=>d.id===`temperature:${room}`&&d.status==='installed'))continue;
+  const t=numericReading(temp?.demo?{...temp,state:String(temp.state)}:temp,{unit:temp?.demo?undefined:'°C',now});
+  const h=numericReading(humidity?.demo?{...humidity,state:String(humidity.state)}:humidity,{unit:humidity?.demo?undefined:'%',now});
+  if(!t.available)continue;
+  const label={living:'гостиная',office:'кабинет',children:'детская',bedroom:'спальня',well:'скважина',attic:'чердак'}[room]||room;
+  pins.push({id:'climate-'+room,x:px,z:pz,kind:'climate',action:'sensor',sensor:room,label:t.value.toFixed(1)+'°',detail:temp.demo?'демо':h.available?Math.round(h.value)+'% · '+label:label,priority:2});
  }
  const motion=read('terrace-motion'),m=motionObservation(motion,now);
  if(motion&&!motion.demo&&m.kind!=='unknown')pins.push({id:'motion',x:85,z:405,kind:m.kind==='active'?'motion-active':'motion-idle',action:'motion',motionId:'terrace-motion',label:m.kind==='active'?'Движение':'Терраса',detail:m.kind==='active'?'свежее событие':elapsedLabel(m.at,now),priority:3});

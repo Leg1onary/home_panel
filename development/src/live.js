@@ -35,12 +35,14 @@ function applySnapshot(list){
  if(Number.isFinite(station?.attributes.volume_level))state.stationVolume=Math.round(station.attributes.volume_level*100);
  if(Number.isFinite(rgb?.attributes.brightness))state.brightness=Math.round(rgb.attributes.brightness/255*100);
  if(rgb?.attributes.rgb_color?.length===3)state.rgbColor='#'+rgb.attributes.rgb_color.map(n=>n.toString(16).padStart(2,'0')).join('');
- for(const id of ['living','well','attic']){
-  const temp=state.devices.find(d=>d.type==='temperature'&&d.room===id&&d.status==='installed');
-  const humidity=state.devices.find(d=>d.type==='humidity'&&d.room===id&&d.status==='installed');
+ // 3.9.12: климат по всем комнатам, где есть установленный температурный
+ // датчик (раньше — жёсткий список living/well/attic).
+ for(const room of new Set(state.devices.filter(d=>d.type==='temperature'&&d.status==='installed').map(d=>d.room))){
+  const temp=state.devices.find(d=>d.type==='temperature'&&d.room===room&&d.status==='installed');
+  const humidity=state.devices.find(d=>d.type==='humidity'&&d.room===room&&d.status==='installed');
   const t=temp?observed(temp.id):null,h=humidity?observed(humidity.id):null;
   const temperature=numericReading(t,{online:state.liveOnline,unit:'°C'}),moisture=numericReading(h,{online:state.liveOnline,unit:'%'});
-  sensors[id]={value:temperature.value??0,humidity:moisture.value,
+  sensors[room]={value:temperature.value??0,humidity:moisture.value,
    receivedAt:temperature.reportedAt||temperature.updatedAt||temperature.changedAt||0,
    checkedAt:state.liveUpdatedAt,quality:temperature.available?'live':'unavailable'};
  }
@@ -97,16 +99,18 @@ function startSSE(onChange=()=>{}){
 }
 export function startLive(onChange=()=>{}){
  clearInterval(timer);closeSSE();revision++;state.liveOnline=false;state.entityStates={};
+ // 3.9.12: старые комнаты без датчиков сбрасываются в unavailable, а не остаются с прошлыми данными.
+ for(const id of Object.keys(sensors))sensors[id]={value:0,humidity:null,receivedAt:0,quality:'unavailable'};
  if(isLive()){
   for(const r of rooms)for(const c of r.channels)c.on=false;
-  for(const id of Object.keys(sensors))sensors[id]={value:0,humidity:null,receivedAt:0,quality:'unavailable'};
   startSSE(onChange);
  }else{
   for(const r of rooms)for(const c of r.channels)c.on=!c.planned&&!!c.demoOn;
-  for(const id of Object.keys(sensors)){
-   const t=state.devices.find(d=>d.type==='temperature'&&d.room===id&&d.status==='installed');
-   const h=state.devices.find(d=>d.type==='humidity'&&d.room===id&&d.status==='installed');
-   sensors[id]={value:t?.demoValue??0,humidity:h?.demoValue??null,receivedAt:Date.now()-(t?.demoStale?172800000:0),quality:t?.demoValue===undefined?'unavailable':t.demoStale?'stale':'sample'};
+  // 3.9.12: демо-климат тоже по всем комнатам с датчиками, не по жёсткому списку.
+  for(const room of new Set(state.devices.filter(d=>d.type==='temperature'&&d.status==='installed').map(d=>d.room))){
+   const t=state.devices.find(d=>d.type==='temperature'&&d.room===room&&d.status==='installed');
+   const h=state.devices.find(d=>d.type==='humidity'&&d.room===room&&d.status==='installed');
+   sensors[room]={value:t?.demoValue??0,humidity:h?.demoValue??null,receivedAt:Date.now()-(t?.demoStale?172800000:0),quality:t?.demoValue===undefined?'unavailable':t.demoStale?'stale':'sample'};
   }
  }
 }

@@ -15,7 +15,7 @@ export function seedDeviceModel(devices){
   if(members.length<2||new Set(found.map(d=>d.room)).size!==1)return;
   groups.push({id:'unit-'+id,name,room:found[0].room,members,visual:{mode:'room'}});
  };
- for(const [id,label]of [['living','гостиная'],['attic','чердак'],['well','скважина']]){
+ for(const [id,label]of [['living','гостиная'],['attic','чердак'],['well','скважина'],['office','кабинет'],['children','детская'],['bedroom','спальня']]){
   add('climate-'+id,'Датчик климата · '+label,['temperature:'+id,'humidity:'+id,'battery:'+id]);
  }
  add('door','Входная дверь',['door','battery:door']);

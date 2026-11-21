@@ -164,12 +164,16 @@ function sensorStatus(id){
  return s.quality==='stale'||Date.now()-s.receivedAt>30*60*1000?'Данные устарели':(isLive()?'Home Assistant · ':'Демопакет · ')+timeOf(s.receivedAt);
 }
 function climate(){
- const s=sensors.living,stale=sensorStatus('living')==='Данные устарели';
+ // 3.9.12: подстроки климата — по всем комнатам с датчиком температуры, не только well/attic.
+ const SUB_LABEL={living:'Гостиная',well:'Скважина',attic:'Чердак',office:'Кабинет',children:'Детская',bedroom:'Спальня'};
+ const main='living',s=sensors[main],stale=sensorStatus(main)==='Данные устарели';
+ const subRooms=state.devices.filter(d=>d.type==='temperature'&&d.status==='installed'&&d.room!==main&&sensors[d.room]).map(d=>d.room)
+  .filter((id,i,a)=>a.indexOf(id)===i);
+ const sub=id=>{const v=sensors[id];return `<button class="sensor-row" data-sensor="${id}"><span>${esc(SUB_LABEL[id]||areaName(id))}</span><strong>${noConnection()||v.quality==='unavailable'?'Нет данных':sensorStatus(id)==='Данные устарели'?'Данные устарели':reading(v.value)+'°'}</strong></button>`};
  return `<section class="climate"><div class="title-line"><span>Температура гостиной</span>${I('thermometer')}</div>
  <div class="reading"><strong>${noConnection()||stale||s.quality==='unavailable'?'—':reading(s.value)}</strong><span>°C</span></div>
- <div class="humidity">${I('droplets')}${noConnection()||s.humidity===null?'—':s.humidity+' %'} · ${sensorStatus('living')}</div>
- <div class="subreadings"><button class="sensor-row" data-sensor="well"><span>Скважина</span><strong>${noConnection()||sensors.well.quality==='unavailable'?'Нет данных':sensorStatus('well')==='Данные устарели'?'Данные устарели':reading(sensors.well.value)+'°'}</strong></button>
- <button class="sensor-row" data-sensor="attic"><span>Чердак</span><strong>${noConnection()||sensors.attic.quality==='unavailable'?'Нет данных':sensorStatus('attic')==='Данные устарели'?'Данные устарели':reading(sensors.attic.value)+'°'}</strong></button></div></section>`;
+ <div class="humidity">${I('droplets')}${noConnection()||s.humidity===null?'—':s.humidity+' %'} · ${sensorStatus(main)}</div>
+ <div class="subreadings">${subRooms.map(sub).join('')}</div></section>`;
 }
 function station(){
  const demo=!isLive()&&state.stationMode==='demo',offline=!isLive()&&(state.stationMode==='offline'||state.demoOffline);
@@ -1393,7 +1397,7 @@ async function runDuo(action,extra={}){
  finally{duoUI.busy=false;paintDuo();if(duoOpen())$('.sheet').scrollTop=0;await refreshDuo()}
 }
 function sensorSheet(id){
- const s=sensors[id],name={living:'Гостиная',well:'Скважина',attic:'Чердак'}[id];
+ const s=sensors[id],name={living:'Гостиная',well:'Скважина',attic:'Чердак',office:'Кабинет',children:'Детская',bedroom:'Спальня'}[id]||areaName(id);
  const d=state.devices.find(d=>d.type==='temperature'&&d.room===id&&d.status==='installed'),times=stateTimes(d?observed(d.id):null);
  const stamp=at=>at?new Date(at).toLocaleString('ru-RU',{timeZone:PANEL_TIMEZONE}):'Нет достоверной метки';
  return `<h2>Температура · ${name}</h2><p class="description">${sensorStatus(id)}</p>
@@ -1835,7 +1839,7 @@ function updateClocks(){
  for(const id of ['clock','idle-clock','hero-clock'])if($('#'+id))$('#'+id).textContent=clock();
  for(const id of ['date','idle-date','hero-date'])if($('#'+id))$('#'+id).textContent=date();
  updateHeroTime();
- $('#idle-climate').textContent=noConnection()||sensors.living.quality==='unavailable'||sensors.well.quality==='unavailable'?'Датчики недоступны':sensorStatus('living')==='Данные устарели'||sensorStatus('well')==='Данные устарели'?'Показания устарели':`Гостиная ${reading(sensors.living.value)}°  ·  Скважина ${reading(sensors.well.value)}°  ·  ${isLive()?'Home Assistant':'демоданные'}`;
+ $('#idle-climate').textContent=noConnection()||Object.keys(sensors).length===0||Object.values(sensors).every(s=>s.quality==='unavailable')?'Датчики недоступны':sensorStatus('living')==='Данные устарели'||sensorStatus('well')==='Данные устарели'?'Показания устарели':`Гостиная ${reading(sensors.living.value)}°  ·  Скважина ${reading(sensors.well.value)}°  ·  ${isLive()?'Home Assistant':'демоданные'}`;
 }
 // 3.8.0 «QR гостевого Wi-Fi»: стандартный WIFI:-payload камерой телефона.
 async function showGuestQr(){

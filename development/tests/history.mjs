@@ -35,7 +35,7 @@ assert.equal(data.recordedCount,2);
 assert.equal(data.events.length,3);assert.equal(data.eventCount,3);
 assert.equal(JSON.stringify(data).includes('sensor.secret'),false);
 const html=statisticsView({hours:24,metric:'temperature',room:'all',eventType:'all',data,loading:false,error:''});
-assert.match(html,/history-svg/);assert.match(html,/линия·ч/);
+assert.match(html,/history-svg/);assert.doesNotMatch(html,/Свет за период/); // 3.9.11: legacy-блок удалён
 assert.doesNotMatch(html,/sensor.secret/);
 let requests=0,lastPath='';
 const ha={enabled:true,url:'http://qa-history-'+now,request:async path=>{requests++;lastPath=path;return []}};
